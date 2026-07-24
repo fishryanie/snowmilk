@@ -1,17 +1,23 @@
 "use client";
 
 import {
+  BarChartOutlined,
+  CalendarOutlined,
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
+  InboxOutlined,
   PlusOutlined,
+  ReloadOutlined,
   SearchOutlined,
+  WalletOutlined,
 } from "@ant-design/icons";
 import {
   Alert,
   App,
   Button,
   Card,
+  Checkbox,
   DatePicker,
   Descriptions,
   Drawer,
@@ -23,13 +29,14 @@ import {
   Popconfirm,
   Select,
   Space,
+  Statistic,
   Table,
   Tag,
   Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs, { type Dayjs } from "dayjs";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type Key } from "react";
 import { PageHeader } from "@/components/common/page-header";
 import { RouteSkeleton } from "@/components/common/route-skeleton";
 import { useApiData } from "@/hooks/use-api-data";
@@ -51,6 +58,7 @@ import {
   workbookPurchases,
 } from "@/lib/workbook-snapshot";
 
+const { RangePicker } = DatePicker;
 const { Text } = Typography;
 
 type Ingredient = {
@@ -130,9 +138,14 @@ export default function PurchasesPage() {
   const { message } = App.useApp();
   const [form] = Form.useForm<PurchaseForm>();
   const [query, setQuery] = useState("");
+  const [dateRange, setDateRange] = useState<[string, string] | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string>();
+  const [fundingSourceFilter, setFundingSourceFilter] =
+    useState<PurchaseFundingSource>();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Purchase | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedPurchaseKeys, setSelectedPurchaseKeys] = useState<Key[]>([]);
   const {
     data: purchases,
     loading: purchasesLoading,
@@ -165,25 +178,107 @@ export default function PurchasesPage() {
       ? enteredTotalAmount / packageCount
       : selectedIngredient?.referencePackagePrice ?? 0;
   const normalizedQuery = query.trim().toLocaleLowerCase("vi");
+  const categoryOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          purchases
+            .map((purchase) => purchase.category)
+            .filter((category): category is string => Boolean(category)),
+        ),
+      )
+        .toSorted((a, b) => a.localeCompare(b, "vi"))
+        .map((category) => ({ label: category, value: category })),
+    [purchases],
+  );
   const visiblePurchases = useMemo(() => {
-    const filtered = normalizedQuery
-      ? purchases.filter((purchase) =>
-          [
-            purchase.itemName,
-            purchase.itemCode,
-            purchase.category,
-            purchaseFundingSourceLabel(purchase.fundingSource),
-            purchase.supplier,
-            purchase.note,
-          ].some((value) =>
-            String(value ?? "")
-              .toLocaleLowerCase("vi")
-              .includes(normalizedQuery),
-          ),
-        )
-      : purchases;
+    const filtered = purchases.filter((purchase) => {
+      const purchaseDay = dayjs(purchase.purchaseDate).format("YYYY-MM-DD");
+      if (
+        dateRange &&
+        (purchaseDay < dateRange[0] || purchaseDay > dateRange[1])
+      ) {
+        return false;
+      }
+      if (categoryFilter && purchase.category !== categoryFilter) return false;
+      if (
+        fundingSourceFilter &&
+        (purchase.fundingSource ?? DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE) !==
+          fundingSourceFilter
+      ) {
+        return false;
+      }
+      if (!normalizedQuery) return true;
+
+      return [
+        purchase.itemName,
+        purchase.itemCode,
+        purchase.category,
+        purchaseFundingSourceLabel(purchase.fundingSource),
+        purchase.supplier,
+        purchase.note,
+      ].some((value) =>
+        String(value ?? "")
+          .toLocaleLowerCase("vi")
+          .includes(normalizedQuery),
+      );
+    });
     return filtered.toSorted(comparePurchasesByDate);
-  }, [normalizedQuery, purchases]);
+  }, [
+    categoryFilter,
+    dateRange,
+    fundingSourceFilter,
+    normalizedQuery,
+    purchases,
+  ]);
+  const purchaseSummary = useMemo(() => {
+    let totalAmount = 0;
+    let totalPackages = 0;
+    for (const purchase of visiblePurchases) {
+      totalAmount += Number(purchase.totalAmount ?? 0);
+      totalPackages += Number(purchase.packageCount ?? 0);
+    }
+    return {
+      totalAmount,
+      totalPackages,
+      purchaseCount: visiblePurchases.length,
+      averageAmount:
+        visiblePurchases.length > 0
+          ? totalAmount / visiblePurchases.length
+          : 0,
+    };
+  }, [visiblePurchases]);
+  const selectedPurchaseKeySet = useMemo(
+    () => new Set(selectedPurchaseKeys),
+    [selectedPurchaseKeys],
+  );
+  const selectedPurchaseSummary = useMemo(() => {
+    let count = 0;
+    let totalAmount = 0;
+    for (const purchase of purchases) {
+      if (!selectedPurchaseKeySet.has(purchaseKey(purchase))) continue;
+      count += 1;
+      totalAmount += Number(purchase.totalAmount ?? 0);
+    }
+    return { count, totalAmount };
+  }, [purchases, selectedPurchaseKeySet]);
+  const visiblePurchaseKeys = useMemo(
+    () => visiblePurchases.map(purchaseKey),
+    [visiblePurchases],
+  );
+  const selectedVisiblePurchaseCount = useMemo(() => {
+    let count = 0;
+    for (const key of visiblePurchaseKeys) {
+      if (selectedPurchaseKeySet.has(key)) count += 1;
+    }
+    return count;
+  }, [selectedPurchaseKeySet, visiblePurchaseKeys]);
+  const allVisiblePurchasesSelected =
+    visiblePurchaseKeys.length > 0 &&
+    selectedVisiblePurchaseCount === visiblePurchaseKeys.length;
+  const hasActiveFilters = Boolean(
+    normalizedQuery || dateRange || categoryFilter || fundingSourceFilter,
+  );
 
   const columns: ColumnsType<Purchase> = [
     {
@@ -290,6 +385,33 @@ export default function PurchasesPage() {
     setDrawerOpen(false);
     setEditing(null);
     form.resetFields();
+  }
+
+  function clearFilters() {
+    setQuery("");
+    setDateRange(null);
+    setCategoryFilter(undefined);
+    setFundingSourceFilter(undefined);
+  }
+
+  function togglePurchaseSelection(key: Key, checked: boolean) {
+    setSelectedPurchaseKeys((current) => {
+      const next = new Set(current);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return Array.from(next);
+    });
+  }
+
+  function toggleAllVisiblePurchases(checked: boolean) {
+    setSelectedPurchaseKeys((current) => {
+      const next = new Set(current);
+      for (const key of visiblePurchaseKeys) {
+        if (checked) next.add(key);
+        else next.delete(key);
+      }
+      return Array.from(next);
+    });
   }
 
   function openEditor(record?: Purchase) {
@@ -412,15 +534,170 @@ export default function PurchasesPage() {
         />
       )}
       <Card className="surface-card table-card">
-        <div className="table-toolbar">
-          <Input
-            allowClear
-            prefix={<SearchOutlined />}
-            placeholder="Tìm tên hàng, mã, nguồn tiền…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            style={{ width: 320 }}
-          />
+        <div className="purchase-overview">
+          <div className="purchase-filter-heading">
+            <div>
+              <Text strong>Bộ lọc</Text>
+              <Text type="secondary">
+                {visiblePurchases.length === purchases.length
+                  ? `${formatNumber(purchases.length)} lần nhập`
+                  : `${formatNumber(visiblePurchases.length)}/${formatNumber(purchases.length)} lần nhập`}
+              </Text>
+            </div>
+            <Button
+              type="text"
+              icon={<ReloadOutlined />}
+              disabled={!hasActiveFilters}
+              onClick={clearFilters}
+            >
+              Đặt lại
+            </Button>
+          </div>
+          <div className="purchase-filter-grid">
+            <Input
+              allowClear
+              prefix={<SearchOutlined />}
+              placeholder="Tìm tên hàng, mã, nhà cung cấp…"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <RangePicker
+              allowClear
+              format="DD/MM/YYYY"
+              placeholder={["Từ ngày", "Đến ngày"]}
+              value={
+                dateRange
+                  ? [dayjs(dateRange[0]), dayjs(dateRange[1])]
+                  : null
+              }
+              onChange={(dates) => {
+                setDateRange(
+                  dates?.[0] && dates[1]
+                    ? [
+                        dates[0].format("YYYY-MM-DD"),
+                        dates[1].format("YYYY-MM-DD"),
+                      ]
+                    : null,
+                );
+              }}
+            />
+            <Select
+              allowClear
+              placeholder="Tất cả nhóm hàng"
+              options={categoryOptions}
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+            />
+            <Select
+              allowClear
+              placeholder="Tất cả nguồn tiền"
+              options={PURCHASE_FUNDING_SOURCE_OPTIONS}
+              value={fundingSourceFilter}
+              onChange={setFundingSourceFilter}
+            />
+          </div>
+          <div
+            className="purchase-summary-grid"
+            role="list"
+            aria-label="Thống kê nhập hàng theo bộ lọc"
+          >
+            <Card
+              size="small"
+              className="purchase-summary-card purchase-summary-card-total"
+              role="listitem"
+            >
+              <Statistic
+                title={
+                  <span className="purchase-summary-title">
+                    <WalletOutlined />
+                    Tổng tiền
+                  </span>
+                }
+                value={purchaseSummary.totalAmount}
+                formatter={(value) => formatVnd(Number(value))}
+              />
+            </Card>
+            <Card
+              size="small"
+              className="purchase-summary-card purchase-summary-card-count"
+              role="listitem"
+            >
+              <Statistic
+                title={
+                  <span className="purchase-summary-title">
+                    <CalendarOutlined />
+                    Số lần nhập
+                  </span>
+                }
+                value={purchaseSummary.purchaseCount}
+                suffix="lần"
+                formatter={(value) => formatNumber(Number(value))}
+              />
+            </Card>
+            <Card
+              size="small"
+              className="purchase-summary-card purchase-summary-card-packages"
+              role="listitem"
+            >
+              <Statistic
+                title={
+                  <span className="purchase-summary-title">
+                    <InboxOutlined />
+                    Tổng số gói
+                  </span>
+                }
+                value={purchaseSummary.totalPackages}
+                suffix="gói"
+                formatter={(value) => formatNumber(Number(value))}
+              />
+            </Card>
+            <Card
+              size="small"
+              className="purchase-summary-card purchase-summary-card-average"
+              role="listitem"
+            >
+              <Statistic
+                title={
+                  <span className="purchase-summary-title">
+                    <BarChartOutlined />
+                    Bình quân/lần
+                  </span>
+                }
+                value={purchaseSummary.averageAmount}
+                formatter={(value) => formatVnd(Number(value))}
+              />
+            </Card>
+          </div>
+        </div>
+        <div className="table-toolbar purchase-action-toolbar">
+          <div className="purchase-list-heading">
+            <div className="purchase-list-title">
+              <Text strong>Danh sách nhập hàng</Text>
+              <Checkbox
+                className="purchase-mobile-select-all"
+                checked={allVisiblePurchasesSelected}
+                indeterminate={
+                  selectedVisiblePurchaseCount > 0 &&
+                  !allVisiblePurchasesSelected
+                }
+                disabled={visiblePurchaseKeys.length === 0}
+                onChange={(event) =>
+                  toggleAllVisiblePurchases(event.target.checked)
+                }
+              >
+                Chọn tất cả
+              </Checkbox>
+            </div>
+            <div className="purchase-selection-summary" aria-live="polite">
+              <Text type="secondary">
+                Đã chọn {formatNumber(selectedPurchaseSummary.count)} dòng
+              </Text>
+              <Text strong>
+                Tổng đã chọn:{" "}
+                {formatVnd(selectedPurchaseSummary.totalAmount)}
+              </Text>
+            </div>
+          </div>
           <Space>
             <Button
               icon={<DownloadOutlined />}
@@ -444,6 +721,15 @@ export default function PurchasesPage() {
             rowKey={purchaseKey}
             columns={columns}
             dataSource={visiblePurchases}
+            rowSelection={{
+              selectedRowKeys: selectedPurchaseKeys,
+              onChange: setSelectedPurchaseKeys,
+              columnWidth: 44,
+              preserveSelectedRowKeys: true,
+              getCheckboxProps: (record) => ({
+                "aria-label": `Chọn lần nhập ${record.itemName}`,
+              }),
+            }}
             pagination={{ defaultPageSize: 50, showSizeChanger: false }}
             scroll={{ x: "max-content" }}
           />
@@ -464,6 +750,17 @@ export default function PurchasesPage() {
             <List.Item className="purchase-mobile-item">
               <article className="purchase-mobile-card">
                 <div className="purchase-card-heading">
+                  <Checkbox
+                    className="purchase-card-checkbox"
+                    checked={selectedPurchaseKeySet.has(purchaseKey(record))}
+                    aria-label={`Chọn lần nhập ${record.itemName}`}
+                    onChange={(event) =>
+                      togglePurchaseSelection(
+                        purchaseKey(record),
+                        event.target.checked,
+                      )
+                    }
+                  />
                   <div>
                     <Text strong className="purchase-card-name">
                       {record.itemName}

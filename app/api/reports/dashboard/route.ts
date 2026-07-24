@@ -58,6 +58,7 @@ export async function GET(request: Request) {
       equipmentInvestment,
       purchaseInvestment,
       ownerFundedPurchaseInvestment,
+      claimedPurchaseInvestment,
       expenseInvestment,
       withdrawnInvestment,
       allSales,
@@ -77,6 +78,11 @@ export async function GET(request: Request) {
         Purchase.aggregate([
           { $match: ownerCapitalPurchaseFilter() },
           { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+        ]),
+        Divestment.aggregate([
+          { $unwind: "$claims" },
+          { $match: { "claims.sourceType": "purchase" } },
+          { $group: { _id: null, total: { $sum: "$claims.amount" } } },
         ]),
         Expense.aggregate([
           { $group: { _id: null, total: { $sum: "$amount" } } },
@@ -200,7 +206,8 @@ export async function GET(request: Request) {
     );
     const investmentTotal =
       (equipmentInvestment[0]?.total ?? 0) +
-      (ownerFundedPurchaseInvestment[0]?.total ?? 0);
+      (ownerFundedPurchaseInvestment[0]?.total ?? 0) +
+      (claimedPurchaseInvestment[0]?.total ?? 0);
     const withdrawnTotal = withdrawnInvestment[0]?.total ?? 0;
     const remainingCapital = Math.max(0, investmentTotal - withdrawnTotal);
     const estimatedProfit = totals.profit - expenseTotal;

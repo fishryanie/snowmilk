@@ -405,6 +405,182 @@ body {
   margin: 16px 0;
 }
 
+.divestment-claim-card {
+  overflow: hidden;
+}
+
+.divestment-claim-overview {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.75fr) minmax(480px, 1.5fr) auto;
+  align-items: center;
+  gap: 22px;
+  padding: 18px 20px;
+  background:
+    linear-gradient(145deg, rgb(226 242 246 / 62%), rgb(255 255 255 / 88%));
+  border-bottom: 1px solid var(--line);
+}
+
+.divestment-claim-overview > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.divestment-claim-overview .ant-statistic-title {
+  margin-bottom: 2px;
+}
+
+.divestment-claim-overview .ant-statistic-content {
+  color: var(--brand-strong);
+  font-size: 23px;
+  font-weight: 750;
+  letter-spacing: -0.035em;
+}
+
+.divestment-cash-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(135px, 1fr) auto) minmax(165px, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.divestment-cash-breakdown > span {
+  color: var(--text-muted);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.divestment-cash-breakdown .ant-statistic-content {
+  font-size: 18px;
+}
+
+.divestment-cash-breakdown .ant-statistic:last-child .ant-statistic-content {
+  color: var(--success);
+}
+
+.divestment-claim-card > .ant-card-body > .ant-alert {
+  margin: 14px 16px 0;
+}
+
+.divestment-history-claims {
+  display: grid;
+  gap: 7px;
+}
+
+.divestment-claim-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+
+.divestment-claim-summary .ant-statistic-content {
+  font-size: 20px;
+  font-weight: 720;
+  letter-spacing: -0.03em;
+}
+
+.divestment-claim-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.72fr) minmax(0, 1.28fr);
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.divestment-suggestion-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  align-items: end;
+  gap: 16px;
+  margin: 4px 0 12px;
+}
+
+.divestment-suggestion-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.divestment-suggestion-list .ant-list-items {
+  display: grid;
+  gap: 10px;
+}
+
+.divestment-suggestion-list .ant-list-item {
+  display: block;
+  padding: 0;
+  border: 0;
+}
+
+.divestment-suggestion-list .ant-checkbox-wrapper {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.divestment-suggestion-list .ant-checkbox-wrapper:hover {
+  border-color: var(--brand);
+  box-shadow: 0 7px 20px rgb(24 82 96 / 7%);
+}
+
+.divestment-suggestion-list
+  .ant-checkbox-wrapper:has(.ant-checkbox-checked) {
+  border-color: var(--brand);
+  background: rgb(232 246 248 / 72%);
+}
+
+.divestment-suggestion-list .ant-checkbox {
+  margin-top: 7px;
+}
+
+.divestment-suggestion-list .ant-checkbox + span {
+  flex: 1;
+  min-width: 0;
+}
+
+.divestment-suggestion-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.divestment-suggestion-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: var(--brand-strong);
+  border-radius: 10px;
+  background: rgb(211 237 241 / 72%);
+}
+
+.divestment-suggestion-content {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.divestment-suggestion-content > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.divestment-suggestion-amount {
+  color: var(--brand-strong);
+  white-space: nowrap;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.85fr);
@@ -600,6 +776,145 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
+.purchase-overview {
+  padding: 18px;
+  background:
+    linear-gradient(145deg, rgb(226 242 246 / 62%), rgb(255 255 255 / 88%));
+  border-bottom: 1px solid var(--line);
+}
+
+.purchase-filter-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.purchase-filter-heading > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.purchase-filter-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(220px, 1.35fr)
+    minmax(230px, 1fr)
+    minmax(160px, 0.72fr)
+    minmax(170px, 0.78fr);
+  gap: 10px;
+}
+
+.purchase-filter-grid .ant-input-affix-wrapper,
+.purchase-filter-grid .ant-picker,
+.purchase-filter-grid .ant-select-selector {
+  min-height: 40px;
+}
+
+.purchase-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.purchase-summary-card {
+  position: relative;
+  overflow: hidden;
+  border-color: rgb(205 226 232 / 92%);
+  box-shadow: 0 8px 24px rgb(24 82 96 / 5%);
+}
+
+.purchase-summary-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--brand);
+}
+
+.purchase-summary-card-count::before {
+  background: #5494a6;
+}
+
+.purchase-summary-card-packages::before {
+  background: var(--success);
+}
+
+.purchase-summary-card-average::before {
+  background: var(--amber);
+}
+
+.purchase-summary-card .ant-card-body {
+  padding: 14px 16px 13px;
+}
+
+.purchase-summary-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.purchase-summary-card .ant-statistic-title {
+  margin-bottom: 7px;
+}
+
+.purchase-summary-card .ant-statistic-content {
+  color: var(--ink);
+  font-size: clamp(19px, 1.55vw, 25px);
+  font-weight: 730;
+  line-height: 1.2;
+  letter-spacing: -0.035em;
+}
+
+.purchase-summary-card-total .ant-statistic-content {
+  color: var(--brand-strong);
+}
+
+.purchase-summary-card .ant-statistic-content-suffix {
+  margin-inline-start: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.purchase-action-toolbar {
+  align-items: center;
+}
+
+.purchase-list-heading {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.purchase-list-title {
+  flex: 0 0 auto;
+}
+
+.purchase-mobile-select-all {
+  display: none !important;
+}
+
+.purchase-selection-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-left: 18px;
+  border-left: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.purchase-selection-summary .ant-typography:last-child {
+  color: var(--brand-strong);
+}
+
 .purchase-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -721,7 +1036,12 @@ body {
 @media (max-width: 1200px) {
   .kpi-grid,
   .cash-flow-kpi-grid,
-  .route-skeleton-grid {
+  .route-skeleton-grid,
+  .purchase-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .purchase-filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -795,6 +1115,63 @@ body {
     min-height: 44px;
   }
 
+  .purchase-overview {
+    padding: 14px;
+  }
+
+  .purchase-filter-heading {
+    align-items: flex-start;
+  }
+
+  .purchase-filter-heading > div {
+    display: grid;
+    gap: 2px;
+  }
+
+  .purchase-filter-grid,
+  .purchase-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .purchase-filter-grid .ant-input-affix-wrapper,
+  .purchase-filter-grid .ant-picker,
+  .purchase-filter-grid .ant-select,
+  .purchase-filter-grid .ant-select-selector {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .purchase-summary-card .ant-statistic-content {
+    font-size: 23px;
+  }
+
+  .purchase-list-heading {
+    display: grid;
+    gap: 8px;
+  }
+
+  .purchase-list-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .purchase-mobile-select-all {
+    display: inline-flex !important;
+  }
+
+  .purchase-selection-summary {
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0;
+    border: 0;
+  }
+
+  .purchase-selection-summary .ant-typography {
+    font-size: 13px;
+  }
+
   .purchase-desktop-table {
     display: none;
   }
@@ -824,10 +1201,14 @@ body {
   }
 
   .purchase-card-heading {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: flex-start;
-    justify-content: space-between;
     gap: 12px;
+  }
+
+  .purchase-card-checkbox {
+    margin-top: 2px;
   }
 
   .purchase-card-heading > div {
@@ -935,6 +1316,60 @@ body {
 
   .purchase-drawer textarea.ant-input {
     min-height: 88px;
+  }
+
+  .divestment-claim-overview {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 13px;
+    padding: 16px;
+  }
+
+  .divestment-claim-overview .ant-btn {
+    min-height: 44px;
+  }
+
+  .divestment-cash-breakdown {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .divestment-cash-breakdown > span {
+    display: none;
+  }
+
+  .divestment-cash-breakdown .ant-statistic {
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgb(255 255 255 / 70%);
+  }
+
+  .divestment-claim-summary,
+  .divestment-claim-form,
+  .divestment-suggestion-heading {
+    grid-template-columns: 1fr;
+  }
+
+  .divestment-claim-summary {
+    gap: 14px;
+  }
+
+  .divestment-suggestion-heading .ant-input-affix-wrapper {
+    min-height: 44px;
+  }
+
+  .divestment-suggestion-item {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .divestment-suggestion-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .divestment-suggestion-amount {
+    grid-column: 2;
   }
 
   .kpi-grid,

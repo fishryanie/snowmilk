@@ -9,7 +9,12 @@ import { Purchase } from "@/models/Purchase";
 export async function GET() {
   try {
     await connectMongo();
-    const [equipmentInvestment, purchaseInvestment, withdrawn] =
+    const [
+      equipmentInvestment,
+      purchaseInvestment,
+      claimedPurchaseInvestment,
+      withdrawn,
+    ] =
       await Promise.all([
         Equipment.aggregate([
           { $group: { _id: null, total: { $sum: "$totalAmount" } } },
@@ -19,13 +24,19 @@ export async function GET() {
           { $group: { _id: null, total: { $sum: "$totalAmount" } } },
         ]),
         Divestment.aggregate([
+          { $unwind: "$claims" },
+          { $match: { "claims.sourceType": "purchase" } },
+          { $group: { _id: null, total: { $sum: "$claims.amount" } } },
+        ]),
+        Divestment.aggregate([
           { $group: { _id: null, total: { $sum: "$amount" } } },
         ]),
       ]);
 
     const investmentTotal =
       (equipmentInvestment[0]?.total ?? 0) +
-      (purchaseInvestment[0]?.total ?? 0);
+      (purchaseInvestment[0]?.total ?? 0) +
+      (claimedPurchaseInvestment[0]?.total ?? 0);
 
     return apiSuccess(
       calculateCapitalRecovery(

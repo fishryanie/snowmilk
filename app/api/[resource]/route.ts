@@ -33,6 +33,12 @@ export async function POST(
 ) {
   const { resource } = await context.params;
   if (!isResourceName(resource)) return apiError("Tài nguyên không tồn tại", 404);
+  if (resource === "divestments") {
+    return apiError(
+      "Khoản thu hồi vốn phải được tạo bằng cách chọn dữ liệu mua trong lịch sử.",
+      405,
+    );
+  }
 
   try {
     const parsed = resourceSchemas[resource].safeParse(await request.json());

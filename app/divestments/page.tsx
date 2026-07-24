@@ -17,58 +17,84 @@ import {
 } from "antd";
 import { useState } from "react";
 import { PageHeader } from "@/components/common/page-header";
-import { ResourceManager } from "@/components/common/resource-manager";
+import {
+  DivestmentClaimManager,
+  type DivestmentClaimContext,
+} from "@/components/divestments/divestment-claim-manager";
 import { useApiData } from "@/hooks/use-api-data";
 import { calculateCapitalRecovery } from "@/lib/calculations/capital-recovery";
+import {
+  calculateBusinessCashBalance,
+  divestmentClaimKey,
+  type ClaimableInvestment,
+} from "@/lib/divestment-claims";
 import { formatVnd } from "@/lib/formatters";
-import { workbookDashboard } from "@/lib/workbook-snapshot";
+import {
+  workbookDashboard,
+  workbookPurchases,
+} from "@/lib/workbook-snapshot";
 
 const { Text } = Typography;
-
-const fields = [
-  {
-    key: "withdrawalDate",
-    label: "Ngày rút",
-    type: "date" as const,
-    required: true,
-  },
-  {
-    key: "amount",
-    label: "Số tiền",
-    type: "money" as const,
-    required: true,
-  },
-  {
-    key: "note",
-    label: "Ghi chú",
-    type: "textarea" as const,
-  },
-];
-
-type CapitalRecoverySummary = ReturnType<typeof calculateCapitalRecovery>;
 
 const fallbackSummary = calculateCapitalRecovery(
   workbookDashboard.kpis.investmentTotal,
   0,
 );
+const fallbackHistoryItems: ClaimableInvestment[] = workbookPurchases
+  .filter((item) => item.fundingSource === "owner_capital")
+  .map((item) => ({
+    key: divestmentClaimKey("purchase", item.id),
+    sourceType: "purchase" as const,
+    sourceId: item.id,
+    code: item.itemCode,
+    name: item.itemName,
+    category: item.category,
+    purchaseDate: item.purchaseDate,
+    amount: item.totalAmount,
+  }));
+const fallbackBusinessCash = calculateBusinessCashBalance(
+  workbookDashboard.kpis.revenue,
+  0,
+);
+const fallbackWithdrawalLimit = Math.max(
+  0,
+  fallbackBusinessCash.remainingBalance,
+);
+const fallbackEligibleItems = fallbackHistoryItems.filter(
+  (item) => item.amount < fallbackWithdrawalLimit,
+);
+const fallbackContext: DivestmentClaimContext = {
+  summary: fallbackSummary,
+  businessCash: fallbackBusinessCash,
+  withdrawalLimit: fallbackWithdrawalLimit,
+  eligibleItems: fallbackEligibleItems,
+  unavailableItemCount:
+    fallbackHistoryItems.length - fallbackEligibleItems.length,
+  divestments: [],
+};
 
 export default function DivestmentsPage() {
-  const [summaryVersion, setSummaryVersion] = useState(0);
+  const [dataVersion, setDataVersion] = useState(0);
   const {
-    data: summary,
+    data: context,
     loading,
     usingFallback,
-  } = useApiData<CapitalRecoverySummary>(
-    `/api/reports/capital-recovery?v=${summaryVersion}`,
-    fallbackSummary,
+  } = useApiData<DivestmentClaimContext>(
+    `/api/divestment-claims?v=${dataVersion}`,
+    fallbackContext,
   );
+  const summary = context.summary;
   const progressPercent = Math.min(100, Math.max(0, summary.recoveryRate));
+  const claimReady =
+    !usingFallback &&
+    context.withdrawalLimit > 0 &&
+    context.eligibleItems.length > 0;
 
   return (
     <div className="page-wrap">
       <PageHeader
         title="Thoái vốn"
-        description="Ghi lại từng khoản tiền thực tế đã rút khỏi hệ thống và theo dõi tiến độ thu hồi vốn ban đầu."
+        description="Dùng tiền bán hàng còn lại để hoàn vốn cho các phiếu nhập trước đây đã trả bằng vốn chủ."
       />
 
       {loading ? (
@@ -104,7 +130,7 @@ export default function DivestmentsPage() {
               }
               value={summary.withdrawnTotal}
               formatter={(value) => formatVnd(Number(value))}
-              valueStyle={{ color: "var(--brand-strong)" }}
+              styles={{ content: { color: "var(--brand-strong)" } }}
             />
             <Text type="secondary">Cộng từ toàn bộ bản ghi bên dưới.</Text>
           </Card>
@@ -122,10 +148,12 @@ export default function DivestmentsPage() {
               }
               value={summary.remainingCapital}
               formatter={(value) => formatVnd(Number(value))}
-              valueStyle={{
-                color: summary.isRecovered
-                  ? "var(--success)"
-                  : "var(--danger)",
+              styles={{
+                content: {
+                  color: summary.isRecovered
+                    ? "var(--success)"
+                    : "var(--danger)",
+                },
               }}
             />
             <Text type="secondary">
@@ -145,10 +173,12 @@ export default function DivestmentsPage() {
               value={summary.recoveryRate}
               precision={1}
               suffix="%"
-              valueStyle={{
-                color: summary.isRecovered
-                  ? "var(--success)"
-                  : "var(--brand-strong)",
+              styles={{
+                content: {
+                  color: summary.isRecovered
+                    ? "var(--success)"
+                    : "var(--brand-strong)",
+                },
               }}
             />
             <Progress
@@ -165,23 +195,28 @@ export default function DivestmentsPage() {
         className="capital-recovery-alert"
         showIcon
         type={usingFallback ? "warning" : summary.isRecovered ? "success" : "info"}
-        message={
+        title={
           usingFallback
             ? "Chưa tải được dữ liệu thoái vốn từ MongoDB"
             : summary.isRecovered
               ? "Bạn đã thu hồi đủ vốn đầu tư ban đầu"
-              : `Bạn còn cần rút ${formatVnd(summary.remainingCapital)} để thu hồi đủ vốn ban đầu`
+              : claimReady
+                ? `Doanh nghiệp còn ${formatVnd(context.businessCash.remainingBalance)}; chỉ chọn tổng tiền nhỏ hơn số này`
+                : context.withdrawalLimit > 0
+                  ? `Doanh nghiệp còn ${formatVnd(context.businessCash.remainingBalance)} nhưng chưa có phiếu nhập Vốn chủ nào nhỏ hơn số tiền này`
+                  : "Hiện doanh nghiệp chưa còn tiền bán hàng để claim"
         }
-        description="Các khoản rút chỉ được lưu trong bảng thoái vốn riêng; hệ thống không trừ hoặc thay đổi dữ liệu vốn đầu tư ban đầu."
+        description={
+          usingFallback
+            ? "Chỉ có thể claim khi kết nối lại dữ liệu thật."
+            : `${formatVnd(context.businessCash.totalRevenue)} doanh thu − ${formatVnd(context.businessCash.salesFundedPurchaseTotal)} nhập hàng từ Tiền bán hàng = ${formatVnd(context.businessCash.remainingBalance)} còn lại. Claim xong, nguồn tiền của phiếu nhập sẽ đổi sang Tiền bán hàng.`
+        }
       />
 
-      <ResourceManager
-        resource="divestments"
-        fields={fields}
-        initialData={[]}
-        addLabel="Ghi nhận lần rút vốn"
-        fallbackLabel="Chưa kết nối dữ liệu"
-        onMutation={() => setSummaryVersion((current) => current + 1)}
+      <DivestmentClaimManager
+        context={context}
+        usingFallback={usingFallback}
+        onMutation={() => setDataVersion((current) => current + 1)}
       />
     </div>
   );
