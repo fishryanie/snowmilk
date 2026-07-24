@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/backups
+/.mongodb
 
 # next.js
 /.next/
