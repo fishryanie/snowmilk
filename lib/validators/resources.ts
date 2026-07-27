@@ -74,6 +74,10 @@ export const resourceSchemas = {
       category: requiredText,
       description: requiredText,
       amount: nonNegative,
+      fundingSource: z
+        .enum(PURCHASE_FUNDING_SOURCES)
+        .optional()
+        .default(DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE),
       paymentMethod: optionalText,
       isRecurring: z.boolean().optional().default(false),
       note: optionalText,
@@ -93,6 +97,10 @@ export const resourceSchemas = {
       category: optionalText,
       quantity: z.coerce.number().positive(),
       unitPrice: nonNegative,
+      fundingSource: z
+        .enum(PURCHASE_FUNDING_SOURCES)
+        .optional()
+        .default(DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE),
       residualValue: nonNegative.optional().default(0),
       usefulLifeMonths: z.coerce.number().int().positive().optional(),
       isActive: z.boolean().optional().default(true),

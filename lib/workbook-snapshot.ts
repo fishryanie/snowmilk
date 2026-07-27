@@ -17,19 +17,19 @@ export const workbookSizes = [
 ];
 
 export const workbookIngredients = [
-  { id: "NL001", code: "NL001", name: "Sữa tươi", category: "Nguyên liệu", purchaseUnit: "Bịch", packageQuantity: 1, costUnit: "lít", referencePackagePrice: 25_000, averageUnitCost: 24_250, isActive: true },
-  { id: "NL002", code: "NL002", name: "Whipping cream", category: "Nguyên liệu", purchaseUnit: "Hộp", packageQuantity: 1, costUnit: "lít", referencePackagePrice: 158_000, averageUnitCost: 79_000, isActive: true },
-  { id: "NL003", code: "NL003", name: "Đường", category: "Nguyên liệu", purchaseUnit: "Bịch", packageQuantity: 1, costUnit: "kg", referencePackagePrice: 22_000, averageUnitCost: 25_333.33, isActive: true },
-  { id: "BB001", code: "BB001", name: "Ly size M", category: "Bao bì", purchaseUnit: "Lốc", packageQuantity: 50, costUnit: "cái", referencePackagePrice: 15_000, averageUnitCost: 300, isActive: true },
-  { id: "BB002", code: "BB002", name: "Nắp size M", category: "Bao bì", purchaseUnit: "Bịch", packageQuantity: 50, costUnit: "cái", referencePackagePrice: 12_000, averageUnitCost: 240, isActive: true },
-  { id: "BB005", code: "BB005", name: "Ống hút", category: "Bao bì", purchaseUnit: "Bịch", packageQuantity: 100, costUnit: "cái", referencePackagePrice: 25_000, averageUnitCost: 250, isActive: true },
+  { id: "NL001", code: "NL001", name: "Sữa tươi", category: "Nguyên liệu", purchaseUnit: "Bịch", packageQuantity: 1, costUnit: "lít", referencePackagePrice: 25_000, averageUnitCost: 24_250, totalPurchasedPackages: 20, totalPurchasedQuantity: 20, totalPurchasedAmount: 500_000, isActive: true },
+  { id: "NL002", code: "NL002", name: "Whipping cream", category: "Nguyên liệu", purchaseUnit: "Hộp", packageQuantity: 1, costUnit: "lít", referencePackagePrice: 158_000, averageUnitCost: 79_000, totalPurchasedPackages: 2, totalPurchasedQuantity: 2, totalPurchasedAmount: 158_000, isActive: true },
+  { id: "NL003", code: "NL003", name: "Đường", category: "Nguyên liệu", purchaseUnit: "Bịch", packageQuantity: 1, costUnit: "kg", referencePackagePrice: 22_000, averageUnitCost: 25_333.33, totalPurchasedPackages: 3, totalPurchasedQuantity: 3, totalPurchasedAmount: 66_000, isActive: true },
+  { id: "BB001", code: "BB001", name: "Ly size M", category: "Bao bì", purchaseUnit: "Lốc", packageQuantity: 50, costUnit: "cái", referencePackagePrice: 15_000, averageUnitCost: 300, totalPurchasedPackages: 1, totalPurchasedQuantity: 50, totalPurchasedAmount: 15_000, isActive: true },
+  { id: "BB002", code: "BB002", name: "Nắp size M", category: "Bao bì", purchaseUnit: "Bịch", packageQuantity: 50, costUnit: "cái", referencePackagePrice: 12_000, averageUnitCost: 240, totalPurchasedPackages: 0, totalPurchasedQuantity: 0, totalPurchasedAmount: 0, isActive: true },
+  { id: "BB005", code: "BB005", name: "Ống hút", category: "Bao bì", purchaseUnit: "Bịch", packageQuantity: 100, costUnit: "cái", referencePackagePrice: 25_000, averageUnitCost: 250, totalPurchasedPackages: 0, totalPurchasedQuantity: 0, totalPurchasedAmount: 0, isActive: true },
 ];
 
 export const workbookEquipment = [
-  { id: "TS-001", code: "TS-001", purchaseDate: "2026-07-21", name: "Vá múc canh", category: "Dụng cụ lớn", quantity: 1, unitPrice: 120_000, totalAmount: 120_000, usefulLifeMonths: 36, monthlyDepreciation: 3_333.33, isActive: true },
-  { id: "TS-002", code: "TS-002", purchaseDate: "2026-07-21", name: "Xô đá giữ nhiệt", category: "Cơ sở vật chất", quantity: 2, unitPrice: 185_000, totalAmount: 370_000, usefulLifeMonths: 36, monthlyDepreciation: 10_277.78, isActive: true },
-  { id: "TS-004", code: "TS-004", purchaseDate: "2026-07-20", name: "Máy bào đá / máy xay", category: "Máy móc", quantity: 1, unitPrice: 682_200, totalAmount: 682_200, usefulLifeMonths: 12, monthlyDepreciation: 56_850, isActive: true },
-  { id: "TS-005", code: "TS-005", purchaseDate: "2026-07-20", name: "Bàn inox", category: "Cơ sở vật chất", quantity: 1, unitPrice: 420_000, totalAmount: 420_000, usefulLifeMonths: 24, monthlyDepreciation: 17_500, isActive: true },
+  { id: "TS-001", code: "TS-001", purchaseDate: "2026-07-21", name: "Vá múc canh", category: "Dụng cụ lớn", quantity: 1, unitPrice: 120_000, totalAmount: 120_000, fundingSource: "owner_capital" as const, usefulLifeMonths: 36, monthlyDepreciation: 3_333.33, isActive: true },
+  { id: "TS-002", code: "TS-002", purchaseDate: "2026-07-21", name: "Xô đá giữ nhiệt", category: "Cơ sở vật chất", quantity: 2, unitPrice: 185_000, totalAmount: 370_000, fundingSource: "owner_capital" as const, usefulLifeMonths: 36, monthlyDepreciation: 10_277.78, isActive: true },
+  { id: "TS-004", code: "TS-004", purchaseDate: "2026-07-20", name: "Máy bào đá / máy xay", category: "Máy móc", quantity: 1, unitPrice: 682_200, totalAmount: 682_200, fundingSource: "owner_capital" as const, usefulLifeMonths: 12, monthlyDepreciation: 56_850, isActive: true },
+  { id: "TS-005", code: "TS-005", purchaseDate: "2026-07-20", name: "Bàn inox", category: "Cơ sở vật chất", quantity: 1, unitPrice: 420_000, totalAmount: 420_000, fundingSource: "owner_capital" as const, usefulLifeMonths: 24, monthlyDepreciation: 17_500, isActive: true },
 ];
 
 export const workbookPurchases = [
@@ -44,7 +44,7 @@ export const workbookBatches = [
 ];
 
 export const workbookDashboard = {
-  kpis: { revenue: 0, totalCups: 0, purchaseTotal: 2_677_500, expenseTotal: 0, variableCost: 0, allocatedFixedCost: 0, estimatedProfit: 0, averageCostPerCup: 0, investmentTotal: 5_314_700, capitalRecoveryBalance: -5_314_700, activeProducts: 10, estimatedSalesDays: 0, cashIn: 0, cashOut: 5_314_700, netCashFlow: -5_314_700, equipmentTotal: 2_637_200, averageDailyCashOut: 253_080.9524, positiveCashFlowDays: 0, activeCashFlowDays: 1 },
+  kpis: { revenue: 0, totalCups: 0, businessCashBalance: 0, purchaseTotal: 2_677_500, expenseTotal: 0, variableCost: 0, allocatedFixedCost: 0, estimatedProfit: 0, averageCostPerCup: 0, investmentTotal: 5_314_700, capitalRecoveryBalance: -5_314_700, activeProducts: 10, estimatedSalesDays: 0, cashIn: 0, cashOut: 5_314_700, netCashFlow: -5_314_700, equipmentTotal: 2_637_200, averageDailyCashOut: 253_080.9524, positiveCashFlowDays: 0, activeCashFlowDays: 1 },
   divestmentSuggestion: calculateDivestmentSuggestion({
     cumulativeCashIn: 0,
     cumulativeCashOut: 5_314_700,

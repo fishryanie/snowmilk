@@ -13,7 +13,6 @@ import {
   RiseOutlined,
   SafetyCertificateOutlined,
   ShoppingCartOutlined,
-  ShoppingOutlined,
   TrophyOutlined,
   WalletOutlined,
 } from "@ant-design/icons";
@@ -172,13 +171,16 @@ export default function DashboardPage() {
       note: "Nếu một ngày đã có bản chốt tổng, hệ thống bỏ qua các dòng bán lẻ cùng ngày để tránh tính hai lần.",
     },
     {
-      label: "Số ly đã bán",
-      value: data.kpis.totalCups,
-      icon: <ShoppingOutlined />,
-      suffix: "ly",
+      label: "Tiền còn lại trong doanh nghiệp",
+      value: data.kpis.businessCashBalance,
+      icon: <WalletOutlined />,
+      money: true,
+      profit: true,
       description:
-        "Tổng số ly được ghi nhận đã bán trong khoảng thời gian đang chọn.",
-      formula: "Σ Số ly của các giao dịch hoặc bản chốt ngày trong kỳ",
+        "Số tiền bán hàng còn lại sau khi trừ toàn bộ khoản nhập hàng, chi phí và tài sản được thanh toán bằng nguồn Tiền bán hàng.",
+      formula:
+        "Doanh thu lũy kế − (Nhập hàng + Chi phí + Tài sản dùng Tiền bán hàng)",
+      note: "Đây là số lũy kế của toàn doanh nghiệp, không phụ thuộc khoảng ngày đang chọn trên dashboard.",
     },
     {
       label: "Chi phí mua hàng kỳ này",
@@ -218,8 +220,8 @@ export default function DashboardPage() {
       description:
         "Tổng tiền mua thiết bị và các lần nhập hàng dùng nguồn Vốn chủ được ghi nhận từ trước đến nay.",
       formula:
-        "Tổng tiền mua thiết bị lũy kế + Tổng tiền nhập hàng bằng Vốn chủ lũy kế",
-      note: "Các phiếu nhập bằng Tiền bán hàng, Tiền vay hoặc Nguồn khác vẫn là tiền ra nhưng không làm tăng chỉ số này.",
+        "Tổng tiền mua thiết bị bằng Vốn chủ + Tổng tiền nhập hàng bằng Vốn chủ lũy kế",
+      note: "Các khoản bằng Tiền bán hàng, Tiền vay hoặc Nguồn khác vẫn là tiền ra nhưng không làm tăng chỉ số này.",
     },
     {
       label: "Đầu tư thiết bị",
@@ -229,7 +231,7 @@ export default function DashboardPage() {
       description:
         "Tổng số tiền mua thiết bị có ngày mua nằm trong khoảng thời gian đang chọn.",
       formula: "Σ Thành tiền thiết bị mua trong kỳ",
-      note: "Khoản này được tính vào tiền ra và đồng thời làm tăng Tổng vốn đã bỏ lũy kế.",
+      note: "Khoản này luôn được tính vào tiền ra; chỉ tài sản dùng Vốn chủ mới làm tăng Tổng vốn đã bỏ lũy kế.",
     },
     {
       label: "Tổng âm còn lại",
@@ -292,7 +294,6 @@ export default function DashboardPage() {
                 />
               }
               value={item.value}
-              suffix={item.suffix}
               formatter={
                 typeof item.value === "number"
                   ? (value) =>

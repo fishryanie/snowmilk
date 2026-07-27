@@ -30,10 +30,7 @@ import { RouteSkeleton } from "@/components/common/route-skeleton";
 import { useApiData } from "@/hooks/use-api-data";
 import { formatNumber, formatVnd } from "@/lib/formatters";
 import { resolveSettingValue, settingDefaults } from "@/lib/settings";
-import {
-  workbookBatches,
-  workbookIngredients,
-} from "@/lib/workbook-snapshot";
+import { workbookBatches, workbookIngredients } from "@/lib/workbook-snapshot";
 
 const { Text } = Typography;
 
@@ -155,17 +152,12 @@ export default function BatchesPage() {
       (total, item) =>
         total +
         Number(item.quantity ?? 0) *
-          Number(
-            ingredientsById.get(item.ingredientId)?.averageUnitCost ?? 0,
-          ),
+          Number(ingredientsById.get(item.ingredientId)?.averageUnitCost ?? 0),
       0,
     );
     const electricityCost =
       Number(values?.cookingHours ?? 0) *
-        resolveSettingValue(
-          settingsByKey,
-          "cong_suat_bep_mac_dinh_kw",
-        ) *
+        resolveSettingValue(settingsByKey, "cong_suat_bep_mac_dinh_kw") *
         resolveSettingValue(settingsByKey, "gia_dien_d_kwh") +
       resolveSettingValue(settingsByKey, "dien_khac_moi_me_d");
     const totalCost =
@@ -281,11 +273,13 @@ export default function BatchesPage() {
                   candidate.name === item.ingredientName,
               );
               return ingredient
-                ? [{
-                    ingredientId: recordId(ingredient),
-                    quantity: item.quantity,
-                    note: item.note,
-                  }]
+                ? [
+                    {
+                      ingredientId: recordId(ingredient),
+                      quantity: item.quantity,
+                      note: item.note,
+                    },
+                  ]
                 : [];
             }),
             note: record.note,
@@ -303,14 +297,11 @@ export default function BatchesPage() {
     setSaving(true);
     try {
       const id = editing ? recordId(editing) : "";
-      const response = await fetch(
-        id ? `/api/batches/${id}` : "/api/batches",
-        {
-          method: id ? "PUT" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(values),
-        },
-      );
+      const response = await fetch(id ? `/api/batches/${id}` : "/api/batches", {
+        method: id ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(values),
+      });
       const body = (await response.json()) as {
         success: boolean;
         message: string;
@@ -349,9 +340,7 @@ export default function BatchesPage() {
         message: string;
       };
       if (!response.ok || !body.success) throw new Error(body.message);
-      setBatches((current) =>
-        current.filter((item) => recordId(item) !== id),
-      );
+      setBatches((current) => current.filter((item) => recordId(item) !== id));
       message.success(body.message);
     } catch (error) {
       message.error(
@@ -426,11 +415,7 @@ export default function BatchesPage() {
           </Space>
         }
       >
-        <Form<BatchForm>
-          form={form}
-          layout="vertical"
-          onFinish={saveRecord}
-        >
+        <Form<BatchForm> form={form} layout="vertical" onFinish={saveRecord}>
           <div>
             <div className="purchase-form-grid">
               <Form.Item
@@ -443,7 +428,9 @@ export default function BatchesPage() {
               <Form.Item
                 name="actualLiters"
                 label="Thành phẩm thực tế (L)"
-                rules={[{ required: true, message: "Vui lòng nhập thành phẩm" }]}
+                rules={[
+                  { required: true, message: "Vui lòng nhập thành phẩm" },
+                ]}
               >
                 <InputNumber min={0.001} style={{ width: "100%" }} />
               </Form.Item>
@@ -460,17 +447,15 @@ export default function BatchesPage() {
             </div>
             <Form.List name="ingredients">
               {(fields, { add, remove }) => (
-                <Space
-                  direction="vertical"
-                  size={10}
-                  style={{ width: "100%" }}
-                >
+                <Space direction="vertical" size={10} style={{ width: "100%" }}>
                   <Text strong>Chi tiết nguyên liệu</Text>
                   {fields.map((field) => (
                     <div className="batch-ingredient-row" key={field.key}>
                       <Form.Item
                         name={[field.name, "ingredientId"]}
-                        rules={[{ required: true, message: "Chọn nguyên liệu" }]}
+                        rules={[
+                          { required: true, message: "Chọn nguyên liệu" },
+                        ]}
                       >
                         <Select
                           showSearch
@@ -526,7 +511,7 @@ export default function BatchesPage() {
         <Card
           size="small"
           title="Thông tin tự động"
-          className="calculated-card"
+          className="calculated-card mt-3!"
         >
           <Descriptions bordered size="small" column={1}>
             <Descriptions.Item label="Cost nguyên liệu">

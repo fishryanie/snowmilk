@@ -30,11 +30,11 @@ Một document cho mỗi tổ hợp ngày + mẻ + phương thức thanh toán. 
 
 ### `equipment`
 
-Ánh xạ sheet `Đầu tư & Tài sản`: vốn đầu tư, giá trị còn lại, thời gian sử dụng, khấu hao tháng và trạng thái.
+Ánh xạ sheet `Đầu tư & Tài sản`: vốn đầu tư, `fundingSource`, giá trị còn lại, thời gian sử dụng, khấu hao tháng và trạng thái. Tài sản cũ không có nguồn tiền được coi là `owner_capital`.
 
 ### `expenses`
 
-Chi phí ngoài nhập hàng/tài sản: điện, nước, mặt bằng, vận chuyển, marketing, sửa chữa hoặc khác. Workbook chưa có sheet riêng nên collection khởi tạo rỗng.
+Chi phí ngoài nhập hàng/tài sản: điện, nước, mặt bằng, vận chuyển, marketing, sửa chữa hoặc khác. Mỗi chi phí ghi `fundingSource`; bản ghi cũ không có nguồn tiền được coi là `owner_capital`. Workbook chưa có sheet riêng nên collection khởi tạo rỗng.
 
 ### `settings`
 

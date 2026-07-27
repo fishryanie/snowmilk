@@ -34,8 +34,8 @@ export const resourceSearchFields: Record<ResourceName, string[]> = {
     "category",
     "fundingSource",
   ],
-  expenses: ["description", "category", "paymentMethod"],
+  expenses: ["description", "category", "paymentMethod", "fundingSource"],
   divestments: ["note"],
-  equipment: ["name", "code", "category"],
+  equipment: ["name", "code", "category", "fundingSource"],
   batches: ["name", "code"],
 };

@@ -13,6 +13,13 @@ const fields = [
   { key: "costUnit", label: "Đơn vị cost" },
   { key: "referencePackagePrice", label: "Giá tham khảo", type: "money" as const },
   { key: "averageUnitCost", label: "Giá vốn BQ/đơn vị", type: "money" as const, editable: false },
+  {
+    key: "purchaseSummary",
+    label: "Đã nhập / Tổng tiền",
+    type: "purchaseSummary" as const,
+    editable: false,
+    hiddenInEditor: true,
+  },
   { key: "isActive", label: "Kích hoạt", type: "boolean" as const },
   { key: "note", label: "Ghi chú", type: "textarea" as const, hiddenInTable: true },
 ];

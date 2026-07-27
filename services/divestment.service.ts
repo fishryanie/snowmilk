@@ -14,6 +14,7 @@ import {
 import { vietnamDateKey } from "@/lib/vietnam-date";
 import { Divestment } from "@/models/Divestment";
 import { Equipment } from "@/models/Equipment";
+import { Expense } from "@/models/Expense";
 import { Purchase } from "@/models/Purchase";
 import { Sale } from "@/models/Sale";
 
@@ -46,6 +47,12 @@ type EquipmentRecord = {
   name?: string;
   category?: string;
   totalAmount?: number;
+  fundingSource?: string | null;
+};
+
+type ExpenseRecord = {
+  amount?: number;
+  fundingSource?: string | null;
 };
 
 type DivestmentRecord = {
@@ -84,7 +91,7 @@ function dateIso(value: Date | string) {
 
 async function buildClaimContext() {
   await connectMongo();
-  const [sales, purchases, equipment, divestments] =
+  const [sales, purchases, equipment, expenses, divestments] =
     await Promise.all([
       Sale.find({})
         .select("saleDate entryMode netRevenue")
@@ -95,8 +102,11 @@ async function buildClaimContext() {
         )
         .lean<PurchaseRecord[]>(),
       Equipment.find({})
-        .select("purchaseDate code name category totalAmount")
+        .select("purchaseDate code name category totalAmount fundingSource")
         .lean<EquipmentRecord[]>(),
+      Expense.find({})
+        .select("amount fundingSource")
+        .lean<ExpenseRecord[]>(),
       Divestment.find({})
         .sort({ withdrawalDate: -1, createdAt: -1 })
         .lean<DivestmentRecord[]>(),
@@ -141,7 +151,11 @@ async function buildClaimContext() {
   );
   const investmentTotal =
     equipment.reduce(
-      (sum, item) => sum + safeAmount(item.totalAmount),
+      (sum, item) =>
+        (item.fundingSource ??
+          DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE) === "owner_capital"
+          ? sum + safeAmount(item.totalAmount)
+          : sum,
       0,
     ) +
     purchases
@@ -165,9 +179,17 @@ async function buildClaimContext() {
       (sum, purchase) => sum + safeAmount(purchase.totalAmount),
       0,
     );
+  const salesFundedExpenseTotal = expenses
+    .filter((expense) => expense.fundingSource === "sales_revenue")
+    .reduce((sum, expense) => sum + safeAmount(expense.amount), 0);
+  const salesFundedEquipmentTotal = equipment
+    .filter((item) => item.fundingSource === "sales_revenue")
+    .reduce((sum, item) => sum + safeAmount(item.totalAmount), 0);
   const businessCash = calculateBusinessCashBalance(
     totalRevenue,
     salesFundedPurchaseTotal,
+    salesFundedExpenseTotal,
+    salesFundedEquipmentTotal,
   );
   const purchaseItems: ClaimableInvestment[] = purchases
     .filter(isOwnerFundedPurchase)

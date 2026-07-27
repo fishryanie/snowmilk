@@ -40,6 +40,7 @@ type EquipmentInput = {
   category?: string;
   quantity: number;
   unitPrice: number;
+  fundingSource?: PurchaseFundingSource;
   residualValue?: number;
   usefulLifeMonths?: number;
   isActive?: boolean;
@@ -320,6 +321,8 @@ function equipmentPayload(payload: EquipmentInput, code: string) {
     ...payload,
     code,
     totalAmount,
+    fundingSource:
+      payload.fundingSource ?? DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
     residualValue,
     monthlyDepreciation,
     isActive,
@@ -491,11 +494,88 @@ export async function listResources(
       [field]: { $regex: options.query, $options: "i" },
     }));
   }
-  return model
+  const records = await model
     .find(filter)
     .sort(sort)
     .limit(Math.min(options.limit ?? 250, 500))
     .lean();
+  if (resource !== "ingredients" || records.length === 0) return records;
+
+  const ingredients = records as Array<
+    Record<string, unknown> & { _id: unknown; code?: unknown }
+  >;
+  const ingredientIds = ingredients.map((ingredient) => ingredient._id);
+  const ingredientCodes = ingredients
+    .map((ingredient) => String(ingredient.code ?? ""))
+    .filter(Boolean);
+  const purchaseTotals = await Purchase.aggregate<{
+    _id: { ingredientId?: unknown; itemCode?: string };
+    totalPurchasedPackages: number;
+    totalPurchasedQuantity: number;
+    totalPurchasedAmount: number;
+  }>([
+    {
+      $match: {
+        $or: [
+          { ingredientId: { $in: ingredientIds } },
+          { itemCode: { $in: ingredientCodes } },
+        ],
+      },
+    },
+    {
+      $group: {
+        _id: {
+          ingredientId: "$ingredientId",
+          itemCode: "$itemCode",
+        },
+        totalPurchasedPackages: { $sum: "$packageCount" },
+        totalPurchasedQuantity: { $sum: "$convertedQuantity" },
+        totalPurchasedAmount: { $sum: "$totalAmount" },
+      },
+    },
+  ]);
+
+  type Totals = {
+    totalPurchasedPackages: number;
+    totalPurchasedQuantity: number;
+    totalPurchasedAmount: number;
+  };
+  const emptyTotals = (): Totals => ({
+    totalPurchasedPackages: 0,
+    totalPurchasedQuantity: 0,
+    totalPurchasedAmount: 0,
+  });
+  const ingredientById = new Map(
+    ingredients.map((ingredient) => [String(ingredient._id), ingredient]),
+  );
+  const ingredientIdByCode = new Map(
+    ingredients.map((ingredient) => [
+      String(ingredient.code ?? ""),
+      String(ingredient._id),
+    ]),
+  );
+  const totalsByIngredientId = new Map<string, Totals>();
+
+  for (const purchaseTotal of purchaseTotals) {
+    const linkedIngredientId = String(
+      purchaseTotal._id.ingredientId ?? "",
+    );
+    const ingredientId = ingredientById.has(linkedIngredientId)
+      ? linkedIngredientId
+      : ingredientIdByCode.get(String(purchaseTotal._id.itemCode ?? ""));
+    if (!ingredientId) continue;
+
+    const total = totalsByIngredientId.get(ingredientId) ?? emptyTotals();
+    total.totalPurchasedPackages += purchaseTotal.totalPurchasedPackages;
+    total.totalPurchasedQuantity += purchaseTotal.totalPurchasedQuantity;
+    total.totalPurchasedAmount += purchaseTotal.totalPurchasedAmount;
+    totalsByIngredientId.set(ingredientId, total);
+  }
+
+  return ingredients.map((ingredient) => ({
+    ...ingredient,
+    ...(totalsByIngredientId.get(String(ingredient._id)) ?? emptyTotals()),
+  }));
 }
 
 export async function createResource(

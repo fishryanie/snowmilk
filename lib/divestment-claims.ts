@@ -31,6 +31,9 @@ export type DivestmentClaimSnapshot = {
 export type BusinessCashBalance = {
   totalRevenue: number;
   salesFundedPurchaseTotal: number;
+  salesFundedExpenseTotal: number;
+  salesFundedEquipmentTotal: number;
+  totalCompanyFundedOutflow: number;
   remainingBalance: number;
 };
 
@@ -42,14 +45,23 @@ function safeNonNegativeAmount(value: unknown) {
 export function calculateBusinessCashBalance(
   totalRevenue: number,
   salesFundedPurchaseTotal: number,
+  salesFundedExpenseTotal = 0,
+  salesFundedEquipmentTotal = 0,
 ): BusinessCashBalance {
   const revenue = safeNonNegativeAmount(totalRevenue);
   const purchaseTotal = safeNonNegativeAmount(salesFundedPurchaseTotal);
+  const expenseTotal = safeNonNegativeAmount(salesFundedExpenseTotal);
+  const equipmentTotal = safeNonNegativeAmount(salesFundedEquipmentTotal);
+  const totalCompanyFundedOutflow =
+    purchaseTotal + expenseTotal + equipmentTotal;
 
   return {
     totalRevenue: revenue,
     salesFundedPurchaseTotal: purchaseTotal,
-    remainingBalance: revenue - purchaseTotal,
+    salesFundedExpenseTotal: expenseTotal,
+    salesFundedEquipmentTotal: equipmentTotal,
+    totalCompanyFundedOutflow,
+    remainingBalance: revenue - totalCompanyFundedOutflow,
   };
 }
 

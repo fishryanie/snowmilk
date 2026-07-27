@@ -2,6 +2,10 @@
 
 import { PageHeader } from "@/components/common/page-header";
 import { ResourceManager } from "@/components/common/resource-manager";
+import {
+  DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
+  PURCHASE_FUNDING_SOURCE_OPTIONS,
+} from "@/lib/purchase-funding";
 import { workbookEquipment } from "@/lib/workbook-snapshot";
 
 const fields = [
@@ -17,6 +21,15 @@ const fields = [
   { key: "quantity", label: "Số lượng", type: "number" as const, required: true },
   { key: "unitPrice", label: "Đơn giá", type: "money" as const, required: true },
   { key: "totalAmount", label: "Tổng tiền", type: "money" as const, editable: false },
+  {
+    key: "fundingSource",
+    label: "Nguồn tiền",
+    type: "select" as const,
+    options: PURCHASE_FUNDING_SOURCE_OPTIONS,
+    defaultValue: "sales_revenue",
+    legacyValue: DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
+    required: true,
+  },
   { key: "residualValue", label: "Giá trị còn lại", type: "money" as const },
   { key: "usefulLifeMonths", label: "Thời gian dùng (tháng)", type: "number" as const },
   { key: "monthlyDepreciation", label: "Khấu hao/tháng", type: "money" as const, editable: false },
@@ -29,7 +42,7 @@ export default function EquipmentPage() {
     <div className="page-wrap">
       <PageHeader
         title="Đầu tư & tài sản"
-        description="Tách riêng vốn đầu tư ban đầu, trạng thái sử dụng và khấu hao phân bổ mỗi tháng."
+        description="Theo dõi nguồn tiền, vốn đầu tư, trạng thái sử dụng và khấu hao phân bổ mỗi tháng."
       />
       <ResourceManager
         resource="equipment"

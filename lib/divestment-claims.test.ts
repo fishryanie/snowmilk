@@ -29,10 +29,26 @@ const history: ClaimableInvestment[] = [
 ];
 
 describe("divestment claim selection", () => {
-  test("calculates remaining business cash from revenue and sales-funded purchases", () => {
+  test("subtracts every company-funded outflow from remaining business cash", () => {
+    expect(
+      calculateBusinessCashBalance(5_720_000, 2_697_000, 250_000, 370_000),
+    ).toEqual({
+      totalRevenue: 5_720_000,
+      salesFundedPurchaseTotal: 2_697_000,
+      salesFundedExpenseTotal: 250_000,
+      salesFundedEquipmentTotal: 370_000,
+      totalCompanyFundedOutflow: 3_317_000,
+      remainingBalance: 2_403_000,
+    });
+  });
+
+  test("keeps backward-compatible zero totals for sources not provided", () => {
     expect(calculateBusinessCashBalance(5_720_000, 2_697_000)).toEqual({
       totalRevenue: 5_720_000,
       salesFundedPurchaseTotal: 2_697_000,
+      salesFundedExpenseTotal: 0,
+      salesFundedEquipmentTotal: 0,
+      totalCompanyFundedOutflow: 2_697_000,
       remainingBalance: 3_023_000,
     });
   });

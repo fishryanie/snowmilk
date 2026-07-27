@@ -1,5 +1,6 @@
 import { apiError, apiSuccess, errorMessage } from "@/lib/api-response";
 import { calculateDivestmentSuggestion } from "@/lib/calculations/divestment-suggestion";
+import { calculateBusinessCashBalance } from "@/lib/divestment-claims";
 import { connectMongo } from "@/lib/mongodb";
 import { ownerCapitalPurchaseFilter } from "@/lib/purchase-funding";
 import { Divestment } from "@/models/Divestment";
@@ -56,10 +57,14 @@ export async function GET(request: Request) {
       expenses,
       equipment,
       equipmentInvestment,
+      ownerFundedEquipmentInvestment,
       purchaseInvestment,
       ownerFundedPurchaseInvestment,
       claimedPurchaseInvestment,
       expenseInvestment,
+      salesFundedPurchaseInvestment,
+      salesFundedExpenseInvestment,
+      salesFundedEquipmentInvestment,
       withdrawnInvestment,
       allSales,
       activeProducts,
@@ -70,6 +75,10 @@ export async function GET(request: Request) {
         Expense.find({ expenseDate: dateFilter }).lean(),
         Equipment.find({ purchaseDate: dateFilter }).lean(),
         Equipment.aggregate([
+          { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+        ]),
+        Equipment.aggregate([
+          { $match: ownerCapitalPurchaseFilter() },
           { $group: { _id: null, total: { $sum: "$totalAmount" } } },
         ]),
         Purchase.aggregate([
@@ -86,6 +95,18 @@ export async function GET(request: Request) {
         ]),
         Expense.aggregate([
           { $group: { _id: null, total: { $sum: "$amount" } } },
+        ]),
+        Purchase.aggregate([
+          { $match: { fundingSource: "sales_revenue" } },
+          { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+        ]),
+        Expense.aggregate([
+          { $match: { fundingSource: "sales_revenue" } },
+          { $group: { _id: null, total: { $sum: "$amount" } } },
+        ]),
+        Equipment.aggregate([
+          { $match: { fundingSource: "sales_revenue" } },
+          { $group: { _id: null, total: { $sum: "$totalAmount" } } },
         ]),
         Divestment.aggregate([
           { $group: { _id: null, total: { $sum: "$amount" } } },
@@ -205,7 +226,7 @@ export async function GET(request: Request) {
       0,
     );
     const investmentTotal =
-      (equipmentInvestment[0]?.total ?? 0) +
+      (ownerFundedEquipmentInvestment[0]?.total ?? 0) +
       (ownerFundedPurchaseInvestment[0]?.total ?? 0) +
       (claimedPurchaseInvestment[0]?.total ?? 0);
     const withdrawnTotal = withdrawnInvestment[0]?.total ?? 0;
@@ -254,6 +275,12 @@ export async function GET(request: Request) {
       (equipmentInvestment[0]?.total ?? 0) +
       (purchaseInvestment[0]?.total ?? 0) +
       (expenseInvestment[0]?.total ?? 0);
+    const businessCash = calculateBusinessCashBalance(
+      cumulativeCashIn,
+      salesFundedPurchaseInvestment[0]?.total ?? 0,
+      salesFundedExpenseInvestment[0]?.total ?? 0,
+      salesFundedEquipmentInvestment[0]?.total ?? 0,
+    );
     const divestmentSuggestion = calculateDivestmentSuggestion({
       cumulativeCashIn,
       cumulativeCashOut,
@@ -269,6 +296,7 @@ export async function GET(request: Request) {
       kpis: {
         revenue: totals.revenue,
         totalCups: totals.totalCups,
+        businessCashBalance: businessCash.remainingBalance,
         purchaseTotal,
         expenseTotal,
         variableCost: totals.variableCost,

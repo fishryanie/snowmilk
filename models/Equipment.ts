@@ -1,4 +1,8 @@
 import mongoose, { Schema } from "mongoose";
+import {
+  DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
+  PURCHASE_FUNDING_SOURCES,
+} from "@/lib/purchase-funding";
 import { schemaOptions, traceFields } from "./helpers";
 
 const EquipmentSchema = new Schema(
@@ -10,6 +14,13 @@ const EquipmentSchema = new Schema(
     quantity: { type: Number, min: 0, required: true },
     unitPrice: { type: Number, min: 0, required: true },
     totalAmount: { type: Number, min: 0, required: true },
+    fundingSource: {
+      type: String,
+      enum: PURCHASE_FUNDING_SOURCES,
+      default: DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
+      required: true,
+      index: true,
+    },
     residualValue: { type: Number, min: 0, default: 0 },
     usefulLifeMonths: { type: Number, min: 1 },
     monthlyDepreciation: { type: Number, min: 0, default: 0 },
@@ -24,6 +35,16 @@ const EquipmentSchema = new Schema(
   },
   schemaOptions,
 );
+
+const cachedEquipmentModel = mongoose.models.Equipment;
+
+if (
+  process.env.NODE_ENV !== "production" &&
+  cachedEquipmentModel &&
+  !cachedEquipmentModel.schema.path("fundingSource")
+) {
+  mongoose.deleteModel("Equipment");
+}
 
 export const Equipment =
   mongoose.models.Equipment ?? mongoose.model("Equipment", EquipmentSchema);

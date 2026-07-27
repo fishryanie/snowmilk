@@ -43,10 +43,21 @@ const { Text } = Typography;
 export type ResourceField = {
   key: string;
   label: string;
-  type?: "text" | "number" | "money" | "date" | "select" | "boolean" | "textarea";
+  type?:
+    | "text"
+    | "number"
+    | "money"
+    | "date"
+    | "select"
+    | "boolean"
+    | "textarea"
+    | "purchaseSummary";
   required?: boolean;
   options?: Array<string | { value: string; label: string }>;
+  defaultValue?: unknown;
+  legacyValue?: unknown;
   hiddenInTable?: boolean;
+  hiddenInEditor?: boolean;
   editable?: boolean;
 };
 
@@ -85,7 +96,9 @@ export function ResourceManager({
   const watchedValues = Form.useWatch([], form) as
     | Record<string, unknown>
     | undefined;
-  const calculatedFields = fields.filter((field) => field.editable === false);
+  const calculatedFields = fields.filter(
+    (field) => field.editable === false && !field.hiddenInEditor,
+  );
   const displayedValues = deriveValues
     ? deriveValues({ ...(editing ?? {}), ...(watchedValues ?? {}) })
     : { ...(editing ?? {}), ...(watchedValues ?? {}) };
@@ -106,11 +119,35 @@ export function ResourceManager({
           dataIndex: field.key,
           key: field.key,
           render: (value: unknown, record: ResourceRecord) => {
+            const resolvedValue = value ?? field.legacyValue;
+            if (field.type === "purchaseSummary") {
+              return (
+                <Space direction="vertical" size={0}>
+                  <Text strong>
+                    {formatNumber(Number(record.totalPurchasedPackages ?? 0))}
+                    {record.purchaseUnit ? ` ${String(record.purchaseUnit)}` : ""}
+                  </Text>
+                  <Text type="secondary">
+                    {formatVnd(Number(record.totalPurchasedAmount ?? 0))}
+                  </Text>
+                </Space>
+              );
+            }
             if (field.type === "money") return formatVnd(Number(value ?? 0));
             if (field.type === "number") return formatNumber(Number(value ?? 0));
             if (field.type === "date") return formatDate(value as string);
             if (field.type === "boolean") {
               return value ? <Tag color="green">Có</Tag> : <Tag>Không</Tag>;
+            }
+            if (field.type === "select") {
+              const option = field.options?.find((candidate) =>
+                typeof candidate === "string"
+                  ? candidate === resolvedValue
+                  : candidate.value === resolvedValue,
+              );
+              if (option) {
+                return typeof option === "string" ? option : option.label;
+              }
             }
             if (field.key === "name" && record.hasCostWarning) {
               return (
@@ -120,7 +157,9 @@ export function ResourceManager({
                 </Space>
               );
             }
-            return value == null || value === "" ? "—" : String(value);
+            return resolvedValue == null || resolvedValue === ""
+              ? "—"
+              : String(resolvedValue);
           },
         })),
       {
@@ -154,6 +193,11 @@ export function ResourceManager({
     setEditing(record ?? null);
     const values = record ? { ...record } : {};
     for (const field of fields) {
+      if (values[field.key] === undefined) {
+        values[field.key] = record
+          ? field.legacyValue
+          : field.defaultValue;
+      }
       if (field.type === "date" && values[field.key]) {
         values[field.key] = dayjs(values[field.key] as string);
       }
@@ -195,7 +239,9 @@ export function ResourceManager({
       setData((current) =>
         id
           ? current.map((item) =>
-              (item.id ?? item._id) === id ? body.data as ResourceRecord : item,
+              (item.id ?? item._id) === id
+                ? { ...item, ...(body.data as ResourceRecord) }
+                : item,
             )
           : [body.data as ResourceRecord, ...current],
       );

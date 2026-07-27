@@ -337,8 +337,8 @@ export function DivestmentClaimManager({
             />
             <span aria-hidden="true">−</span>
             <Statistic
-              title="Nhập hàng bằng tiền bán"
-              value={context.businessCash.salesFundedPurchaseTotal}
+              title="Chi bằng tiền công ty"
+              value={context.businessCash.totalCompanyFundedOutflow}
               formatter={(value) => formatVnd(Number(value))}
             />
             <span aria-hidden="true">=</span>
