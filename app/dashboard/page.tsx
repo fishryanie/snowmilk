@@ -298,7 +298,6 @@ export default function DashboardPage() {
           type="info"
           title="Đang hiển thị snapshot từ file Excel"
           description="MongoDB chưa kết nối hoặc chưa import dữ liệu. Các số dưới đây giữ nguyên giá trị đang hiển thị trong workbook để bạn đối chiếu."
-          style={{ marginBottom: 16 }}
         />
       )}
       <Card

@@ -239,6 +239,26 @@ body::before {
   margin: 0 auto;
 }
 
+.dashboard-page {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(22px, 1.7vw, 28px);
+}
+
+.dashboard-page > * {
+  min-width: 0;
+}
+
+.dashboard-page > .page-heading,
+.dashboard-page > .operations-health-card,
+.dashboard-page > .capital-recovery-card,
+.dashboard-page > .cash-flow-section,
+.dashboard-page > .divestment-advice-section,
+.dashboard-page > .dashboard-charts-grid,
+.dashboard-page > .dashboard-grid {
+  margin-block: 0;
+}
+
 .page-heading {
   display: flex;
   align-items: flex-start;
@@ -293,7 +313,7 @@ body::before {
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  gap: 16px;
 }
 
 .operations-health-card {
@@ -704,7 +724,7 @@ body::before {
 .cash-flow-kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  gap: 16px;
 }
 
 .cash-flow-kpi {
@@ -1213,8 +1233,7 @@ body::before {
 
 @media (max-width: 768px) {
   .dashboard-page {
-    display: flex;
-    flex-direction: column;
+    gap: 18px;
   }
 
   .dashboard-page > .page-heading {
@@ -1295,10 +1314,6 @@ body::before {
 
   .dashboard-page .cash-flow-kpi .ant-statistic-content {
     font-size: 17px;
-  }
-
-  .dashboard-page .operations-health-card {
-    margin-top: 20px;
   }
 
   .app-header.ant-layout-header {

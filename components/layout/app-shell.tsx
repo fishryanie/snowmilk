@@ -75,6 +75,7 @@ export function AppShell({ children }: PropsWithChildren) {
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
+  const [snowflakeImages, setSnowflakeImages] = useState<HTMLImageElement[]>([]);
   const currentKey = menuDefinitions.find(item => pathname.startsWith(item.key))?.key ?? '/dashboard';
   const selectedKey = navigatingTo ?? currentKey;
   const menuItems = menuDefinitions.map(item => ({
@@ -103,24 +104,39 @@ export function AppShell({ children }: PropsWithChildren) {
     return () => window.clearTimeout(timeout);
   }, [navigatingTo]);
 
+  useEffect(() => {
+    const snowflakeImage = new window.Image();
+    snowflakeImage.onload = () => setSnowflakeImages([snowflakeImage]);
+    snowflakeImage.src = '/logo.png';
+
+    return () => {
+      snowflakeImage.onload = null;
+    };
+  }, []);
+
   const navigation = (theme: 'dark' | 'light') => (
     <Menu mode='inline' theme={theme} selectedKeys={[selectedKey]} items={menuItems} onClick={() => setDrawerOpen(false)} className='app-menu' />
   );
 
   return (
     <Layout className='app-layout'>
-      <Snowfall
-        speed={[1, 3]}
-        wind={[-1, 1]}
-        radius={[0.5, 3]}
-        rotationSpeed={[1, 5]}
-        style={{
-          position: 'fixed',
-          height: '100vh',
-          width: '100vw',
-          zIndex: 1000,
-        }}
-      />
+      {snowflakeImages.length > 0 ? (
+        <Snowfall
+          images={snowflakeImages}
+          snowflakeCount={200}
+          speed={[1, 3]}
+          wind={[-1, 1]}
+          radius={[10, 24]}
+          rotationSpeed={[1, 5]}
+          enable3DRotation
+          style={{
+            position: 'fixed',
+            height: '100vh',
+            width: '100vw',
+            zIndex: 1000,
+          }}
+        />
+      ) : null}
 
       {!mobile && (
         <Sider width={248} collapsedWidth={80} collapsed={collapsed} theme='dark' className='app-sider' id='desktop-navigation'>
