@@ -3,10 +3,19 @@ import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { AppShell } from '@/components/layout/app-shell';
 import { Providers } from '@/components/providers';
 import './globals.css';
+import Snowfall from 'react-snowfall';
 
 export const metadata: Metadata = {
   title: 'Sữa Tuyết — Quản lý vận hành',
   description: 'Quản lý bán hàng, giá vốn và chi phí quán Sữa Tuyết',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Sữa Tuyết',
+  },
+  other: {
+    'apple-mobile-web-app-capable': 'yes',
+  },
 };
 
 export const viewport: Viewport = {
@@ -22,12 +31,6 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang='vi'>
-      <head>
-        <meta name='theme-color' content='#01A74E' />
-        <meta name='apple-mobile-web-app-capable' content='yes' />
-        <meta name='apple-mobile-web-app-status-bar-style' content='black-translucent' />
-        <meta name='apple-mobile-web-app-title' content='Sữa Tuyết' />
-      </head>
       <body>
         <AntdRegistry>
           <Providers>

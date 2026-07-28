@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import {
   AppstoreOutlined,
@@ -18,52 +18,45 @@ import {
   ColumnWidthOutlined,
   ToolOutlined,
   WalletOutlined,
-} from "@ant-design/icons";
-import { Button, Drawer, Grid, Layout, Menu, Space, Tag, Typography } from "antd";
-import Image from "next/image";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useState, type PropsWithChildren, type ReactNode } from "react";
-import { RouteSkeleton } from "@/components/common/route-skeleton";
+} from '@ant-design/icons';
+import { Button, Drawer, Grid, Layout, Menu, Space, Tag, Typography } from 'antd';
+import Image from 'next/image';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useEffect, useState, type PropsWithChildren, type ReactNode } from 'react';
+import { RouteSkeleton } from '@/components/common/route-skeleton';
+import Snowfall from 'react-snowfall';
 
 const { Header, Content, Sider } = Layout;
 const { Text, Title } = Typography;
 
 const menuDefinitions: Array<{ key: string; icon: ReactNode; label: string }> = [
-  { key: "/dashboard", icon: <BarChartOutlined />, label: "Tổng quan" },
-  { key: "/divestments", icon: <WalletOutlined />, label: "Thoái vốn" },
-  { key: "/sales", icon: <DollarOutlined />, label: "Bán hàng" },
-  { key: "/inventory", icon: <InboxOutlined />, label: "Kiểm kho" },
-  { key: "/batches", icon: <ExperimentOutlined />, label: "Mẻ sữa" },
-  { key: "/purchases", icon: <ShoppingCartOutlined />, label: "Nhập hàng" },
-  { key: "/expenses", icon: <ShoppingOutlined />, label: "Chi phí" },
-  { key: "/products", icon: <AppstoreOutlined />, label: "Sản phẩm" },
-  { key: "/sizes", icon: <ColumnWidthOutlined />, label: "Size" },
-  { key: "/ingredients", icon: <SkinOutlined />, label: "Hàng hóa" },
-  { key: "/costing", icon: <CalculatorOutlined />, label: "Giá vốn" },
-  { key: "/equipment", icon: <ToolOutlined />, label: "Tài sản" },
-  { key: "/import", icon: <CloudUploadOutlined />, label: "Nhập Excel" },
-  { key: "/settings", icon: <SettingOutlined />, label: "Cài đặt" },
+  { key: '/dashboard', icon: <BarChartOutlined />, label: 'Tổng quan' },
+  { key: '/divestments', icon: <WalletOutlined />, label: 'Thoái vốn' },
+  { key: '/sales', icon: <DollarOutlined />, label: 'Bán hàng' },
+  { key: '/inventory', icon: <InboxOutlined />, label: 'Kiểm kho' },
+  { key: '/batches', icon: <ExperimentOutlined />, label: 'Mẻ sữa' },
+  { key: '/purchases', icon: <ShoppingCartOutlined />, label: 'Nhập hàng' },
+  { key: '/expenses', icon: <ShoppingOutlined />, label: 'Chi phí' },
+  { key: '/products', icon: <AppstoreOutlined />, label: 'Sản phẩm' },
+  { key: '/sizes', icon: <ColumnWidthOutlined />, label: 'Size' },
+  { key: '/ingredients', icon: <SkinOutlined />, label: 'Hàng hóa' },
+  { key: '/costing', icon: <CalculatorOutlined />, label: 'Giá vốn' },
+  { key: '/equipment', icon: <ToolOutlined />, label: 'Tài sản' },
+  { key: '/import', icon: <CloudUploadOutlined />, label: 'Nhập Excel' },
+  { key: '/settings', icon: <SettingOutlined />, label: 'Cài đặt' },
 ];
 
-const mobileQuickLinks = ["/sales", "/purchases", "/inventory"].flatMap(
-  (key) => {
-    const item = menuDefinitions.find((candidate) => candidate.key === key);
-    return item ? [item] : [];
-  },
-);
+const mobileQuickLinks = ['/sales', '/purchases', '/inventory'].flatMap(key => {
+  const item = menuDefinitions.find(candidate => candidate.key === key);
+  return item ? [item] : [];
+});
 
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="brand">
-      <div className="brand-mark" aria-hidden="true">
-        <Image
-          src="/snowmilk-logo-transparent.png"
-          width={42}
-          height={42}
-          alt=""
-          unoptimized
-        />
+    <div className='brand'>
+      <div className='brand-mark' aria-hidden='true'>
+        <Image src='/snowmilk-logo-transparent.png' width={42} height={42} alt='' unoptimized />
       </div>
       {!compact && (
         <div>
@@ -82,11 +75,9 @@ export function AppShell({ children }: PropsWithChildren) {
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
-  const currentKey =
-    menuDefinitions.find((item) => pathname.startsWith(item.key))?.key ??
-    "/dashboard";
+  const currentKey = menuDefinitions.find(item => pathname.startsWith(item.key))?.key ?? '/dashboard';
   const selectedKey = navigatingTo ?? currentKey;
-  const menuItems = menuDefinitions.map((item) => ({
+  const menuItems = menuDefinitions.map(item => ({
     ...item,
     label: (
       <Link
@@ -95,8 +86,7 @@ export function AppShell({ children }: PropsWithChildren) {
           if (item.key === currentKey) return;
           setNavigatingTo(item.key);
           setDrawerOpen(false);
-        }}
-      >
+        }}>
         {item.label}
       </Link>
     ),
@@ -113,113 +103,86 @@ export function AppShell({ children }: PropsWithChildren) {
     return () => window.clearTimeout(timeout);
   }, [navigatingTo]);
 
-  const navigation = (theme: "dark" | "light") => (
-    <Menu
-      mode="inline"
-      theme={theme}
-      selectedKeys={[selectedKey]}
-      items={menuItems}
-      onClick={() => setDrawerOpen(false)}
-      className="app-menu"
-    />
+  const navigation = (theme: 'dark' | 'light') => (
+    <Menu mode='inline' theme={theme} selectedKeys={[selectedKey]} items={menuItems} onClick={() => setDrawerOpen(false)} className='app-menu' />
   );
 
   return (
-    <Layout className="app-layout">
+    <Layout className='app-layout'>
+      <Snowfall
+        speed={[1, 3]}
+        wind={[-1, 1]}
+        radius={[0.5, 3]}
+        rotationSpeed={[1, 5]}
+        style={{
+          position: 'fixed',
+          height: '100vh',
+          width: '100vw',
+          zIndex: 1000,
+        }}
+      />
+
       {!mobile && (
-        <Sider
-          width={248}
-          collapsedWidth={80}
-          collapsed={collapsed}
-          theme="dark"
-          className="app-sider"
-          id="desktop-navigation"
-        >
+        <Sider width={248} collapsedWidth={80} collapsed={collapsed} theme='dark' className='app-sider' id='desktop-navigation'>
           <Brand compact={collapsed} />
-          {navigation("dark")}
+          {navigation('dark')}
         </Sider>
       )}
       <Layout>
-        <Header className="app-header">
+        <Header className='app-header'>
           <Space>
             <Button
-              type="text"
-              className="header-menu-button"
-              icon={
-                mobile ? (
-                  <MenuOutlined />
-                ) : collapsed ? (
-                  <MenuUnfoldOutlined />
-                ) : (
-                  <MenuFoldOutlined />
-                )
-              }
-              onClick={() =>
-                mobile
-                  ? setDrawerOpen(true)
-                  : setCollapsed((value) => !value)
-              }
-              aria-label={
-                mobile
-                  ? "Mở menu"
-                  : collapsed
-                    ? "Mở rộng thanh điều hướng"
-                    : "Thu gọn thanh điều hướng"
-              }
-              aria-controls={mobile ? "mobile-navigation" : "desktop-navigation"}
+              type='text'
+              className='header-menu-button'
+              icon={mobile ? <MenuOutlined /> : collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => (mobile ? setDrawerOpen(true) : setCollapsed(value => !value))}
+              aria-label={mobile ? 'Mở menu' : collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'}
+              aria-controls={mobile ? 'mobile-navigation' : 'desktop-navigation'}
               aria-expanded={mobile ? drawerOpen : !collapsed}
             />
             {mobile && <Brand compact />}
           </Space>
           <Space>
-            <Tag color="gold">Local</Tag>
-            <div className="status-dot" />
-            <Text className="desktop-only">MongoDB</Text>
+            <Tag color='gold'>Local</Tag>
+            <div className='status-dot' />
+            <Text className='desktop-only'>MongoDB</Text>
           </Space>
         </Header>
-        <Content className="app-content" aria-busy={Boolean(navigatingTo)}>
+        <Content className='app-content' aria-busy={Boolean(navigatingTo)}>
           {navigatingTo ? <RouteSkeleton /> : children}
         </Content>
       </Layout>
       <Drawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        placement="left"
+        placement='left'
         size={280}
         title={<Brand />}
         styles={{ body: { padding: 8 } }}
-        id="mobile-navigation"
-      >
-        {navigation("light")}
+        id='mobile-navigation'>
+        {navigation('light')}
       </Drawer>
-      <nav className="mobile-quick-nav" aria-label="Thao tác nhanh">
-        {mobileQuickLinks.map((item) => {
+      <nav className='mobile-quick-nav' aria-label='Thao tác nhanh'>
+        {mobileQuickLinks.map(item => {
           const active = currentKey === item.key;
           return (
             <Link
               key={item.key}
               href={item.key}
-              className={active ? "is-active" : undefined}
-              aria-current={active ? "page" : undefined}
+              className={active ? 'is-active' : undefined}
+              aria-current={active ? 'page' : undefined}
               onNavigate={() => {
                 if (!active) setNavigatingTo(item.key);
-              }}
-            >
-              <span className="mobile-quick-nav-icon" aria-hidden="true">
+              }}>
+              <span className='mobile-quick-nav-icon' aria-hidden='true'>
                 {item.icon}
               </span>
               <span>{item.label}</span>
             </Link>
           );
         })}
-        <button
-          type="button"
-          onClick={() => setDrawerOpen(true)}
-          aria-label="Mở tất cả chức năng"
-          aria-controls="mobile-navigation"
-          aria-expanded={drawerOpen}
-        >
-          <span className="mobile-quick-nav-icon" aria-hidden="true">
+        <button type='button' onClick={() => setDrawerOpen(true)} aria-label='Mở tất cả chức năng' aria-controls='mobile-navigation' aria-expanded={drawerOpen}>
+          <span className='mobile-quick-nav-icon' aria-hidden='true'>
             <MenuOutlined />
           </span>
           <span>Thêm</span>
