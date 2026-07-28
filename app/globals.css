@@ -65,7 +65,7 @@ html {
 body {
   min-height: 100%;
   margin: 0;
-  background: var(--canvas);
+  background: var(--brand);
   color: var(--ink);
 }
 
