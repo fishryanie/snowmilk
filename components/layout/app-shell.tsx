@@ -72,6 +72,7 @@ export function AppShell({ children }: PropsWithChildren) {
   const pathname = usePathname();
   const screens = Grid.useBreakpoint();
   const mobile = !screens.lg;
+  const compactSnowfall = !screens.md;
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [headerScrolled, setHeaderScrolled] = useState(false);
@@ -150,10 +151,10 @@ export function AppShell({ children }: PropsWithChildren) {
         <Snowfall
           images={snowflakeImages}
           changeFrequency={100}
-          snowflakeCount={100}
+          snowflakeCount={compactSnowfall ? 36 : 100}
           speed={[0.5, 1.5]}
           wind={[-1, 1]}
-          radius={[5, 20]}
+          radius={compactSnowfall ? [2, 8] : [5, 20]}
           rotationSpeed={[0.5, 3]}
           style={{
             position: 'fixed',

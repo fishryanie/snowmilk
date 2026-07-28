@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description: 'Quản lý bán hàng, giá vốn và chi phí quán Sữa Tuyết',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'black-translucent',
+    statusBarStyle: 'default',
     title: 'Sữa Tuyết',
   },
   other: {
@@ -23,7 +23,10 @@ export const viewport: Viewport = {
   minimumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  themeColor: '#287f96',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#287f96' },
+    { media: '(prefers-color-scheme: dark)', color: '#287f96' },
+  ],
   width: 'device-width',
 };
 
