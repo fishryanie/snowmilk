@@ -44,7 +44,22 @@ export const workbookBatches = [
 ];
 
 export const workbookDashboard = {
-  kpis: { revenue: 0, totalCups: 0, businessCashBalance: 0, purchaseTotal: 2_677_500, expenseTotal: 0, variableCost: 0, allocatedFixedCost: 0, estimatedProfit: 0, averageCostPerCup: 0, investmentTotal: 5_314_700, capitalRecoveryBalance: -5_314_700, activeProducts: 10, estimatedSalesDays: 0, cashIn: 0, cashOut: 5_314_700, netCashFlow: -5_314_700, equipmentTotal: 2_637_200, averageDailyCashOut: 253_080.9524, positiveCashFlowDays: 0, activeCashFlowDays: 1 },
+  health: {
+    status: "attention" as const,
+    issues: [
+      {
+        key: "database",
+        severity: "warning" as const,
+        title: "Đang dùng snapshot từ workbook",
+        description:
+          "Kết nối MongoDB chưa sẵn sàng nên không thể xác nhận dữ liệu vận hành mới nhất.",
+        href: "/import",
+      },
+    ],
+    lastSaleDate: null as string | null,
+    lastInventoryDate: null as string | null,
+  },
+  kpis: { revenue: 0, totalCups: 0, businessCashBalance: 0, purchaseTotal: 2_677_500, expenseTotal: 0, variableCost: 0, allocatedFixedCost: 0, estimatedProfit: 0, averageCostPerCup: 0, investmentTotal: 5_314_700, withdrawnTotal: 0, remainingCapital: 5_314_700, capitalRecoveryRate: 0, capitalRecoveryBalance: -5_314_700, activeProducts: 10, estimatedSalesDays: 0, cashIn: 0, cashOut: 5_314_700, netCashFlow: -5_314_700, equipmentTotal: 2_637_200, averageDailyCashOut: 253_080.9524, positiveCashFlowDays: 0, activeCashFlowDays: 1 },
   divestmentSuggestion: calculateDivestmentSuggestion({
     cumulativeCashIn: 0,
     cumulativeCashOut: 5_314_700,

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   calculateBusinessCashBalance,
+  DIVESTMENT_CLAIM_KEY_PATTERN,
   resolveClaimSelection,
   type ClaimableInvestment,
 } from "./divestment-claims";
@@ -29,6 +30,14 @@ const history: ClaimableInvestment[] = [
 ];
 
 describe("divestment claim selection", () => {
+  test("accepts MongoDB claim keys for purchases and equipment", () => {
+    const sourceId = "507f1f77bcf86cd799439011";
+
+    expect(DIVESTMENT_CLAIM_KEY_PATTERN.test(`purchase:${sourceId}`)).toBe(true);
+    expect(DIVESTMENT_CLAIM_KEY_PATTERN.test(`equipment:${sourceId}`)).toBe(true);
+    expect(DIVESTMENT_CLAIM_KEY_PATTERN.test(`expense:${sourceId}`)).toBe(false);
+  });
+
   test("subtracts every company-funded outflow from remaining business cash", () => {
     expect(
       calculateBusinessCashBalance(5_720_000, 2_697_000, 250_000, 370_000),

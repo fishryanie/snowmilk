@@ -7,6 +7,7 @@ import {
   CloudUploadOutlined,
   DollarOutlined,
   ExperimentOutlined,
+  InboxOutlined,
   MenuFoldOutlined,
   MenuOutlined,
   MenuUnfoldOutlined,
@@ -19,6 +20,7 @@ import {
   WalletOutlined,
 } from "@ant-design/icons";
 import { Button, Drawer, Grid, Layout, Menu, Space, Tag, Typography } from "antd";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type PropsWithChildren, type ReactNode } from "react";
@@ -31,6 +33,7 @@ const menuDefinitions: Array<{ key: string; icon: ReactNode; label: string }> = 
   { key: "/dashboard", icon: <BarChartOutlined />, label: "Tổng quan" },
   { key: "/divestments", icon: <WalletOutlined />, label: "Thoái vốn" },
   { key: "/sales", icon: <DollarOutlined />, label: "Bán hàng" },
+  { key: "/inventory", icon: <InboxOutlined />, label: "Kiểm kho" },
   { key: "/batches", icon: <ExperimentOutlined />, label: "Mẻ sữa" },
   { key: "/purchases", icon: <ShoppingCartOutlined />, label: "Nhập hàng" },
   { key: "/expenses", icon: <ShoppingOutlined />, label: "Chi phí" },
@@ -47,7 +50,13 @@ function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <div className="brand">
       <div className="brand-mark" aria-hidden="true">
-        ❄
+        <Image
+          src="/snowmilk-logo-transparent.png"
+          width={42}
+          height={42}
+          alt=""
+          unoptimized
+        />
       </div>
       {!compact && (
         <div>

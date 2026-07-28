@@ -5,6 +5,7 @@ type DivestmentSuggestionInput = {
   cumulativeCashIn: number;
   cumulativeCashOut: number;
   withdrawnTotal: number;
+  recordedCashBalance?: number;
   remainingCapital: number;
   periodRevenue: number;
   periodOperatingCashOut: number;
@@ -50,8 +51,9 @@ export function calculateDivestmentSuggestion(
     ),
   );
 
-  const recordedCashBalance =
-    cumulativeCashIn - cumulativeCashOut - withdrawnTotal;
+  const recordedCashBalance = Number.isFinite(input.recordedCashBalance)
+    ? (input.recordedCashBalance as number)
+    : cumulativeCashIn - cumulativeCashOut - withdrawnTotal;
   const averageDailyOperatingCashOut = periodOperatingCashOut / periodDays;
   const reserveTarget = averageDailyOperatingCashOut * reserveDays;
   const cashAvailableAfterReserve = Math.max(

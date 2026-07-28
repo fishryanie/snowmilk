@@ -122,7 +122,7 @@ export function ResourceManager({
             const resolvedValue = value ?? field.legacyValue;
             if (field.type === "purchaseSummary") {
               return (
-                <Space direction="vertical" size={0}>
+                <Space orientation="vertical" size={0}>
                   <Text strong>
                     {formatNumber(Number(record.totalPurchasedPackages ?? 0))}
                     {record.purchaseUnit ? ` ${String(record.purchaseUnit)}` : ""}

@@ -21,15 +21,11 @@ import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/common/page-header";
 import { RouteSkeleton } from "@/components/common/route-skeleton";
 import {
-  buildEstimatedSizeMix,
-  calculateDailySaleEstimate,
-  calculateDailySaleEstimateFromMilk,
-  calculateDailySaleEstimateFromTotalCups,
+  calculateDailySaleEstimateFromRevenue,
   type DailySaleAssumption,
 } from "@/lib/calculations/daily-sales";
 import {
   formatDate,
-  formatNumber,
   formatVnd,
   formatVndInput,
   parseVndInput,
@@ -39,14 +35,6 @@ import { workbookBatches } from "@/lib/workbook-snapshot";
 
 const { Text, Title } = Typography;
 
-type SizeSummary = {
-  sizeCode: string;
-  sizeName: string;
-  milkMl?: number;
-  quantity: number;
-  variableCostPerCup: number;
-};
-
 type SaleHistory = {
   id?: string;
   _id?: string;
@@ -54,24 +42,15 @@ type SaleHistory = {
   batchId?: string;
   batchCode?: string;
   batchName?: string;
-  sizeSummaries: SizeSummary[];
-  totalCups: number;
-  milkLitersSold?: number;
-  estimatedMilkLiters?: number;
-  milkDifferenceLiters?: number;
-  estimatedReferenceRevenue?: number;
-  revenueDifference?: number;
   netRevenue: number;
   cashReceived?: number | null;
   bankTransferReceived?: number | null;
-  averageRevenuePerCup: number;
   totalVariableCost: number;
   allocatedFixedCost: number;
   estimatedProfit: number;
   estimatedProfitLow: number;
   estimatedProfitHigh: number;
   estimatedMargin: number;
-  cupCountSource?: "estimated" | "actual-total" | "actual";
   note?: string;
 };
 
@@ -130,28 +109,6 @@ function batchRecordId(record: { id?: string; _id?: string }) {
   return record.id ?? record._id ?? "";
 }
 
-function sizeQuantity(
-  record: Pick<SaleHistory, "sizeSummaries">,
-  sizeCode: string,
-) {
-  return (
-    record.sizeSummaries.find((summary) => summary.sizeCode === sizeCode)
-      ?.quantity ?? 0
-  );
-}
-
-function recordMilkLiters(record: SaleHistory) {
-  return (
-    record.milkLitersSold ??
-    record.sizeSummaries.reduce(
-      (total, summary) =>
-        total + summary.quantity * Number(summary.milkMl ?? 0),
-      0,
-    ) /
-      1_000
-  );
-}
-
 export default function SalesPage() {
   const { message, modal } = App.useApp();
   const {
@@ -169,25 +126,13 @@ export default function SalesPage() {
   });
   const [saleDate, setSaleDate] = useState(dayjs());
   const [selectedBatchId, setSelectedBatchId] = useState("");
-  const [milkLitersSold, setMilkLitersSold] = useState<number | null>(null);
   const [netRevenue, setNetRevenue] = useState<number | null>(null);
   const [cashReceived, setCashReceived] = useState<number | null>(null);
   const [bankTransferReceived, setBankTransferReceived] = useState<
     number | null
   >(null);
-  const [actualTotalCups, setActualTotalCups] = useState<number | null>(
-    null,
-  );
-  const [actualSizeM, setActualSizeM] = useState<number | null>(null);
-  const [actualSizeL, setActualSizeL] = useState<number | null>(null);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
-  const hasAnyActualCupCount =
-    actualSizeM !== null || actualSizeL !== null;
-  const hasCompleteActualCupCount =
-    actualSizeM !== null && actualSizeL !== null;
-  const hasActualTotalCups = actualTotalCups !== null;
-  const milkLitersSoldValue = milkLitersSold ?? 0;
   const netRevenueValue = netRevenue ?? 0;
   const hasPaymentBreakdown =
     cashReceived !== null || bankTransferReceived !== null;
@@ -207,66 +152,21 @@ export default function SalesPage() {
         : data.assumptions,
     [data.assumptions, selectedBatch],
   );
-  const sizeMReferencePrice =
-    selectedAssumptions.find((item) => item.sizeCode === "M")
-      ?.referenceSellingPrice ?? 0;
-  const sizeLReferencePrice =
-    selectedAssumptions.find((item) => item.sizeCode === "L")
-      ?.referenceSellingPrice ?? 0;
-  const estimatedSizeMix = useMemo(
-    () =>
-      buildEstimatedSizeMix(
-        data.history,
-        selectedAssumptions.map((assumption) => assumption.sizeCode),
-      ),
-    [data.history, selectedAssumptions],
-  );
   const estimate = useMemo(
     () =>
-      hasCompleteActualCupCount
-        ? calculateDailySaleEstimate(
-            { M: actualSizeM, L: actualSizeL },
-            netRevenueValue,
-            selectedAssumptions,
-            milkLitersSoldValue,
-          )
-        : hasActualTotalCups
-          ? calculateDailySaleEstimateFromTotalCups(
-              actualTotalCups,
-              milkLitersSoldValue,
-              netRevenueValue,
-              selectedAssumptions,
-              estimatedSizeMix.shares,
-            )
-          : calculateDailySaleEstimateFromMilk(
-              milkLitersSoldValue,
-              netRevenueValue,
-              selectedAssumptions,
-              estimatedSizeMix.shares,
-            ),
-    [
-      actualSizeL,
-      actualSizeM,
-      actualTotalCups,
-      hasCompleteActualCupCount,
-      hasActualTotalCups,
-      milkLitersSoldValue,
-      netRevenueValue,
-      estimatedSizeMix.shares,
-      selectedAssumptions,
-    ],
+      calculateDailySaleEstimateFromRevenue(
+        netRevenueValue,
+        selectedAssumptions,
+      ),
+    [netRevenueValue, selectedAssumptions],
   );
 
   function clearForm() {
     setSaleDate(dayjs());
     setSelectedBatchId("");
-    setMilkLitersSold(null);
     setNetRevenue(null);
     setCashReceived(null);
     setBankTransferReceived(null);
-    setActualTotalCups(null);
-    setActualSizeM(null);
-    setActualSizeL(null);
     setNote("");
   }
 
@@ -281,28 +181,12 @@ export default function SalesPage() {
       );
       return;
     }
-    if (milkLitersSoldValue <= 0) {
-      message.warning("Hãy nhập tổng số lít sữa đã bán.");
+    if (!hasPaymentBreakdown) {
+      message.warning("Hãy nhập tiền mặt hoặc tiền chuyển khoản đã nhận.");
       return;
     }
-    if (hasAnyActualCupCount && !hasCompleteActualCupCount) {
-      message.warning(
-        "Hãy nhập đủ số ly thực tế của cả Size M và Size L, kể cả khi một size là 0 ly.",
-      );
-      return;
-    }
-    if (hasCompleteActualCupCount && actualSizeM + actualSizeL <= 0) {
-      message.warning("Tổng số ly thực tế phải lớn hơn 0.");
-      return;
-    }
-    if (
-      hasCompleteActualCupCount &&
-      hasActualTotalCups &&
-      actualSizeM + actualSizeL !== actualTotalCups
-    ) {
-      message.warning(
-        "Tổng số ly thực tế phải bằng số ly Size M cộng Size L.",
-      );
+    if (netRevenueValue <= 0) {
+      message.warning("Tổng doanh thu cuối ngày phải lớn hơn 0.");
       return;
     }
     setSaving(true);
@@ -313,18 +197,9 @@ export default function SalesPage() {
         body: JSON.stringify({
           saleDate: saleDate.format("YYYY-MM-DD"),
           batchId: selectedBatchId,
-          milkLitersSold: milkLitersSoldValue,
           netRevenue: netRevenueValue,
-          cashReceived: hasPaymentBreakdown ? (cashReceived ?? 0) : null,
-          bankTransferReceived: hasPaymentBreakdown
-            ? (bankTransferReceived ?? 0)
-            : null,
-          actualSizeQuantities: hasCompleteActualCupCount
-            ? { M: actualSizeM, L: actualSizeL }
-            : undefined,
-          actualTotalCups: hasActualTotalCups
-            ? actualTotalCups
-            : undefined,
+          cashReceived: cashReceived ?? 0,
+          bankTransferReceived: bankTransferReceived ?? 0,
           note,
           overwrite,
         }),
@@ -381,23 +256,9 @@ export default function SalesPage() {
         batch.code === record.batchCode,
     );
     setSelectedBatchId(matchingBatch ? batchRecordId(matchingBatch) : "");
-    setMilkLitersSold(recordMilkLiters(record));
     setNetRevenue(record.netRevenue);
     setCashReceived(record.cashReceived ?? null);
     setBankTransferReceived(record.bankTransferReceived ?? null);
-    setActualTotalCups(
-      record.cupCountSource === "actual" ||
-        record.cupCountSource === "actual-total"
-        ? record.totalCups
-        : null,
-    );
-    if (record.cupCountSource === "actual") {
-      setActualSizeM(sizeQuantity(record, "M"));
-      setActualSizeL(sizeQuantity(record, "L"));
-    } else {
-      setActualSizeM(null);
-      setActualSizeL(null);
-    }
     setNote(record.note ?? "");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -408,7 +269,7 @@ export default function SalesPage() {
     <div className="page-wrap">
       <PageHeader
         title="Chốt bán hàng cuối ngày"
-        description="Nhập tổng lít sữa đã bán, tiền đã nhận và tổng số ly thực tế. Nếu nhớ số ly từng size, bạn có thể nhập thêm để có cơ cấu M/L chính xác."
+        description="Bạn nhập tiền mặt, tiền chuyển khoản và chọn mẻ sữa; tổng doanh thu được tự động cộng. Không cần nhớ số ly hay số lít đã bán."
         actions={
           <Button
             type="primary"
@@ -459,20 +320,6 @@ export default function SalesPage() {
                       : `${batch.code} · ${batch.name} · chưa có giá vốn`,
                   disabled: batch.costPerMl <= 0,
                 }))}
-                style={{ width: "100%", marginTop: 6 }}
-              />
-            </div>
-            <div>
-              <Text type="secondary">Tổng sữa đã bán (L)</Text>
-              <InputNumber
-                min={0}
-                step={0.1}
-                precision={2}
-                value={milkLitersSold}
-                onChange={(value) =>
-                  setMilkLitersSold(value === null ? null : Number(value))
-                }
-                suffix="L"
                 style={{ width: "100%", marginTop: 6 }}
               />
             </div>
@@ -537,50 +384,6 @@ export default function SalesPage() {
                 style={{ width: "100%", marginTop: 6 }}
               />
             </div>
-            <div>
-              <Text type="secondary">Tổng số ly thực tế (M + L)</Text>
-              <InputNumber
-                min={1}
-                precision={0}
-                value={actualTotalCups}
-                onChange={(value) =>
-                  setActualTotalCups(
-                    value === null ? null : Number(value),
-                  )
-                }
-                placeholder="Ví dụ: 74"
-                suffix="ly"
-                style={{ width: "100%", marginTop: 6 }}
-              />
-            </div>
-            <div>
-              <Text type="secondary">Size M thực tế (nếu nhớ)</Text>
-              <InputNumber
-                min={0}
-                precision={0}
-                value={actualSizeM}
-                onChange={(value) =>
-                  setActualSizeM(value === null ? null : Number(value))
-                }
-                placeholder="Để trống nếu không nhớ"
-                suffix="ly"
-                style={{ width: "100%", marginTop: 6 }}
-              />
-            </div>
-            <div>
-              <Text type="secondary">Size L thực tế (nếu nhớ)</Text>
-              <InputNumber
-                min={0}
-                precision={0}
-                value={actualSizeL}
-                onChange={(value) =>
-                  setActualSizeL(value === null ? null : Number(value))
-                }
-                placeholder="Để trống nếu không nhớ"
-                suffix="ly"
-                style={{ width: "100%", marginTop: 6 }}
-              />
-            </div>
             <div className="daily-sales-note">
               <Text type="secondary">Ghi chú</Text>
               <Input.TextArea
@@ -594,80 +397,19 @@ export default function SalesPage() {
           </div>
 
           <Alert
-            type={
-              hasAnyActualCupCount && !hasCompleteActualCupCount
-                ? "warning"
-                : "info"
-            }
+            type="info"
             showIcon
             title={
               !selectedBatch
                 ? "Hãy chọn mẻ sữa đã bán"
-                : hasAnyActualCupCount && !hasCompleteActualCupCount
-                  ? "Hãy nhập đủ số ly của cả hai size"
-                  : hasCompleteActualCupCount
-                    ? "Đang dùng số ly thực tế"
-                    : hasActualTotalCups
-                      ? "Đang dùng tổng số ly thực tế"
-                    : "Số ly và cơ cấu size là số ước tính"
+                : "Giá vốn và lợi nhuận chỉ là ước tính"
             }
             description={
               !selectedBatch
                 ? "Mẻ sữa là bắt buộc để hệ thống lưu đúng mẻ đã bán và dùng đúng giá vốn khi tính lãi/lỗ."
-                : hasAnyActualCupCount && !hasCompleteActualCupCount
-                  ? "Nếu một size không bán được ly nào, hãy nhập 0. Nếu không nhớ số ly, hãy để trống cả hai ô để hệ thống tiếp tục ước tính."
-                  : hasCompleteActualCupCount
-                    ? `Hệ thống đang dùng ${formatNumber(estimate.totalCups)} ly thực tế để tính cost bao bì, topping và chi phí cố định. Cost sữa vẫn lấy theo ${formatNumber(milkLitersSoldValue)} L đã bán từ mẻ ${selectedBatch.code} - ${selectedBatch.name}. Chênh lệch giữa định mức ly và lượng sữa đã nhập là ${formatNumber(Math.abs(estimate.milkDifferenceLiters))} L.`
-                    : hasActualTotalCups
-                      ? `Tổng ${formatNumber(actualTotalCups)} ly được giữ nguyên theo số thực tế bạn nhập. Hệ thống phân bổ thành ${formatNumber(sizeQuantity(estimate, "M"))} ly Size M và ${formatNumber(sizeQuantity(estimate, "L"))} ly Size L chỉ theo tổng doanh thu với giá tham chiếu M ${formatVnd(sizeMReferencePrice)} và L ${formatVnd(sizeLReferencePrice)}; số lít sữa không tham gia chia size. Chênh lệch quy đổi: ${formatNumber(Math.abs(estimate.milkDifferenceLiters))} L sữa và ${formatVnd(Math.abs(estimate.revenueDifference))} doanh thu.`
-                    : estimatedSizeMix.source === "actual-history"
-                      ? `Bạn chưa nhập số ly hôm nay nên hệ thống tạm dùng tỷ lệ từ ${formatNumber(estimatedSizeMix.actualSampleCups)} ly đã nhập thực tế trước đây: Size M ${formatNumber((estimatedSizeMix.shares.M ?? 0) * 100)}% và Size L ${formatNumber((estimatedSizeMix.shares.L ?? 0) * 100)}%. Chênh lệch quy đổi: ${formatNumber(Math.abs(estimate.milkDifferenceLiters))} L sữa và ${formatVnd(Math.abs(estimate.revenueDifference))} doanh thu.`
-                      : `Chưa có ngày nào nhập số ly thực tế nên hệ thống không thể biết size nào được mua nhiều hơn và đang tạm chia đều Size M/L. Muốn có tỷ lệ chính xác, hãy nhập số ly thực tế của cả hai size. Chênh lệch quy đổi hiện tại: ${formatNumber(Math.abs(estimate.milkDifferenceLiters))} L sữa và ${formatVnd(Math.abs(estimate.revenueDifference))} doanh thu.`
+                : "Hệ thống dùng doanh thu, giá bán tham chiếu và định mức hiện có để ước tính giá vốn. Không lưu các con số này như số ly hay số lít thực tế."
             }
             style={{ marginTop: 20 }}
-          />
-
-          <Table
-            size="small"
-            style={{ marginTop: 20 }}
-            rowKey="sizeCode"
-            pagination={false}
-            dataSource={estimate.sizeSummaries}
-            scroll={{ x: "max-content" }}
-            columns={[
-              { title: "Size", dataIndex: "sizeName" },
-              {
-                title: hasCompleteActualCupCount
-                  ? "Số ly thực tế"
-                  : "Số ly ước tính",
-                dataIndex: "quantity",
-                align: "right",
-                render: (value) => `${formatNumber(Number(value))} ly`,
-              },
-              {
-                title: "Cost nền + bao bì/ly",
-                align: "right",
-                render: (_, record) =>
-                  formatVnd(
-                    (record.quantity > 0
-                      ? record.milkCost / record.quantity
-                      : record.milkCostPerCup) +
-                      record.packagingCostPerCup,
-                  ),
-              },
-              {
-                title: "Topping ước tính/ly",
-                dataIndex: "toppingCostPerCup",
-                align: "right",
-                render: (value) => formatVnd(Number(value)),
-              },
-              {
-                title: "Cost biến đổi/ly",
-                dataIndex: "variableCostPerCup",
-                align: "right",
-                render: (value) => formatVnd(Number(value)),
-              },
-            ]}
           />
         </Card>
 
@@ -679,19 +421,6 @@ export default function SalesPage() {
                 ? `${selectedBatch.code} · ${formatVnd(selectedBatch.costPerLiter)}/L`
                 : "Chưa có mẻ sữa"}
             </Text>
-          </div>
-          <div className="summary-row">
-            <Text type="secondary">Sữa đã bán</Text>
-            <Text strong>{formatNumber(estimate.milkLitersSold)} L</Text>
-          </div>
-          <div className="summary-row">
-            <Text type="secondary">
-              Tổng số ly{" "}
-              {hasCompleteActualCupCount || hasActualTotalCups
-                ? "thực tế"
-                : "ước tính"}
-            </Text>
-            <Text strong>{formatNumber(estimate.totalCups)} ly</Text>
           </div>
           <div className="summary-row">
             <Text type="secondary">Doanh thu thực nhận</Text>
@@ -710,16 +439,7 @@ export default function SalesPage() {
             </>
           ) : null}
           <div className="summary-row">
-            <Text type="secondary">
-              Doanh thu bình quân/ly{" "}
-              {hasCompleteActualCupCount || hasActualTotalCups
-                ? "thực tế"
-                : "ước tính"}
-            </Text>
-            <Text>{formatVnd(estimate.averageRevenuePerCup)}</Text>
-          </div>
-          <div className="summary-row">
-            <Text type="secondary">Cost sữa nền theo số lít</Text>
+            <Text type="secondary">Cost sữa nền ước tính</Text>
             <Text>{formatVnd(estimate.totalMilkCost)}</Text>
           </div>
           <div className="summary-row">
@@ -792,48 +512,6 @@ export default function SalesPage() {
                   ? `${batch.code} · ${batch.name}`
                   : record.batchCode || record.batchName || "—";
               },
-            },
-            {
-              title: "Sữa bán",
-              align: "right",
-              render: (_, record) =>
-                `${formatNumber(recordMilkLiters(record))} L`,
-            },
-            {
-              title: "Size M",
-              align: "right",
-              render: (_, record) => `${sizeQuantity(record, "M")} ly`,
-            },
-            {
-              title: "Size L",
-              align: "right",
-              render: (_, record) => `${sizeQuantity(record, "L")} ly`,
-            },
-            {
-              title: "Tổng ly",
-              dataIndex: "totalCups",
-              align: "right",
-              render: (value, record) => (
-                <Space size={6}>
-                  <span>{formatNumber(Number(value))} ly</span>
-                  <Tag
-                    color={
-                      record.cupCountSource === "actual"
-                        ? "success"
-                        : record.cupCountSource === "actual-total"
-                          ? "processing"
-                        : "default"
-                    }
-                    style={{ marginInlineEnd: 0 }}
-                  >
-                    {record.cupCountSource === "actual"
-                      ? "M/L thực tế"
-                      : record.cupCountSource === "actual-total"
-                        ? "tổng thực tế"
-                        : "ước tính"}
-                  </Tag>
-                </Space>
-              ),
             },
             {
               title: "Doanh thu",

@@ -16,6 +16,7 @@
     "db:stop": "bun scripts/mongo-local.ts stop",
     "db:backup": "bun scripts/db-backup.ts",
     "db:restore": "bun scripts/db-restore.ts",
+    "recalculate:estimated-sales": "bun scripts/recalculate-estimated-sales.ts",
     "recalculate:products": "bun scripts/recalculate-product-costs.ts"
   },
   "dependencies": {

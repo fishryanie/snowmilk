@@ -6,6 +6,7 @@ import {
   PlusOutlined,
   SearchOutlined,
   ShoppingCartOutlined,
+  ToolOutlined,
 } from "@ant-design/icons";
 import {
   Alert,
@@ -18,8 +19,8 @@ import {
   Empty,
   Form,
   Input,
-  List,
   Popconfirm,
+  Segmented,
   Space,
   Statistic,
   Table,
@@ -61,6 +62,10 @@ type ClaimForm = {
   note?: string;
 };
 
+type SuggestionSourceFilter =
+  | "all"
+  | ClaimableInvestment["sourceType"];
+
 function sourceTypeLabel(sourceType: ClaimableInvestment["sourceType"]) {
   return sourceType === "equipment" ? "Tài sản" : "Nhập hàng";
 }
@@ -84,6 +89,8 @@ export function DivestmentClaimManager({
   const [saving, setSaving] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [suggestionQuery, setSuggestionQuery] = useState("");
+  const [suggestionSourceFilter, setSuggestionSourceFilter] =
+    useState<SuggestionSourceFilter>("all");
   const [historyQuery, setHistoryQuery] = useState("");
   const selectedKeySet = useMemo(
     () => new Set(selectedKeys),
@@ -111,23 +118,43 @@ export function DivestmentClaimManager({
   const normalizedSuggestionQuery = suggestionQuery
     .trim()
     .toLocaleLowerCase("vi");
+  const eligibleItemCounts = useMemo(
+    () =>
+      context.eligibleItems.reduce(
+        (counts, item) => {
+          counts[item.sourceType] += 1;
+          return counts;
+        },
+        { equipment: 0, purchase: 0 },
+      ),
+    [context.eligibleItems],
+  );
   const visibleSuggestions = useMemo(
     () =>
-      normalizedSuggestionQuery
-        ? context.eligibleItems.filter((item) =>
-            [
-              item.name,
-              item.code,
-              item.category,
-              sourceTypeLabel(item.sourceType),
-            ].some((value) =>
-              value
-                .toLocaleLowerCase("vi")
-                .includes(normalizedSuggestionQuery),
-            ),
-          )
-        : context.eligibleItems,
-    [context.eligibleItems, normalizedSuggestionQuery],
+      context.eligibleItems.filter((item) => {
+        if (
+          suggestionSourceFilter !== "all" &&
+          item.sourceType !== suggestionSourceFilter
+        ) {
+          return false;
+        }
+        if (!normalizedSuggestionQuery) return true;
+        return [
+          item.name,
+          item.code,
+          item.category,
+          sourceTypeLabel(item.sourceType),
+        ].some((value) =>
+          value
+            .toLocaleLowerCase("vi")
+            .includes(normalizedSuggestionQuery),
+        );
+      }),
+    [
+      context.eligibleItems,
+      normalizedSuggestionQuery,
+      suggestionSourceFilter,
+    ],
   );
   const normalizedHistoryQuery = historyQuery
     .trim()
@@ -206,7 +233,7 @@ export function DivestmentClaimManager({
           title="Xóa lần thu hồi này?"
           description={
             record.claims.length > 0
-              ? "Nguồn tiền của các phiếu nhập sẽ được hoàn lại thành Vốn chủ."
+              ? "Nguồn tiền của các phiếu nhập và tài sản đã chọn sẽ được hoàn lại thành Vốn chủ."
               : "Tổng vốn đã thu hồi sẽ được tính lại."
           }
           okText="Xóa"
@@ -229,6 +256,7 @@ export function DivestmentClaimManager({
     setDrawerOpen(false);
     setSelectedKeys([]);
     setSuggestionQuery("");
+    setSuggestionSourceFilter("all");
     form.resetFields();
   }
 
@@ -236,6 +264,7 @@ export function DivestmentClaimManager({
     form.setFieldsValue({ withdrawalDate: dayjs(), note: "" });
     setSelectedKeys([]);
     setSuggestionQuery("");
+    setSuggestionSourceFilter("all");
     setDrawerOpen(true);
   }
 
@@ -320,10 +349,10 @@ export function DivestmentClaimManager({
       <Card className="surface-card table-card divestment-claim-card">
         <div className="divestment-claim-overview">
           <div>
-            <Text strong>Claim từ lịch sử mua</Text>
+            <Text strong>Claim từ lịch sử đầu tư</Text>
             <Text type="secondary">
-              Claim sẽ đổi nguồn tiền của phiếu nhập từ Vốn chủ sang Tiền bán
-              hàng.
+              Claim sẽ đổi nguồn tiền của phiếu nhập hoặc tài sản từ Vốn chủ
+              sang Tiền bán hàng.
             </Text>
           </div>
           <div
@@ -362,8 +391,8 @@ export function DivestmentClaimManager({
           <Alert
             showIcon
             type="warning"
-            title={`${context.unavailableItemCount} phiếu nhập chưa thể claim`}
-            description="Giá trị phiếu nhập phải nhỏ hơn số tiền doanh nghiệp còn lại. Danh sách sẽ tự cập nhật khi có thêm doanh thu."
+            title={`${context.unavailableItemCount} khoản đầu tư chưa thể claim`}
+            description="Giá trị từng phiếu nhập hoặc tài sản phải nhỏ hơn số tiền doanh nghiệp còn lại. Danh sách sẽ tự cập nhật khi có thêm doanh thu."
           />
         )}
 
@@ -461,29 +490,54 @@ export function DivestmentClaimManager({
           <div>
             <Text strong>Các khoản có thể chọn</Text>
             <Text type="secondary">
-              Chỉ hiện phiếu nhập bằng Vốn chủ có giá trị nhỏ hơn số tiền còn
-              lại.
+              Hiện phiếu nhập và tài sản trong mục Đầu tư & tài sản dùng Vốn
+              chủ, có giá trị nhỏ hơn số tiền còn lại.
             </Text>
           </div>
-          <Input
-            allowClear
-            prefix={<SearchOutlined />}
-            placeholder="Tìm phiếu nhập…"
-            value={suggestionQuery}
-            onChange={(event) => setSuggestionQuery(event.target.value)}
-          />
+          <div className="divestment-suggestion-filters">
+            <Segmented
+              block
+              aria-label="Lọc khoản theo loại"
+              options={[
+                {
+                  label: `Tất cả (${context.eligibleItems.length})`,
+                  value: "all",
+                },
+                {
+                  label: `Nhập hàng (${eligibleItemCounts.purchase})`,
+                  value: "purchase",
+                },
+                {
+                  label: `Tài sản (${eligibleItemCounts.equipment})`,
+                  value: "equipment",
+                },
+              ]}
+              value={suggestionSourceFilter}
+              onChange={(value) =>
+                setSuggestionSourceFilter(
+                  value as SuggestionSourceFilter,
+                )
+              }
+            />
+            <Input
+              allowClear
+              prefix={<SearchOutlined />}
+              placeholder="Tìm phiếu nhập hoặc tài sản…"
+              value={suggestionQuery}
+              onChange={(event) => setSuggestionQuery(event.target.value)}
+            />
+          </div>
         </div>
 
         {visibleSuggestions.length > 0 ? (
-          <List
-            className="divestment-suggestion-list"
-            dataSource={visibleSuggestions}
-            renderItem={(item) => {
+          <div className="divestment-suggestion-list">
+            <div className="ant-list-items">
+              {visibleSuggestions.map((item) => {
               const selected = selectedKeySet.has(item.key);
               const disabled =
                 !selected && item.amount >= remainingLimit;
               return (
-                <List.Item>
+                <div className="ant-list-item" key={item.key}>
                   <Checkbox
                     checked={selected}
                     disabled={disabled}
@@ -494,7 +548,11 @@ export function DivestmentClaimManager({
                   >
                     <div className="divestment-suggestion-item">
                       <span className="divestment-suggestion-icon">
-                        <ShoppingCartOutlined />
+                        {item.sourceType === "equipment" ? (
+                          <ToolOutlined />
+                        ) : (
+                          <ShoppingCartOutlined />
+                        )}
                       </span>
                       <span className="divestment-suggestion-content">
                         <span>
@@ -514,17 +572,20 @@ export function DivestmentClaimManager({
                       </Text>
                     </div>
                   </Checkbox>
-                </List.Item>
+                </div>
               );
-            }}
-          />
+              })}
+            </div>
+          </div>
         ) : (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={
               normalizedSuggestionQuery
                 ? "Không tìm thấy khoản phù hợp"
-                : "Chưa có khoản lịch sử nào nằm trong hạn mức hiện tại"
+                : suggestionSourceFilter === "all"
+                  ? "Chưa có khoản lịch sử nào nằm trong hạn mức hiện tại"
+                  : `Chưa có ${suggestionSourceFilter === "equipment" ? "tài sản" : "phiếu nhập"} nào nằm trong hạn mức hiện tại`
             }
           />
         )}

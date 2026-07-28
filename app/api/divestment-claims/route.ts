@@ -4,6 +4,7 @@ import {
   createDivestmentClaim,
   getDivestmentClaimContext,
 } from "@/services/divestment.service";
+import { DIVESTMENT_CLAIM_KEY_PATTERN } from "@/lib/divestment-claims";
 
 const createClaimSchema = z
   .object({
@@ -13,8 +14,8 @@ const createClaimSchema = z
         z
           .string()
           .regex(
-            /^purchase:[a-f\d]{24}$/i,
-            "Phiếu nhập hàng không hợp lệ",
+            DIVESTMENT_CLAIM_KEY_PATTERN,
+            "Khoản đầu tư không hợp lệ",
           ),
       )
       .min(1, "Vui lòng chọn ít nhất một khoản")

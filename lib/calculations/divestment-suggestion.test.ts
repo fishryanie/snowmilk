@@ -40,6 +40,24 @@ describe("calculateDivestmentSuggestion", () => {
     expect(result.estimatedDaysUntilEligible).toBe(0);
   });
 
+  test("uses an authoritative business cash balance without subtracting a claim twice", () => {
+    const result = calculateDivestmentSuggestion({
+      cumulativeCashIn: 20_000_000,
+      cumulativeCashOut: 18_000_000,
+      withdrawnTotal: 4_000_000,
+      recordedCashBalance: 6_000_000,
+      remainingCapital: 3_000_000,
+      periodRevenue: 9_000_000,
+      periodOperatingCashOut: 3_000_000,
+      periodDays: 30,
+      salesDays: 12,
+    });
+
+    expect(result.recordedCashBalance).toBe(6_000_000);
+    expect(result.withdrawnTotal).toBe(4_000_000);
+    expect(result.suggestedAmount).toBe(3_000_000);
+  });
+
   test("never suggests more than the capital still unrecovered", () => {
     const result = calculateDivestmentSuggestion({
       cumulativeCashIn: 20_000_000,

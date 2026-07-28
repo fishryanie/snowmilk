@@ -93,17 +93,12 @@ body {
   flex: 0 0 42px;
   display: grid;
   place-items: center;
-  border-radius: 13px;
-  color: white;
-  font-size: 22px;
-  line-height: 1;
-  background:
-    radial-gradient(circle at 68% 18%, rgb(255 255 255 / 64%) 0 7%, transparent 8%),
-    linear-gradient(145deg, #55afc2, #197188);
-  box-shadow:
-    0 8px 20px rgb(9 52 63 / 28%),
-    inset 0 1px 0 rgb(255 255 255 / 30%);
-  text-shadow: 0 2px 5px rgb(9 55 67 / 32%);
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .brand h5.ant-typography {
@@ -280,6 +275,64 @@ body {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
+}
+
+.operations-health-card {
+  margin-bottom: 16px;
+}
+
+.operations-health-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.operations-health-item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fbfa;
+}
+
+.operations-health-item > .anticon {
+  font-size: 18px;
+  color: var(--muted);
+}
+
+.operations-health-item > div {
+  display: grid;
+  gap: 2px;
+}
+
+.operations-health-item.is-error {
+  border-color: rgb(196 76 76 / 24%);
+  background: rgb(196 76 76 / 5%);
+}
+
+.operations-health-item.is-error > .anticon {
+  color: var(--danger);
+}
+
+.operations-health-item.is-warning {
+  border-color: rgb(217 147 46 / 28%);
+  background: rgb(217 147 46 / 7%);
+}
+
+.operations-health-item.is-warning > .anticon {
+  color: var(--amber);
+}
+
+.operations-health-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
 }
 
 .kpi-card {
@@ -491,7 +544,7 @@ body {
 
 .divestment-suggestion-heading {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(0, 1fr) 340px;
   align-items: end;
   gap: 16px;
   margin: 4px 0 12px;
@@ -500,6 +553,11 @@ body {
 .divestment-suggestion-heading > div {
   display: grid;
   gap: 3px;
+}
+
+.divestment-suggestion-filters {
+  display: grid;
+  gap: 8px;
 }
 
 .divestment-suggestion-list .ant-list-items {
@@ -590,6 +648,25 @@ body {
 
 .cash-flow-section {
   margin-top: 24px;
+}
+
+.capital-recovery-card {
+  margin-top: 16px;
+}
+
+.capital-recovery-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.capital-recovery-summary > div {
+  display: grid;
+  gap: 3px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f7fbfc;
 }
 
 .cash-flow-heading {
@@ -1050,6 +1127,19 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .operations-health-item {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .operations-health-item .ant-btn {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .capital-recovery-summary {
+    grid-template-columns: 1fr;
+  }
+
   .divestment-check-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1274,7 +1364,7 @@ body {
     min-height: 44px;
   }
 
-  .purchase-mobile-list .ant-list-pagination {
+  .purchase-mobile-pagination {
     margin-block-start: 16px;
   }
 
@@ -1415,5 +1505,390 @@ body {
 
   .desktop-only {
     display: none;
+  }
+}
+
+/* Daily inventory */
+.inventory-page {
+  padding-bottom: 36px;
+}
+
+.inventory-page .page-heading {
+  margin-bottom: 30px;
+}
+
+.inventory-page .surface-card {
+  border-color: rgb(196 221 228 / 82%);
+  border-radius: 18px;
+  box-shadow:
+    0 14px 38px rgb(25 81 94 / 7%),
+    inset 0 1px 0 rgb(255 255 255 / 80%);
+}
+
+.inventory-date-control {
+  padding: 8px 10px 8px 14px;
+  border: 1px solid rgb(205 226 232 / 90%);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 78%);
+  box-shadow: 0 8px 24px rgb(24 82 96 / 6%);
+  backdrop-filter: blur(12px);
+}
+
+.inventory-connection-alert {
+  margin-bottom: 24px;
+}
+
+.inventory-content-stack {
+  display: grid;
+  align-items: start;
+  gap: 30px;
+}
+
+.inventory-content-stack > * {
+  margin: 0 !important;
+}
+
+.inventory-overview-section {
+  display: grid;
+  gap: 20px;
+}
+
+.inventory-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.55fr);
+  gap: 20px;
+}
+
+.inventory-total-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 190px;
+  color: white;
+  border: 0;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 88% 8%, rgb(255 255 255 / 24%), transparent 10rem),
+    linear-gradient(135deg, #1b7085 0%, #2e91a6 58%, #5bb4c4 100%);
+  box-shadow: 0 18px 40px rgb(23 102 122 / 20%);
+}
+
+.inventory-total-card::after {
+  content: "";
+  position: absolute;
+  right: 80px;
+  bottom: -78px;
+  width: 220px;
+  height: 220px;
+  border: 1px solid rgb(255 255 255 / 15%);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 28px rgb(255 255 255 / 5%),
+    0 0 0 62px rgb(255 255 255 / 3%);
+}
+
+.inventory-total-card-body {
+  display: flex;
+  min-height: 190px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px 30px;
+}
+
+.inventory-total-copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 7px;
+}
+
+.inventory-total-copy .ant-typography {
+  color: rgb(255 255 255 / 78%);
+}
+
+.inventory-total-copy h2.ant-typography {
+  margin: 0;
+  color: white;
+  font-size: clamp(32px, 4vw, 48px);
+  letter-spacing: -0.055em;
+}
+
+.inventory-eyebrow {
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.inventory-total-icon {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 78px;
+  height: 78px;
+  flex: 0 0 78px;
+  place-items: center;
+  color: white;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 24px;
+  background: rgb(255 255 255 / 13%);
+  font-size: 34px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 22%);
+  backdrop-filter: blur(8px);
+}
+
+.inventory-cups-card {
+  min-height: 190px;
+  background:
+    radial-gradient(circle at 94% 10%, rgb(217 147 46 / 19%), transparent 9rem),
+    rgb(255 255 255 / 86%);
+}
+
+.inventory-cups-card .ant-card-body {
+  display: flex;
+  min-height: 190px;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.inventory-cups-card .ant-statistic-title {
+  max-width: 250px;
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.inventory-cups-card .ant-statistic-content {
+  margin-block: 8px 12px;
+  font-size: clamp(34px, 4vw, 46px);
+  font-weight: 780;
+  letter-spacing: -0.05em;
+}
+
+.inventory-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.inventory-mini-card {
+  overflow: hidden;
+  position: relative;
+  min-height: 126px;
+  background:
+    linear-gradient(145deg, rgb(255 255 255 / 96%), rgb(248 252 253 / 92%));
+}
+
+.inventory-mini-card > .ant-card-body > .anticon {
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  color: rgb(40 127 150 / 18%);
+  font-size: 28px;
+}
+
+.inventory-mini-card .ant-statistic-title {
+  max-width: calc(100% - 34px);
+  min-height: 42px;
+  color: var(--muted);
+  font-weight: 620;
+}
+
+.inventory-mini-card .ant-statistic-content {
+  color: var(--ink);
+  font-size: clamp(20px, 1.7vw, 27px);
+  font-weight: 740;
+  letter-spacing: -0.04em;
+}
+
+.inventory-reconciliation,
+.inventory-table-card,
+.inventory-save-card,
+.inventory-history-card {
+  background: rgb(255 255 255 / 88%);
+}
+
+.inventory-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22px;
+  margin-bottom: 22px;
+}
+
+.inventory-section-heading h4.ant-typography,
+.inventory-save-card h4.ant-typography {
+  margin: 0 0 3px;
+  letter-spacing: -0.025em;
+}
+
+.inventory-reconciliation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 34px;
+}
+
+.inventory-progress-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.inventory-formula-note.ant-typography {
+  margin: 18px 0 0;
+  padding: 12px 14px;
+  color: var(--muted);
+  border-radius: 10px;
+  background: var(--brand-soft);
+}
+
+.inventory-formula-note .anticon {
+  margin-right: 6px;
+  color: var(--brand);
+}
+
+.inventory-table-card > .ant-card-body {
+  padding: 0;
+}
+
+.inventory-table-card .inventory-section-heading {
+  padding: 26px 26px 0;
+}
+
+.inventory-table-card .ant-table-wrapper {
+  border-top: 1px solid var(--line);
+}
+
+.inventory-table-card .ant-table-thead > tr > th {
+  color: var(--muted);
+  background: #f7fbfc;
+  font-size: 12px;
+  letter-spacing: 0.015em;
+}
+
+.inventory-table-card .ant-table-tbody > tr > td {
+  padding-block: 18px;
+}
+
+.inventory-table-card .ant-table-summary {
+  background: rgb(226 242 246 / 48%);
+}
+
+.inventory-table-card .ant-input-number {
+  width: 100%;
+}
+
+.inventory-item-name {
+  display: grid;
+  gap: 6px;
+}
+
+.inventory-money {
+  color: var(--brand-strong);
+  white-space: nowrap;
+}
+
+.inventory-save-card .ant-card-body {
+  display: grid;
+  gap: 20px;
+  padding: 26px;
+}
+
+.inventory-save-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 2px;
+}
+
+.inventory-history-card .ant-card-body {
+  padding: 26px 26px 16px;
+}
+
+@media (max-width: 1200px) {
+  .inventory-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .inventory-hero-grid,
+  .inventory-reconciliation-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .inventory-date-control {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .inventory-date-control .ant-picker {
+    flex: 1;
+    min-height: 42px;
+  }
+
+  .inventory-total-card-body {
+    min-height: 170px;
+    padding: 24px 20px;
+  }
+
+  .inventory-total-card {
+    min-height: 170px;
+  }
+
+  .inventory-total-icon {
+    display: none;
+  }
+
+  .inventory-total-copy h2.ant-typography {
+    font-size: 34px;
+  }
+
+  .inventory-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-mini-card .ant-statistic-title {
+    min-height: auto;
+  }
+
+  .inventory-section-heading,
+  .inventory-save-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inventory-page .page-heading {
+    margin-bottom: 22px;
+  }
+
+  .inventory-overview-section {
+    gap: 14px;
+  }
+
+  .inventory-content-stack {
+    gap: 22px;
+  }
+
+  .inventory-hero-grid,
+  .inventory-kpi-grid {
+    gap: 14px;
+  }
+
+  .inventory-table-heading .ant-segmented {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .inventory-table-heading .ant-segmented-group {
+    min-width: max-content;
+  }
+
+  .inventory-save-footer .ant-btn {
+    width: 100%;
+    min-height: 46px;
   }
 }

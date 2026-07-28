@@ -3,6 +3,9 @@ export const DIVESTMENT_CLAIM_SOURCE_TYPES = [
   "purchase",
 ] as const;
 
+export const DIVESTMENT_CLAIM_KEY_PATTERN =
+  /^(?:equipment|purchase):[a-f\d]{24}$/i;
+
 export type DivestmentClaimSourceType =
   (typeof DIVESTMENT_CLAIM_SOURCE_TYPES)[number];
 

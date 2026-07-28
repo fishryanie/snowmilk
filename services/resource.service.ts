@@ -623,7 +623,7 @@ export async function updateResource(
     if (!existing) return null;
     const resolved = await purchasePayload(payload as PurchaseInput);
     const purchase = await Purchase.findByIdAndUpdate(id, resolved, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
     await Promise.all([
@@ -640,7 +640,7 @@ export async function updateResource(
     return Product.findByIdAndUpdate(
       id,
       await productPayload(payload as ProductInput, existing.code, id),
-      { new: true, runValidators: true },
+      { returnDocument: "after", runValidators: true },
     );
   }
   if (resource === "batches") {
@@ -649,7 +649,7 @@ export async function updateResource(
     const batch = await MilkBatch.findByIdAndUpdate(
       id,
       await batchPayload(payload as BatchInput, existing.code, id),
-      { new: true, runValidators: true },
+      { returnDocument: "after", runValidators: true },
     );
     await Promise.all([
       recalculateProductCosts(),
@@ -673,12 +673,12 @@ export async function updateResource(
     return Equipment.findByIdAndUpdate(
       id,
       equipmentPayload(payload as EquipmentInput, existing.code),
-      { new: true, runValidators: true },
+      { returnDocument: "after", runValidators: true },
     );
   }
   if (resource === "ingredients") {
     const ingredient = await Ingredient.findByIdAndUpdate(id, payload, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
     if (ingredient?.category === "Topping") {
@@ -688,14 +688,14 @@ export async function updateResource(
   }
   if (resource === "sizes") {
     const size = await ProductSize.findByIdAndUpdate(id, payload, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
     if (size) await recalculateProductCosts({ sizeId: size._id });
     return size;
   }
   return resourceModels[resource].findByIdAndUpdate(id, payload, {
-    new: true,
+    returnDocument: "after",
     runValidators: true,
   });
 }

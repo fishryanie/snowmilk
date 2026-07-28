@@ -447,7 +447,7 @@ export default function BatchesPage() {
             </div>
             <Form.List name="ingredients">
               {(fields, { add, remove }) => (
-                <Space direction="vertical" size={10} style={{ width: "100%" }}>
+                <Space orientation="vertical" size={10} style={{ width: "100%" }}>
                   <Text strong>Chi tiết nguyên liệu</Text>
                   {fields.map((field) => (
                     <div className="batch-ingredient-row" key={field.key}>
@@ -474,7 +474,7 @@ export default function BatchesPage() {
                         rules={[{ required: true, message: "Nhập số lượng" }]}
                       >
                         <InputNumber
-                          addonAfter={
+                          suffix={
                             ingredientsById.get(
                               values?.ingredients?.[field.name]?.ingredientId,
                             )?.costUnit || "đơn vị"

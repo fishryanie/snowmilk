@@ -17,11 +17,31 @@ bun run db:start
 bun run dev
 ```
 
-Mở [http://localhost:3000](http://localhost:3000). Connection mặc định trong file mẫu:
+Mở [http://localhost:3000](http://localhost:3000). Cấu hình MongoDB local:
 
 ```env
-MONGODB_URI=mongodb://127.0.0.1:27017/snowmilk
+MONGODB_URI=mongodb://127.0.0.1:27017
+MONGODB_DB_NAME=snowmilk
 ```
+
+Với MongoDB Atlas, URI chỉ cần chứa cluster host. Ứng dụng tự URL-encode rồi
+chèn username/password vào URI:
+
+```env
+MONGODB_USERNAME=your_username
+MONGODB_PASSWORD=your_password
+MONGODB_URI=mongodb+srv://your-cluster.mongodb.net
+MONGODB_DB_NAME=snowmilk
+```
+
+Không thêm tiền tố `NEXT_PUBLIC_` vào các biến trên vì đây là thông tin chỉ
+dành cho server. Có thể tiếp tục dùng URI đầy đủ có sẵn credentials để tương
+thích cấu hình cũ; khi username/password được khai báo riêng, hai giá trị riêng
+này sẽ được ưu tiên.
+
+`MONGODB_DB_NAME` luôn nên được khai báo rõ ở production. Nếu bỏ trống,
+ứng dụng dùng `snowmilk`; điều này tránh vô tình ghi dữ liệu vào database mặc
+định `test` của MongoDB.
 
 MongoDB local được lưu trong `.mongodb/` của dự án. Kiểm tra hoặc dừng tiến trình:
 
@@ -63,6 +83,7 @@ bun run db:restore -- --from=backups/2026-07-23T12-00-00-000Z
 ```
 
 Restore dùng `--drop`, vì vậy collection đích sẽ được thay bằng dữ liệu trong backup đã chọn.
+Backup và restore chỉ thao tác database được khai báo trong `MONGODB_DB_NAME`.
 
 ## Cấu trúc chính
 
@@ -99,6 +120,7 @@ docs/                   phân tích, schema, business rules, đối chiếu
 - Một product–size là một product riêng.
 - Một sale là một ngày + mẻ + phương thức thanh toán, có `items[]`.
 - Giá và cost được snapshot tại thời điểm bán.
-- Không có tồn kho vì workbook hiện tại ghi rõ không quản lý tồn.
+- Kiểm kho là snapshot cuối ngày: nhập tồn thực tế để định giá kho và đối chiếu
+  số ly theo vỏ ly. Số ly suy ra là chỉ báo vận hành, không phải số bán thực tế.
 - Import giữ `sourceSheet`, `sourceRow`, `legacyId`.
 - Workbook có lỗi quy đổi kg/gram ở 6 biến thể topping; hệ thống cảnh báo và không tự sửa. Xem `docs/excel-analysis.md` và `docs/data-verification.md`.

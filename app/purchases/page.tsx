@@ -25,7 +25,7 @@ import {
   Form,
   Input,
   InputNumber,
-  List,
+  Pagination,
   Popconfirm,
   Select,
   Space,
@@ -146,6 +146,7 @@ export default function PurchasesPage() {
   const [editing, setEditing] = useState<Purchase | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedPurchaseKeys, setSelectedPurchaseKeys] = useState<Key[]>([]);
+  const [mobilePage, setMobilePage] = useState(1);
   const {
     data: purchases,
     loading: purchasesLoading,
@@ -248,6 +249,15 @@ export default function PurchasesPage() {
           : 0,
     };
   }, [visiblePurchases]);
+  const mobilePageSize = 20;
+  const safeMobilePage = Math.min(
+    mobilePage,
+    Math.max(1, Math.ceil(visiblePurchases.length / mobilePageSize)),
+  );
+  const mobilePurchases = visiblePurchases.slice(
+    (safeMobilePage - 1) * mobilePageSize,
+    safeMobilePage * mobilePageSize,
+  );
   const selectedPurchaseKeySet = useMemo(
     () => new Set(selectedPurchaseKeys),
     [selectedPurchaseKeys],
@@ -734,20 +744,14 @@ export default function PurchasesPage() {
             scroll={{ x: "max-content" }}
           />
         </div>
-        <List
-          className="purchase-mobile-list"
-          rowKey={purchaseKey}
-          dataSource={visiblePurchases}
-          locale={{ emptyText: <Empty description="Chưa có lần nhập hàng" /> }}
-          pagination={{
-            pageSize: 20,
-            size: "small",
-            showSizeChanger: false,
-            position: "bottom",
-            align: "center",
-          }}
-          renderItem={(record) => (
-            <List.Item className="purchase-mobile-item">
+        <div className="purchase-mobile-list">
+          {mobilePurchases.length > 0 ? (
+            <div className="ant-list-items">
+              {mobilePurchases.map((record) => (
+                <div
+                  className="ant-list-item purchase-mobile-item"
+                  key={purchaseKey(record)}
+                >
               <article className="purchase-mobile-card">
                 <div className="purchase-card-heading">
                   <Checkbox
@@ -810,9 +814,25 @@ export default function PurchasesPage() {
                 )}
                 {renderPurchaseActions(record, true)}
               </article>
-            </List.Item>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Empty description="Chưa có lần nhập hàng" />
           )}
-        />
+          {visiblePurchases.length > mobilePageSize ? (
+            <Pagination
+              className="purchase-mobile-pagination"
+              current={safeMobilePage}
+              pageSize={mobilePageSize}
+              total={visiblePurchases.length}
+              showSizeChanger={false}
+              size="small"
+              align="center"
+              onChange={setMobilePage}
+            />
+          ) : null}
+        </div>
       </Card>
 
       <Drawer

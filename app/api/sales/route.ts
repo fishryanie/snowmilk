@@ -1,11 +1,8 @@
 import { z } from "zod";
 import { apiError, apiSuccess, errorMessage } from "@/lib/api-response";
 import {
-  buildEstimatedSizeMix,
   buildDailySaleAssumptions,
-  calculateDailySaleEstimate,
-  calculateDailySaleEstimateFromMilk,
-  calculateDailySaleEstimateFromTotalCups,
+  calculateDailySaleEstimateFromRevenue,
 } from "@/lib/calculations/daily-sales";
 import { connectMongo } from "@/lib/mongodb";
 import { Equipment } from "@/models/Equipment";
@@ -29,45 +26,15 @@ const dailySaleSchema = z
     batchId: z
       .string()
       .regex(/^[a-f\d]{24}$/i, "Mẻ sữa không hợp lệ"),
-    milkLitersSold: z.coerce.number().positive(),
-    netRevenue: z.coerce.number().min(0),
-    cashReceived: z.coerce.number().int().min(0).nullable().default(null),
-    bankTransferReceived: z.coerce
-      .number()
-      .int()
-      .min(0)
-      .nullable()
-      .default(null),
-    actualSizeQuantities: z
-      .object({
-        M: z.coerce.number().int().min(0),
-        L: z.coerce.number().int().min(0),
-      })
-      .refine(({ M, L }) => M + L > 0, {
-        message: "Tổng số ly thực tế phải lớn hơn 0",
-      })
-      .optional(),
-    actualTotalCups: z.coerce.number().int().positive().optional(),
+    netRevenue: z.coerce.number().int().positive(),
+    cashReceived: z.coerce.number().int().min(0),
+    bankTransferReceived: z.coerce.number().int().min(0),
     note: z.string().trim().optional().default(""),
     overwrite: z.boolean().optional().default(false),
   })
   .superRefine(
-    (
-      {
-        cashReceived,
-        bankTransferReceived,
-        netRevenue,
-        actualSizeQuantities,
-        actualTotalCups,
-      },
-      context,
-    ) => {
-      const hasPaymentBreakdown =
-        cashReceived !== null || bankTransferReceived !== null;
-      const paymentTotal =
-        (cashReceived ?? 0) + (bankTransferReceived ?? 0);
-
-      if (hasPaymentBreakdown && paymentTotal !== netRevenue) {
+    ({ cashReceived, bankTransferReceived, netRevenue }, context) => {
+      if (cashReceived + bankTransferReceived !== netRevenue) {
         context.addIssue({
           code: "custom",
           path: ["netRevenue"],
@@ -75,31 +42,12 @@ const dailySaleSchema = z
             "Tổng doanh thu phải bằng tiền mặt đã nhận cộng tiền chuyển khoản",
         });
       }
-      if (
-        actualSizeQuantities &&
-        actualTotalCups !== undefined &&
-        actualSizeQuantities.M + actualSizeQuantities.L !== actualTotalCups
-      ) {
-        context.addIssue({
-          code: "custom",
-          path: ["actualTotalCups"],
-          message:
-            "Tổng số ly thực tế phải bằng số ly Size M cộng Size L",
-        });
-      }
     },
   )
   .strict();
 
 async function dailySaleContext(selectedBatchId?: string) {
-  const [
-    sizes,
-    products,
-    settings,
-    depreciation,
-    batches,
-    actualSizeHistory,
-  ] = await Promise.all([
+  const [sizes, products, settings, depreciation, batches] = await Promise.all([
     ProductSize.find({
       code: { $in: ["M", "L"] },
       isActive: true,
@@ -127,12 +75,6 @@ async function dailySaleContext(selectedBatchId?: string) {
     MilkBatch.find()
       .sort({ cookedAt: -1, createdAt: -1 })
       .select("_id code name actualLiters cookedAt costPerLiter costPerMl")
-      .lean(),
-    Sale.find({
-      entryMode: "daily-summary",
-      cupCountSource: "actual",
-    })
-      .select("cupCountSource sizeSummaries.sizeCode sizeSummaries.quantity")
       .lean(),
   ]);
   const settingsByKey = new Map(
@@ -186,22 +128,8 @@ async function dailySaleContext(selectedBatchId?: string) {
     costPerLiter: Number(batch.costPerLiter ?? 0),
     costPerMl: Number(batch.costPerMl ?? 0),
   }));
-  const estimatedSizeMix = buildEstimatedSizeMix(
-    actualSizeHistory.map((sale) => ({
-      cupCountSource: sale.cupCountSource,
-      sizeSummaries: sale.sizeSummaries.map(
-        (summary: { sizeCode: string; quantity?: number }) => ({
-          sizeCode: summary.sizeCode,
-          quantity: Number(summary.quantity ?? 0),
-        }),
-      ),
-    })),
-    ["M", "L"],
-  );
-
   return {
     batches: availableBatches,
-    estimatedSizeMix,
     assumptions:
       selectedBatch
         ? assumptions.map((assumption) => ({
@@ -251,19 +179,12 @@ export async function POST(request: Request) {
     const {
       overwrite,
       batchId,
-      milkLitersSold,
       netRevenue,
       cashReceived,
       bankTransferReceived,
-      actualSizeQuantities,
-      actualTotalCups,
       ...input
     } = parsed.data;
-    const {
-      assumptions,
-      costBasis,
-      estimatedSizeMix,
-    } = await dailySaleContext(batchId);
+    const { assumptions, costBasis } = await dailySaleContext(batchId);
     if (!costBasis) {
       return apiError(
         "Mẻ sữa đã chọn không còn tồn tại. Hãy tải lại và chọn mẻ khác.",
@@ -282,27 +203,10 @@ export async function POST(request: Request) {
         422,
       );
     }
-    const totals = actualSizeQuantities
-      ? calculateDailySaleEstimate(
-          actualSizeQuantities,
-          netRevenue,
-          assumptions,
-          milkLitersSold,
-        )
-      : actualTotalCups !== undefined
-        ? calculateDailySaleEstimateFromTotalCups(
-            actualTotalCups,
-            milkLitersSold,
-            netRevenue,
-            assumptions,
-            estimatedSizeMix.shares,
-          )
-        : calculateDailySaleEstimateFromMilk(
-          milkLitersSold,
-          netRevenue,
-          assumptions,
-          estimatedSizeMix.shares,
-        );
+    const totals = calculateDailySaleEstimateFromRevenue(
+      netRevenue,
+      assumptions,
+    );
     const missingCost = totals.sizeSummaries.find(
       (summary) => summary.quantity > 0 && summary.sampleCount === 0,
     );
@@ -314,7 +218,7 @@ export async function POST(request: Request) {
     }
     if (totals.totalCups <= 0) {
       return apiError(
-        "Không thể quy đổi lượng sữa thành số ly ước tính.",
+        "Không thể quy đổi doanh thu thành số ly ước tính.",
         422,
       );
     }
@@ -353,23 +257,12 @@ export async function POST(request: Request) {
           ...totals,
           cashReceived,
           bankTransferReceived,
-          cupCountSource: actualSizeQuantities
-            ? "actual"
-            : actualTotalCups !== undefined
-              ? "actual-total"
-              : "estimated",
-          estimationMethod:
-            actualSizeQuantities
-              ? `Số ly Size M và Size L do người dùng nhập thực tế; cost sữa nền tính trực tiếp theo số lít và mẻ ${costBasis.code} - ${costBasis.name}; topping dùng trung vị và khoảng thấp nhất–cao nhất.`
-              : actualTotalCups !== undefined
-                ? `Tổng ${actualTotalCups} ly do người dùng nhập thực tế; cơ cấu Size M/L chỉ được ước tính từ tổng doanh thu và giá bán tham chiếu, không dùng số lít sữa; cost sữa nền vẫn tính trực tiếp theo số lít và mẻ ${costBasis.code} - ${costBasis.name}; topping dùng trung vị và khoảng thấp nhất–cao nhất.`
-              : estimatedSizeMix.source === "actual-history"
-                ? `Cơ cấu size dùng tỷ lệ từ ${estimatedSizeMix.actualSampleCups} ly đã nhập thực tế trước đây; tổng số ly được ước tính từ tổng lít sữa, doanh thu, định mức ml/ly và giá tham chiếu; cost sữa nền tính trực tiếp theo số lít và mẻ ${costBasis.code} - ${costBasis.name}; topping dùng trung vị và khoảng thấp nhất–cao nhất.`
-                : `Chưa có lịch sử số ly thực tế nên cơ cấu size tạm chia đều; tổng số ly được ước tính từ tổng lít sữa, doanh thu, định mức ml/ly và giá tham chiếu; cost sữa nền tính trực tiếp theo số lít và mẻ ${costBasis.code} - ${costBasis.name}; topping dùng trung vị và khoảng thấp nhất–cao nhất.`,
+          cupCountSource: "estimated",
+          estimationMethod: `Số ly Size M/L và lượng sữa nền đều được ước tính chỉ từ doanh thu thực nhận, giá tham chiếu và giả định M/L cân bằng; giá vốn dùng mẻ ${costBasis.code} - ${costBasis.name}; topping dùng trung vị và khoảng thấp nhất–cao nhất.`,
           note: input.note,
         },
       },
-      { upsert: true, new: true, runValidators: true },
+      { upsert: true, returnDocument: "after", runValidators: true },
     );
     return apiSuccess(
       data,

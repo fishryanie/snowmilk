@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { getMongoConfig } from "@/lib/mongodb-config";
 
 type MongooseCache = {
   connection: typeof mongoose | null;
@@ -15,16 +16,12 @@ global.mongooseCache = cache;
 export async function connectMongo(): Promise<typeof mongoose> {
   if (cache.connection) return cache.connection;
 
-  const uri = process.env.MONGODB_URI;
-  if (!uri) {
-    throw new Error(
-      "Thiếu MONGODB_URI. Hãy sao chép .env.example thành .env.local và cấu hình MongoDB.",
-    );
-  }
+  const { uri, dbName } = getMongoConfig();
 
   cache.promise ??= mongoose
     .connect(uri, {
       bufferCommands: false,
+      dbName,
       serverSelectionTimeoutMS: 5000,
     })
     .catch((error) => {

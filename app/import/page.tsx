@@ -202,7 +202,7 @@ export default function ImportPage() {
           </Card>
           {preview.issues.length > 0 && (
             <Card className="surface-card" title="Cảnh báo cần đối soát" style={{ marginTop: 16 }}>
-              <Space direction="vertical" style={{ width: "100%" }}>
+              <Space orientation="vertical" style={{ width: "100%" }}>
                 {preview.issues.map((issue, index) => (
                   <Alert
                     key={`${issue.sheet}-${issue.row}-${index}`}

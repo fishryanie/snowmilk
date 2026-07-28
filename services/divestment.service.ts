@@ -6,6 +6,7 @@ import {
   type ClaimableInvestment,
   type DivestmentClaimSnapshot,
 } from "@/lib/divestment-claims";
+import { calculateOwnerInvestmentTotal } from "@/lib/investment-total";
 import { connectMongo } from "@/lib/mongodb";
 import {
   DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
@@ -73,9 +74,11 @@ type DivestmentRecord = {
   createdAt?: Date;
 };
 
-function isOwnerFundedPurchase(purchase: PurchaseRecord) {
+function isOwnerFundedInvestment(
+  investment: PurchaseRecord | EquipmentRecord,
+) {
   return (
-    (purchase.fundingSource ??
+    (investment.fundingSource ??
       DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE) === "owner_capital"
   );
 }
@@ -130,41 +133,32 @@ async function buildClaimContext() {
         .filter((key): key is string => Boolean(key)),
     ),
   );
-  const purchasesById = new Map(
-    purchases.map((purchase) => [String(purchase._id), purchase]),
-  );
-  const claimedPurchaseInvestment = divestments.reduce(
-    (sum, divestment) =>
-      sum +
-      (divestment.claims ?? []).reduce((claimSum, claim) => {
-        if (claim.sourceType !== "purchase") return claimSum;
-        const purchase = purchasesById.get(String(claim.sourceId ?? ""));
-        return purchase && isOwnerFundedPurchase(purchase)
-          ? claimSum
-          : claimSum + safeAmount(claim.amount);
-      }, 0),
-    0,
-  );
   const withdrawnTotal = divestments.reduce(
     (sum, divestment) => sum + safeAmount(divestment.amount),
     0,
   );
-  const investmentTotal =
-    equipment.reduce(
-      (sum, item) =>
-        (item.fundingSource ??
-          DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE) === "owner_capital"
-          ? sum + safeAmount(item.totalAmount)
-          : sum,
-      0,
-    ) +
-    purchases
-      .filter(isOwnerFundedPurchase)
-      .reduce(
-        (sum, purchase) => sum + safeAmount(purchase.totalAmount),
-        0,
-      ) +
-    claimedPurchaseInvestment;
+  const investmentTotal = calculateOwnerInvestmentTotal({
+    purchases: purchases.map((purchase) => ({
+      id: String(purchase._id),
+      amount: safeAmount(purchase.totalAmount),
+      fundingSource: purchase.fundingSource,
+    })),
+    equipment: equipment.map((item) => ({
+      id: String(item._id),
+      amount: safeAmount(item.totalAmount),
+      fundingSource: item.fundingSource,
+    })),
+    claims: divestments.flatMap((divestment) =>
+      (divestment.claims ?? []).map((claim) => ({
+        sourceId: String(claim.sourceId ?? ""),
+        sourceType:
+          claim.sourceType === "equipment"
+            ? ("equipment" as const)
+            : ("purchase" as const),
+        amount: safeAmount(claim.amount),
+      })),
+    ),
+  });
   const summary = calculateCapitalRecovery(
     investmentTotal,
     withdrawnTotal,
@@ -192,7 +186,7 @@ async function buildClaimContext() {
     salesFundedEquipmentTotal,
   );
   const purchaseItems: ClaimableInvestment[] = purchases
-    .filter(isOwnerFundedPurchase)
+    .filter(isOwnerFundedInvestment)
     .map((purchase) => {
       const sourceId = String(purchase._id);
       return {
@@ -206,7 +200,22 @@ async function buildClaimContext() {
         amount: safeAmount(purchase.totalAmount),
       };
     });
-  const unclaimedItems = purchaseItems
+  const equipmentItems: ClaimableInvestment[] = equipment
+    .filter(isOwnerFundedInvestment)
+    .map((item) => {
+      const sourceId = String(item._id);
+      return {
+        key: divestmentClaimKey("equipment", sourceId),
+        sourceType: "equipment",
+        sourceId,
+        code: String(item.code ?? ""),
+        name: String(item.name ?? "Tài sản"),
+        category: String(item.category ?? ""),
+        purchaseDate: dateIso(item.purchaseDate),
+        amount: safeAmount(item.totalAmount),
+      };
+    });
+  const unclaimedItems = [...purchaseItems, ...equipmentItems]
     .filter(
       (item) => item.amount > 0 && !claimedSourceKeys.has(item.key),
     )
@@ -288,10 +297,16 @@ export async function createDivestmentClaim(input: ClaimInput) {
     sourceDate: item.purchaseDate,
     amount: item.amount,
   }));
-  const purchaseIds = selectedItems.map((item) => item.sourceId);
+  const purchaseIds = selectedItems
+    .filter((item) => item.sourceType === "purchase")
+    .map((item) => item.sourceId);
+  const equipmentIds = selectedItems
+    .filter((item) => item.sourceType === "equipment")
+    .map((item) => item.sourceId);
 
   let createdClaimId: unknown;
   let changedPurchaseIds: string[] = [];
+  let changedEquipmentIds: string[] = [];
   try {
     const divestment = await Divestment.create({
       withdrawalDate,
@@ -301,31 +316,57 @@ export async function createDivestmentClaim(input: ClaimInput) {
     });
     createdClaimId = divestment._id;
 
-    const updateResults = await Promise.allSettled(
-      purchaseIds.map((purchaseId) =>
-        Purchase.findOneAndUpdate(
-          {
-            _id: purchaseId,
-            ...ownerCapitalPurchaseFilter(),
-          },
-          { $set: { fundingSource: "sales_revenue" } },
-        )
-          .select("_id")
-          .lean(),
+    const [purchaseUpdateResults, equipmentUpdateResults] = await Promise.all([
+      Promise.allSettled(
+        purchaseIds.map((purchaseId) =>
+          Purchase.findOneAndUpdate(
+            {
+              _id: purchaseId,
+              ...ownerCapitalPurchaseFilter(),
+            },
+            { $set: { fundingSource: "sales_revenue" } },
+          )
+            .select("_id")
+            .lean(),
+        ),
       ),
-    );
-    changedPurchaseIds = updateResults.flatMap((result) =>
+      Promise.allSettled(
+        equipmentIds.map((equipmentId) =>
+          Equipment.findOneAndUpdate(
+            {
+              _id: equipmentId,
+              ...ownerCapitalPurchaseFilter(),
+            },
+            { $set: { fundingSource: "sales_revenue" } },
+          )
+            .select("_id")
+            .lean(),
+        ),
+      ),
+    ]);
+    changedPurchaseIds = purchaseUpdateResults.flatMap((result) =>
       result.status === "fulfilled" && result.value
         ? [String(result.value._id)]
         : [],
     );
-    const failedUpdate = updateResults.find(
+    changedEquipmentIds = equipmentUpdateResults.flatMap((result) =>
+      result.status === "fulfilled" && result.value
+        ? [String(result.value._id)]
+        : [],
+    );
+    const failedUpdate = [
+      ...purchaseUpdateResults,
+      ...equipmentUpdateResults,
+    ].find(
       (result) => result.status === "rejected",
     );
     if (failedUpdate?.status === "rejected") throw failedUpdate.reason;
-    if (changedPurchaseIds.length !== selectedItems.length) {
+    if (
+      changedPurchaseIds.length + changedEquipmentIds.length !==
+      selectedItems.length
+    ) {
       throw new Error(
-        "Có phiếu nhập vừa đổi nguồn tiền ở thao tác khác. Hãy tải lại danh sách.",
+        "Có khoản đầu tư vừa đổi nguồn tiền ở thao tác khác. Hãy tải lại danh sách.",
       );
     }
 
@@ -336,13 +377,22 @@ export async function createDivestmentClaim(input: ClaimInput) {
         _id: createdClaimId,
       }).catch(() => null);
       if (rollback?.deletedCount) {
-        await Purchase.updateMany(
-          {
-            _id: { $in: changedPurchaseIds },
-            fundingSource: "sales_revenue",
-          },
-          { $set: { fundingSource: "owner_capital" } },
-        ).catch(() => undefined);
+        await Promise.all([
+          Purchase.updateMany(
+            {
+              _id: { $in: changedPurchaseIds },
+              fundingSource: "sales_revenue",
+            },
+            { $set: { fundingSource: "owner_capital" } },
+          ).catch(() => undefined),
+          Equipment.updateMany(
+            {
+              _id: { $in: changedEquipmentIds },
+              fundingSource: "sales_revenue",
+            },
+            { $set: { fundingSource: "owner_capital" } },
+          ).catch(() => undefined),
+        ]);
       }
     }
     if (
@@ -367,41 +417,73 @@ export async function deleteDivestmentClaim(id: string) {
   const purchaseIds = (divestment.claims ?? [])
     .filter((claim) => claim.sourceType === "purchase" && claim.sourceId)
     .map((claim) => String(claim.sourceId));
-  const purchasesToRestore =
+  const equipmentIds = (divestment.claims ?? [])
+    .filter((claim) => claim.sourceType === "equipment" && claim.sourceId)
+    .map((claim) => String(claim.sourceId));
+  const [purchasesToRestore, equipmentToRestore] = await Promise.all([
     purchaseIds.length > 0
-      ? await Purchase.find({
+      ? Purchase.find({
           _id: { $in: purchaseIds },
           fundingSource: "sales_revenue",
         })
           .select("_id")
           .lean()
-      : [];
+      : [],
+    equipmentIds.length > 0
+      ? Equipment.find({
+          _id: { $in: equipmentIds },
+          fundingSource: "sales_revenue",
+        })
+          .select("_id")
+          .lean()
+      : [],
+  ]);
   const restoredPurchaseIds = purchasesToRestore.map((purchase) =>
     String(purchase._id),
   );
-
-  if (restoredPurchaseIds.length > 0) {
-    await Purchase.updateMany(
-      {
-        _id: { $in: restoredPurchaseIds },
-        fundingSource: "sales_revenue",
-      },
-      { $set: { fundingSource: "owner_capital" } },
-    );
-  }
+  const restoredEquipmentIds = equipmentToRestore.map((item) =>
+    String(item._id),
+  );
 
   try {
+    await Promise.all([
+      restoredPurchaseIds.length > 0
+        ? Purchase.updateMany(
+            {
+              _id: { $in: restoredPurchaseIds },
+              fundingSource: "sales_revenue",
+            },
+            { $set: { fundingSource: "owner_capital" } },
+          )
+        : Promise.resolve(),
+      restoredEquipmentIds.length > 0
+        ? Equipment.updateMany(
+            {
+              _id: { $in: restoredEquipmentIds },
+              fundingSource: "sales_revenue",
+            },
+            { $set: { fundingSource: "owner_capital" } },
+          )
+        : Promise.resolve(),
+    ]);
     return await Divestment.findByIdAndDelete(id);
   } catch (error) {
-    if (restoredPurchaseIds.length > 0) {
-      await Purchase.updateMany(
+    await Promise.all([
+      Purchase.updateMany(
         {
           _id: { $in: restoredPurchaseIds },
           fundingSource: "owner_capital",
         },
         { $set: { fundingSource: "sales_revenue" } },
-      ).catch(() => undefined);
-    }
+      ).catch(() => undefined),
+      Equipment.updateMany(
+        {
+          _id: { $in: restoredEquipmentIds },
+          fundingSource: "owner_capital",
+        },
+        { $set: { fundingSource: "sales_revenue" } },
+      ).catch(() => undefined),
+    ]);
     throw error;
   }
 }

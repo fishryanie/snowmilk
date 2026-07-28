@@ -64,20 +64,6 @@ export type DailySaleEstimate = {
   estimatedMargin: number;
 };
 
-export type HistoricalSaleSizeMix = {
-  cupCountSource?: "estimated" | "actual-total" | "actual";
-  sizeSummaries: {
-    sizeCode: string;
-    quantity: number;
-  }[];
-};
-
-export type EstimatedSizeMix = {
-  shares: Record<string, number>;
-  actualSampleCups: number;
-  source: "actual-history" | "neutral-default";
-};
-
 function median(values: number[]) {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -93,44 +79,6 @@ function nonNegative(value: number) {
 
 function positive(value: number) {
   return Number.isFinite(value) && value > 0;
-}
-
-export function buildEstimatedSizeMix(
-  history: HistoricalSaleSizeMix[],
-  sizeCodes: string[],
-): EstimatedSizeMix {
-  const totals = Object.fromEntries(sizeCodes.map((code) => [code, 0]));
-
-  for (const sale of history) {
-    if (sale.cupCountSource !== "actual") continue;
-    for (const summary of sale.sizeSummaries) {
-      if (!(summary.sizeCode in totals)) continue;
-      totals[summary.sizeCode] += Math.max(0, summary.quantity);
-    }
-  }
-
-  const actualSampleCups = Object.values(totals).reduce(
-    (sum, quantity) => sum + quantity,
-    0,
-  );
-  if (actualSampleCups > 0) {
-    return {
-      shares: Object.fromEntries(
-        sizeCodes.map((code) => [code, totals[code] / actualSampleCups]),
-      ),
-      actualSampleCups,
-      source: "actual-history",
-    };
-  }
-
-  const neutralShare = sizeCodes.length > 0 ? 1 / sizeCodes.length : 0;
-  return {
-    shares: Object.fromEntries(
-      sizeCodes.map((code) => [code, neutralShare]),
-    ),
-    actualSampleCups: 0,
-    source: "neutral-default",
-  };
 }
 
 export function buildDailySaleAssumptions(
@@ -183,23 +131,18 @@ function variableCostPerCup(
   return directCost * (1 + assumption.overheadRate);
 }
 
-export function estimateSizeQuantities(
-  milkLitersSold: number,
+export function estimateSizeQuantitiesFromRevenue(
   netRevenue: number,
   assumptions: DailySaleAssumption[],
-  preferredSizeShares?: Readonly<Record<string, number>>,
 ) {
   const quantities = Object.fromEntries(
     assumptions.map((assumption) => [assumption.sizeCode, 0]),
   );
   const usableAssumptions = assumptions.filter(
-    (assumption) =>
-      positive(assumption.milkMl) &&
-      nonNegative(assumption.referenceSellingPrice),
+    (assumption) => positive(assumption.referenceSellingPrice),
   );
-  const targetMilkMl = Math.max(0, milkLitersSold) * 1_000;
   const revenue = Math.max(0, netRevenue);
-  if (targetMilkMl <= 0 || usableAssumptions.length === 0) {
+  if (revenue === 0 || usableAssumptions.length === 0) {
     return quantities;
   }
 
@@ -207,174 +150,60 @@ export function estimateSizeQuantities(
     const [assumption] = usableAssumptions;
     quantities[assumption.sizeCode] = Math.max(
       1,
-      Math.round(targetMilkMl / assumption.milkMl),
+      Math.round(revenue / assumption.referenceSellingPrice),
     );
     return quantities;
   }
 
   const [first, second] = usableAssumptions;
-  const firstPreferredShare = Math.max(
-    0,
-    preferredSizeShares?.[first.sizeCode] ?? 1,
-  );
-  const secondPreferredShare = Math.max(
-    0,
-    preferredSizeShares?.[second.sizeCode] ?? 1,
-  );
-  const preferredShareTotal =
-    firstPreferredShare + secondPreferredShare;
-  const normalizedFirstShare =
-    preferredShareTotal > 0
-      ? firstPreferredShare / preferredShareTotal
-      : 0.5;
-  const minimumMilkMl = Math.min(first.milkMl, second.milkMl);
-  const positivePrices = [first, second]
-    .map((assumption) => assumption.referenceSellingPrice)
-    .filter(positive);
-  const minimumPrice =
-    positivePrices.length > 0 ? Math.min(...positivePrices) : 1;
-  const maximumCups = Math.ceil(targetMilkMl / minimumMilkMl) + 2;
+  const maximumCups =
+    Math.ceil(
+      revenue /
+        Math.min(
+          first.referenceSellingPrice,
+          second.referenceSellingPrice,
+        ),
+    ) + 1;
   let best:
     | {
         firstQuantity: number;
         secondQuantity: number;
-        score: number;
-        milkError: number;
         revenueError: number;
-      }
-    | undefined;
-
-  for (let firstQuantity = 0; firstQuantity <= maximumCups; firstQuantity += 1) {
-    for (
-      let secondQuantity = 0;
-      secondQuantity <= maximumCups;
-      secondQuantity += 1
-    ) {
-      const totalQuantity = firstQuantity + secondQuantity;
-      if (totalQuantity === 0) continue;
-      if (
-        Math.abs(
-          firstQuantity - totalQuantity * normalizedFirstShare,
-        ) > 0.5
-      ) {
-        continue;
-      }
-      const estimatedMilkMl =
-        firstQuantity * first.milkMl + secondQuantity * second.milkMl;
-      const estimatedRevenue =
-        firstQuantity * first.referenceSellingPrice +
-        secondQuantity * second.referenceSellingPrice;
-      const milkError = Math.abs(estimatedMilkMl - targetMilkMl);
-      const revenueError = Math.abs(estimatedRevenue - revenue);
-      const score =
-        (milkError / minimumMilkMl) * 3 + revenueError / minimumPrice;
-      const isBetter =
-        !best ||
-        score < best.score ||
-        (score === best.score && milkError < best.milkError) ||
-        (score === best.score &&
-          milkError === best.milkError &&
-          revenueError < best.revenueError);
-
-      if (isBetter) {
-        best = {
-          firstQuantity,
-          secondQuantity,
-          score,
-          milkError,
-          revenueError,
-        };
-      }
-    }
-  }
-
-  if (best) {
-    quantities[first.sizeCode] = best.firstQuantity;
-    quantities[second.sizeCode] = best.secondQuantity;
-  }
-  return quantities;
-}
-
-export function estimateSizeQuantitiesFromTotalCups(
-  totalCups: number,
-  netRevenue: number,
-  assumptions: DailySaleAssumption[],
-  preferredSizeShares?: Readonly<Record<string, number>>,
-) {
-  const quantities = Object.fromEntries(
-    assumptions.map((assumption) => [assumption.sizeCode, 0]),
-  );
-  const normalizedTotalCups = Math.max(0, Math.trunc(totalCups));
-  const usableAssumptions = assumptions.filter(
-    (assumption) => nonNegative(assumption.referenceSellingPrice),
-  );
-  if (normalizedTotalCups === 0 || usableAssumptions.length === 0) {
-    return quantities;
-  }
-
-  if (usableAssumptions.length === 1) {
-    quantities[usableAssumptions[0].sizeCode] = normalizedTotalCups;
-    return quantities;
-  }
-
-  const [first, second] = usableAssumptions;
-  const revenue = Math.max(0, netRevenue);
-  const positivePrices = [first, second]
-    .map((assumption) => assumption.referenceSellingPrice)
-    .filter(positive);
-  const minimumPrice =
-    positivePrices.length > 0 ? Math.min(...positivePrices) : 1;
-  const firstPreferredShare = Math.max(
-    0,
-    preferredSizeShares?.[first.sizeCode] ?? 1,
-  );
-  const secondPreferredShare = Math.max(
-    0,
-    preferredSizeShares?.[second.sizeCode] ?? 1,
-  );
-  const preferredShareTotal =
-    firstPreferredShare + secondPreferredShare;
-  const normalizedFirstShare =
-    preferredShareTotal > 0
-      ? firstPreferredShare / preferredShareTotal
-      : 0.5;
-  let best:
-    | {
-        firstQuantity: number;
-        secondQuantity: number;
-        score: number;
         shareError: number;
       }
     | undefined;
 
-  for (
-    let firstQuantity = 0;
-    firstQuantity <= normalizedTotalCups;
-    firstQuantity += 1
-  ) {
-    const secondQuantity = normalizedTotalCups - firstQuantity;
-    const estimatedRevenue =
-      firstQuantity * first.referenceSellingPrice +
-      secondQuantity * second.referenceSellingPrice;
-    const score =
-      revenue > 0
-        ? Math.abs(estimatedRevenue - revenue) / minimumPrice
-        : 0;
-    const shareError = Math.abs(
-      firstQuantity - normalizedTotalCups * normalizedFirstShare,
-    );
+  for (let firstQuantity = 0; firstQuantity <= maximumCups; firstQuantity += 1) {
+    const remainingRevenue =
+      revenue - firstQuantity * first.referenceSellingPrice;
+    const rawSecondQuantity =
+      remainingRevenue / second.referenceSellingPrice;
+    const secondCandidates = new Set([
+      Math.max(0, Math.floor(rawSecondQuantity)),
+      Math.max(0, Math.ceil(rawSecondQuantity)),
+    ]);
 
-    if (
-      !best ||
-      score < best.score ||
-      (score === best.score && shareError < best.shareError)
-    ) {
-      best = {
-        firstQuantity,
-        secondQuantity,
-        score,
-        shareError,
-      };
+    for (const secondQuantity of secondCandidates) {
+      if (firstQuantity + secondQuantity === 0) continue;
+      const estimatedRevenue =
+        firstQuantity * first.referenceSellingPrice +
+        secondQuantity * second.referenceSellingPrice;
+      const revenueError = Math.abs(estimatedRevenue - revenue);
+      const shareError = Math.abs(firstQuantity - secondQuantity);
+
+      if (
+        !best ||
+        revenueError < best.revenueError ||
+        (revenueError === best.revenueError &&
+          shareError < best.shareError)
+      ) {
+        best = {
+          firstQuantity,
+          secondQuantity,
+          revenueError,
+          shareError,
+        };
+      }
     }
   }
 
@@ -533,43 +362,13 @@ export function calculateDailySaleEstimate(
   };
 }
 
-export function calculateDailySaleEstimateFromMilk(
-  milkLitersSold: number,
+export function calculateDailySaleEstimateFromRevenue(
   netRevenue: number,
   assumptions: DailySaleAssumption[],
-  preferredSizeShares?: Readonly<Record<string, number>>,
 ) {
-  const quantities = estimateSizeQuantities(
-    milkLitersSold,
+  const quantities = estimateSizeQuantitiesFromRevenue(
     netRevenue,
     assumptions,
-    preferredSizeShares,
   );
-  return calculateDailySaleEstimate(
-    quantities,
-    netRevenue,
-    assumptions,
-    milkLitersSold,
-  );
-}
-
-export function calculateDailySaleEstimateFromTotalCups(
-  totalCups: number,
-  milkLitersSold: number,
-  netRevenue: number,
-  assumptions: DailySaleAssumption[],
-  preferredSizeShares?: Readonly<Record<string, number>>,
-) {
-  const quantities = estimateSizeQuantitiesFromTotalCups(
-    totalCups,
-    netRevenue,
-    assumptions,
-    preferredSizeShares,
-  );
-  return calculateDailySaleEstimate(
-    quantities,
-    netRevenue,
-    assumptions,
-    milkLitersSold,
-  );
+  return calculateDailySaleEstimate(quantities, netRevenue, assumptions);
 }
