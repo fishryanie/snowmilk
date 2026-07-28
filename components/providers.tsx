@@ -14,14 +14,13 @@ export function Providers({ children }: PropsWithChildren) {
           colorWarning: "#c87916",
           colorError: "#c2413b",
           borderRadius: 12,
+          borderRadiusLG: 12,
+          controlHeight: 40,
+          controlHeightLG: 40,
           fontFamily:
             '"Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
         },
         components: {
-          Button: { controlHeight: 40 },
-          Input: { controlHeight: 40 },
-          Select: { controlHeight: 40 },
-          DatePicker: { controlHeight: 40 },
           Table: { headerBg: "#f5f7f6" },
         },
       }}

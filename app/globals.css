@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 :root {
   --canvas: #eef7fa;
@@ -12,10 +12,49 @@
   --amber: #d9932e;
   --success: #25845d;
   --danger: #c7443e;
+  --control-height: 40px;
+  --control-radius: 12px;
+  --mobile-viewport-height: 100dvh;
+  --mobile-viewport-offset-top: 0px;
 }
 
 * {
   box-sizing: border-box;
+}
+
+input.ant-input,
+.ant-input-affix-wrapper,
+.ant-input-number,
+.ant-picker,
+.ant-select-single,
+.ant-select-single .ant-select-selector {
+  min-height: var(--control-height) !important;
+  border-radius: var(--control-radius) !important;
+}
+
+textarea.ant-input {
+  border-radius: var(--control-radius) !important;
+}
+
+.ant-input-number-input,
+.ant-select-single .ant-select-selection-search-input {
+  min-height: calc(var(--control-height) - 2px);
+}
+
+.ant-input-number-input {
+  height: calc(var(--control-height) - 2px) !important;
+  padding-block: 6px !important;
+}
+
+.ant-input-affix-wrapper > input.ant-input,
+.ant-picker-input > input {
+  height: auto;
+  min-height: 0 !important;
+}
+
+.ant-input-affix-wrapper,
+.ant-picker {
+  padding-block: 6px !important;
 }
 
 html {
@@ -31,12 +70,17 @@ body {
 }
 
 body {
-  font-family: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont,
-    "Segoe UI", sans-serif;
+  font-family:
+    'Inter',
+    'SF Pro Display',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
 }
 
 body::before {
-  content: "";
+  content: '';
   position: fixed;
   z-index: 1000;
   inset: 0 0 auto;
@@ -46,7 +90,7 @@ body::before {
 }
 
 .app-layout {
-  min-height: 100vh;
+  min-height: 100svh;
 }
 
 .app-sider {
@@ -55,19 +99,18 @@ body::before {
   height: 100vh;
   overflow: hidden;
   background:
-    radial-gradient(circle at 12% 2%, rgb(112 195 214 / 24%), transparent 18rem),
-    linear-gradient(165deg, #123f4b 0%, #0c303a 58%, #092831 100%) !important;
+    radial-gradient(circle at 12% 2%, rgb(112 195 214 / 24%), transparent 18rem), linear-gradient(165deg, #123f4b 0%, #0c303a 58%, #092831 100%) !important;
   border-right: 0;
   box-shadow: 10px 0 36px rgb(12 48 58 / 14%);
   z-index: 10;
 }
 
 .app-sider::before {
-  content: "";
+  content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: url("/snowflake-pattern.svg") 28% 18% / 310px auto repeat;
+  background: url('/snowflake-pattern.svg') 28% 18% / 310px auto repeat;
   opacity: 0.11;
 }
 
@@ -178,8 +221,7 @@ body::before {
 }
 
 .app-header.ant-layout-header.is-scrolled {
-  background:
-    linear-gradient(90deg, rgb(238 248 250 / 94%), rgb(246 251 252 / 86%)) !important;
+  background: linear-gradient(90deg, rgb(238 248 250 / 94%), rgb(246 251 252 / 86%)) !important;
   backdrop-filter: blur(18px) saturate(145%);
   -webkit-backdrop-filter: blur(18px) saturate(145%);
   border-bottom: 1px solid rgb(183 215 223 / 72%);
@@ -252,24 +294,22 @@ body::before {
   min-width: 0;
   padding: 94px 26px 26px;
   background:
-    radial-gradient(circle at 96% 2%, rgb(149 211 226 / 42%), transparent 25rem),
-    radial-gradient(circle at 8% 42%, rgb(255 255 255 / 94%), transparent 29rem),
-    linear-gradient(155deg, #edf8fb 0%, #f7fbfc 46%, #eaf5f8 100%),
-    var(--canvas);
+    radial-gradient(circle at 96% 2%, rgb(149 211 226 / 42%), transparent 25rem), radial-gradient(circle at 8% 42%, rgb(255 255 255 / 94%), transparent 29rem),
+    linear-gradient(155deg, #edf8fb 0%, #f7fbfc 46%, #eaf5f8 100%), var(--canvas);
 }
 
 .app-content.ant-layout-content {
-  min-height: 100vh;
+  min-height: 100svh;
 }
 
 .app-content::before {
-  content: "";
+  content: '';
   position: absolute;
   z-index: 0;
   inset: 0;
   pointer-events: none;
   background:
-    url("/snowflake-pattern.svg") 14px 8px / 420px auto repeat,
+    url('/snowflake-pattern.svg') 14px 8px / 420px auto repeat,
     linear-gradient(115deg, transparent 0 58%, rgb(255 255 255 / 35%) 58% 62%, transparent 62%);
   opacity: 0.56;
   -webkit-mask-image: linear-gradient(to bottom, black, rgb(0 0 0 / 66%) 72%, transparent 108%);
@@ -433,13 +473,13 @@ body::before {
 }
 
 .kpi-card::after {
-  content: "";
+  content: '';
   position: absolute;
   width: 76px;
   height: 76px;
   right: 13px;
   top: -12px;
-  background: url("/snowflake.svg") center / contain no-repeat;
+  background: url('/snowflake.svg') center / contain no-repeat;
   opacity: 0.08;
   transform: rotate(12deg);
 }
@@ -559,8 +599,7 @@ body::before {
   align-items: center;
   gap: 22px;
   padding: 18px 20px;
-  background:
-    linear-gradient(145deg, rgb(226 242 246 / 62%), rgb(255 255 255 / 88%));
+  background: linear-gradient(145deg, rgb(226 242 246 / 62%), rgb(255 255 255 / 88%));
   border-bottom: 1px solid var(--line);
 }
 
@@ -680,8 +719,7 @@ body::before {
   box-shadow: 0 7px 20px rgb(24 82 96 / 7%);
 }
 
-.divestment-suggestion-list
-  .ant-checkbox-wrapper:has(.ant-checkbox-checked) {
+.divestment-suggestion-list .ant-checkbox-wrapper:has(.ant-checkbox-checked) {
   border-color: var(--brand);
   background: rgb(232 246 248 / 72%);
 }
@@ -785,7 +823,7 @@ body::before {
 }
 
 .cash-flow-kpi::before {
-  content: "";
+  content: '';
   position: absolute;
   inset: 0 auto 0 0;
   width: 4px;
@@ -958,8 +996,7 @@ body::before {
 
 .purchase-overview {
   padding: 18px;
-  background:
-    linear-gradient(145deg, rgb(226 242 246 / 62%), rgb(255 255 255 / 88%));
+  background: linear-gradient(145deg, rgb(226 242 246 / 62%), rgb(255 255 255 / 88%));
   border-bottom: 1px solid var(--line);
 }
 
@@ -993,11 +1030,16 @@ body::before {
   min-height: 40px;
 }
 
+.purchase-desktop-search,
+.purchase-desktop-search .ant-input-affix-wrapper {
+  width: 100%;
+}
+
 .purchase-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-  margin-top: 14px;
+  margin-bottom: 14px;
 }
 
 .purchase-summary-card {
@@ -1008,23 +1050,7 @@ body::before {
 }
 
 .purchase-summary-card::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
-  background: var(--brand);
-}
-
-.purchase-summary-card-count::before {
-  background: #5494a6;
-}
-
-.purchase-summary-card-packages::before {
-  background: var(--success);
-}
-
-.purchase-summary-card-average::before {
-  background: var(--amber);
+  display: none;
 }
 
 .purchase-summary-card .ant-card-body {
@@ -1105,7 +1131,7 @@ body::before {
   display: none;
 }
 
-.purchase-mobile-search,
+.purchase-mobile-search-row,
 .purchase-mobile-filter-toggle,
 .purchase-mobile-filter-actions {
   display: none;
@@ -1233,10 +1259,18 @@ body::before {
   display: none;
 }
 
-.cost-segment-milk { background: #5a9d91; }
-.cost-segment-topping { background: #d7a650; }
-.cost-segment-packaging { background: #7f8d9e; }
-.cost-segment-overhead { background: #b4778b; }
+.cost-segment-milk {
+  background: #5a9d91;
+}
+.cost-segment-topping {
+  background: #d7a650;
+}
+.cost-segment-packaging {
+  background: #7f8d9e;
+}
+.cost-segment-overhead {
+  background: #b4778b;
+}
 
 .upload-panel {
   border: 1px dashed #9abbb4;
@@ -1388,8 +1422,7 @@ body::before {
   }
 
   .app-content {
-    padding: calc(16px + env(safe-area-inset-top)) 12px
-      calc(94px + env(safe-area-inset-bottom));
+    padding: calc(16px + env(safe-area-inset-top)) 12px calc(94px + env(safe-area-inset-bottom));
   }
 
   .app-content.ant-layout-content {
@@ -1406,12 +1439,10 @@ body::before {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     min-height: 64px;
     padding: 6px;
-    border: 1px solid rgb(196 221 228 / 92%);
+    border: 1px solid rgb(196 221 228 / 68%);
     border-radius: 20px;
     background: rgb(255 255 255 / 94%);
-    box-shadow:
-      0 14px 36px rgb(15 57 67 / 18%),
-      inset 0 1px 0 rgb(255 255 255 / 90%);
+    box-shadow: rgba(40, 127, 150, 0.5) 0px 30px 90px;
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
   }
@@ -1491,19 +1522,34 @@ body::before {
   }
 
   .purchase-mobile-add-dock {
+    width: 56px;
+    height: 56px;
     left: auto;
-    min-height: 0;
-    padding: 6px;
-    border-radius: 16px;
+    right: 16px;
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    min-height: 56px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .purchase-mobile-add-dock > div {
     display: none;
   }
 
-  .purchase-mobile-add-dock .ant-btn {
-    min-width: 0;
-    min-height: 48px;
+  .purchase-mobile-add-dock .purchase-mobile-fab.ant-btn {
+    width: 56px;
+    min-width: 56px;
+    height: 56px;
+    min-height: 56px;
+    padding: 0;
+    border-radius: 50% !important;
+    font-size: 20px;
+    box-shadow: rgb(40 127 150 / 56%) 0 6.5px 19.5px 1px;
   }
 
   .page-wrap:has(.mobile-workflow-dock) {
@@ -1839,6 +1885,7 @@ body::before {
 
   .purchase-filter-heading {
     align-items: flex-start;
+    margin-bottom: 10px;
   }
 
   .purchase-filter-heading > div {
@@ -1848,20 +1895,35 @@ body::before {
 
   .purchase-mobile-filter-toggle {
     display: inline-flex;
+    min-width: 72px;
+    justify-content: center;
+  }
+
+  .purchase-desktop-filter-reset {
+    display: none !important;
+  }
+
+  .purchase-mobile-search-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
   }
 
   .purchase-mobile-search {
     display: block;
-    margin-bottom: 10px;
+    min-width: 0;
   }
 
   .purchase-mobile-search .ant-input-affix-wrapper {
-    min-height: 46px;
+    min-height: var(--control-height);
   }
 
   .purchase-filter-grid {
     display: none;
     grid-template-columns: 1fr;
+    gap: 8px;
+    margin-top: 10px;
     margin-bottom: 12px;
     padding: 12px;
     border: 1px solid var(--line);
@@ -1874,7 +1936,7 @@ body::before {
   }
 
   .purchase-desktop-search {
-    display: none;
+    display: none !important;
   }
 
   .purchase-mobile-filter-actions {
@@ -1885,7 +1947,7 @@ body::before {
 
   .purchase-mobile-filter-actions .ant-btn {
     width: 100%;
-    min-height: 44px;
+    min-height: var(--control-height);
   }
 
   .purchase-form-grid,
@@ -1895,15 +1957,16 @@ body::before {
 
   .purchase-summary-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr);
-    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
     overflow: visible;
-    margin-inline: 0;
+    margin: 12px 0 12;
     padding: 0;
   }
 
   .purchase-summary-card {
     min-width: 0;
+    min-height: 112px;
   }
 
   .purchase-summary-secondary {
@@ -1911,7 +1974,7 @@ body::before {
   }
 
   .purchase-summary-card .ant-card-body {
-    padding: 12px 13px 11px;
+    padding: 12px;
   }
 
   .purchase-filter-grid .ant-input-affix-wrapper,
@@ -1923,11 +1986,20 @@ body::before {
   }
 
   .purchase-summary-card .ant-statistic-content {
-    font-size: 20px;
+    font-size: 17px;
+    letter-spacing: -0.025em;
   }
 
   .purchase-summary-card .ant-statistic-title {
-    margin-bottom: 4px;
+    min-height: 34px;
+    margin-bottom: 8px;
+  }
+
+  .purchase-summary-title {
+    align-items: flex-start;
+    gap: 6px;
+    font-size: 11px;
+    line-height: 1.3;
   }
 
   .purchase-list-heading {
@@ -1967,6 +2039,7 @@ body::before {
 
   .table-card .purchase-action-toolbar {
     padding: 16px 0 12px;
+    border-bottom: 0;
   }
 
   .purchase-mobile-list {
@@ -2397,13 +2470,11 @@ body::before {
     box-shadow: none;
   }
 
-  .ant-card:has(> .ant-card-body > .cost-batches-mobile)
-    > .ant-card-head {
+  .ant-card:has(> .ant-card-body > .cost-batches-mobile) > .ant-card-head {
     padding-inline: 0;
   }
 
-  .ant-card:has(> .ant-card-body > .cost-batches-mobile)
-    > .ant-card-body {
+  .ant-card:has(> .ant-card-body > .cost-batches-mobile) > .ant-card-body {
     padding: 0 !important;
   }
 
@@ -2500,14 +2571,12 @@ body::before {
   color: white;
   border: 0;
   border-radius: 20px;
-  background:
-    radial-gradient(circle at 88% 8%, rgb(255 255 255 / 24%), transparent 10rem),
-    linear-gradient(135deg, #1b7085 0%, #2e91a6 58%, #5bb4c4 100%);
+  background: radial-gradient(circle at 88% 8%, rgb(255 255 255 / 24%), transparent 10rem), linear-gradient(135deg, #1b7085 0%, #2e91a6 58%, #5bb4c4 100%);
   box-shadow: 0 18px 40px rgb(23 102 122 / 20%);
 }
 
 .inventory-total-card::after {
-  content: "";
+  content: '';
   position: absolute;
   right: 80px;
   bottom: -78px;
@@ -2573,9 +2642,7 @@ body::before {
 
 .inventory-cups-card {
   min-height: 190px;
-  background:
-    radial-gradient(circle at 94% 10%, rgb(217 147 46 / 19%), transparent 9rem),
-    rgb(255 255 255 / 86%);
+  background: radial-gradient(circle at 94% 10%, rgb(217 147 46 / 19%), transparent 9rem), rgb(255 255 255 / 86%);
 }
 
 .inventory-cups-card .ant-card-body {
@@ -2608,8 +2675,7 @@ body::before {
   overflow: hidden;
   position: relative;
   min-height: 126px;
-  background:
-    linear-gradient(145deg, rgb(255 255 255 / 96%), rgb(248 252 253 / 92%));
+  background: linear-gradient(145deg, rgb(255 255 255 / 96%), rgb(248 252 253 / 92%));
 }
 
 .inventory-mini-card > .ant-card-body > .anticon {
@@ -3107,5 +3173,176 @@ body::before {
   .inventory-save-footer .ant-btn {
     width: 100%;
     min-height: 46px;
+  }
+
+  /*
+   * Compact mobile forms without dropping text below 16px. Safari zooms the
+   * page when a smaller input receives focus, which is one of the main causes
+   * of the apparent layout jump while typing.
+   */
+  .app-content .ant-form-item,
+  .ant-drawer .ant-form-item {
+    margin-bottom: 12px;
+  }
+
+  .batch-ingredient-row .ant-form-item {
+    margin-bottom: 0;
+  }
+
+  .app-content .ant-form-vertical .ant-form-item-label,
+  .ant-drawer .ant-form-vertical .ant-form-item-label {
+    padding-bottom: 3px;
+  }
+
+  .app-content .ant-form-item-label > label,
+  .ant-drawer .ant-form-item-label > label {
+    height: auto;
+    font-size: 13px !important;
+    line-height: 1.35;
+  }
+
+  .app-content :is(.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-picker, .ant-select-selector),
+  .ant-drawer :is(.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-picker, .ant-select-selector) {
+    min-height: 40px !important;
+  }
+
+  .app-content :is(.ant-input-number-input, .ant-select-selection-search-input),
+  .ant-drawer :is(.ant-input-number-input, .ant-select-selection-search-input) {
+    min-height: 38px !important;
+  }
+
+  .app-content :is(.ant-input, .ant-input-number-input, .ant-picker-input > input, .ant-select-selection-search-input),
+  .ant-drawer :is(.ant-input, .ant-input-number-input, .ant-picker-input > input, .ant-select-selection-search-input) {
+    font-size: 16px !important;
+  }
+
+  .app-content input.ant-input,
+  .ant-drawer input.ant-input {
+    height: 40px;
+    padding-block: 4px;
+  }
+
+  .app-content .ant-input-affix-wrapper > input.ant-input,
+  .ant-drawer .ant-input-affix-wrapper > input.ant-input {
+    height: auto;
+    min-height: 0 !important;
+    padding-block: 0;
+  }
+
+  .app-content textarea.ant-input,
+  .ant-drawer textarea.ant-input,
+  .purchase-drawer textarea.ant-input {
+    min-height: 72px !important;
+    padding-block: 7px;
+  }
+
+  .daily-sales-input-grid {
+    gap: 10px;
+  }
+
+  .daily-sales-input-grid .ant-input-number-input,
+  .inventory-mobile-input .ant-input-number-input {
+    min-height: 38px;
+    font-size: 16px;
+  }
+
+  .resource-drawer .ant-drawer-header,
+  .purchase-drawer .ant-drawer-header,
+  .batch-drawer .ant-drawer-header,
+  .divestment-drawer .ant-drawer-header {
+    padding: 10px 14px !important;
+  }
+
+  .resource-drawer .ant-drawer-body,
+  .purchase-drawer .ant-drawer-body,
+  .batch-drawer .ant-drawer-body,
+  .divestment-drawer .ant-drawer-body {
+    padding: 12px 14px 16px !important;
+    scroll-padding-block: 12px 88px;
+    overscroll-behavior: contain;
+  }
+
+  .resource-drawer .ant-form {
+    margin-top: 0 !important;
+  }
+
+  .resource-drawer .ant-drawer-footer,
+  .purchase-drawer .ant-drawer-footer,
+  .batch-drawer .ant-drawer-footer,
+  .divestment-drawer .ant-drawer-footer {
+    padding: 8px 10px max(8px, env(safe-area-inset-bottom)) !important;
+  }
+
+  .resource-drawer-footer .ant-btn,
+  .purchase-drawer-footer .ant-btn,
+  .batch-drawer-footer .ant-btn,
+  .divestment-drawer .ant-drawer-footer .ant-btn {
+    min-height: 40px !important;
+  }
+
+  .calculated-card {
+    margin-top: 12px;
+  }
+
+  .mobile-quick-nav,
+  .mobile-workflow-dock,
+  canvas[data-testid='SnowfallCanvas'] {
+    transition:
+      opacity 120ms ease,
+      transform 120ms ease;
+  }
+
+  html.mobile-keyboard-open .mobile-quick-nav,
+  html.mobile-keyboard-open .mobile-workflow-dock {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(calc(100% + 24px));
+  }
+
+  html.mobile-keyboard-open canvas[data-testid='SnowfallCanvas'] {
+    opacity: 0;
+  }
+
+  html.mobile-keyboard-open .app-content {
+    padding-bottom: 20px;
+  }
+
+  html.mobile-keyboard-open .ant-drawer-content-wrapper {
+    top: var(--mobile-viewport-offset-top) !important;
+    bottom: auto !important;
+    height: var(--mobile-viewport-height) !important;
+    max-height: var(--mobile-viewport-height);
+  }
+
+  html.mobile-keyboard-open .ant-drawer-body {
+    scroll-padding-block: 12px 88px;
+  }
+
+  /*
+   * Keep Select's virtual list as the only scroll owner while it is open.
+   * Without this, reaching either end of the list chains the same swipe into
+   * the drawer body on iOS and makes both layers jump.
+   */
+  .ant-select-dropdown,
+  .ant-select-dropdown .rc-virtual-list,
+  .ant-select-dropdown .rc-virtual-list-holder {
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+
+  .ant-select-dropdown .rc-virtual-list-holder {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  html:has(.ant-select-dropdown:not(.ant-select-dropdown-hidden)) .ant-drawer-body {
+    overflow: hidden !important;
+    overscroll-behavior: none;
+  }
+}
+
+@media (max-width: 576px) {
+  .ant-picker-panels {
+    flex-direction: column !important;
   }
 }

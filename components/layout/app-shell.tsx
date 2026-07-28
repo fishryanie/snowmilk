@@ -141,6 +141,124 @@ export function AppShell({ children }: PropsWithChildren) {
     };
   }, []);
 
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const root = document.documentElement;
+    let frame = 0;
+    let revealFrame = 0;
+    let keyboardOpen = false;
+    let shouldRevealFocusedControl = false;
+    let viewportBaseline = viewport.height;
+
+    const isEditableControl = (element: Element | null): element is HTMLElement =>
+      element instanceof HTMLElement &&
+      (element.matches('input:not([type="checkbox"]):not([type="radio"]), textarea, [contenteditable="true"]') ||
+        element.closest('.ant-select') !== null);
+
+    const revealFocusedControl = () => {
+      revealFrame = 0;
+      const activeControl = document.activeElement;
+      if (!isEditableControl(activeControl)) return;
+
+      const bounds = activeControl.getBoundingClientRect();
+      const visibleTop = viewport.offsetTop + 16;
+      const visibleBottom = viewport.offsetTop + viewport.height - 88;
+      if (bounds.top < visibleTop || bounds.bottom > visibleBottom) {
+        activeControl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    };
+
+    const updateViewport = () => {
+      frame = 0;
+      const activeControl = document.activeElement;
+      const hasEditableFocus = isEditableControl(activeControl);
+      const heightLoss = viewportBaseline - viewport.height;
+      const nextKeyboardOpen = heightLoss > 120 && (hasEditableFocus || keyboardOpen);
+
+      root.style.setProperty('--mobile-viewport-height', `${Math.round(viewport.height)}px`);
+      root.style.setProperty('--mobile-viewport-offset-top', `${Math.round(viewport.offsetTop)}px`);
+      root.classList.toggle('mobile-keyboard-open', nextKeyboardOpen);
+
+      if (nextKeyboardOpen && (shouldRevealFocusedControl || !keyboardOpen)) {
+        shouldRevealFocusedControl = false;
+        window.cancelAnimationFrame(revealFrame);
+        revealFrame = window.requestAnimationFrame(revealFocusedControl);
+      }
+
+      keyboardOpen = nextKeyboardOpen;
+      if (!keyboardOpen && !hasEditableFocus) {
+        viewportBaseline = Math.max(viewportBaseline, viewport.height);
+      }
+    };
+
+    const scheduleUpdate = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(updateViewport);
+    };
+
+    const handleFocusIn = (event: FocusEvent) => {
+      if (!isEditableControl(event.target as Element | null)) return;
+      viewportBaseline = Math.max(viewportBaseline, viewport.height);
+      shouldRevealFocusedControl = true;
+      scheduleUpdate();
+    };
+
+    const handleOrientationChange = () => {
+      viewportBaseline = viewport.height;
+      scheduleUpdate();
+    };
+
+    updateViewport();
+    viewport.addEventListener('resize', scheduleUpdate);
+    viewport.addEventListener('scroll', scheduleUpdate);
+    window.addEventListener('orientationchange', handleOrientationChange);
+    document.addEventListener('focusin', handleFocusIn);
+    document.addEventListener('focusout', scheduleUpdate);
+
+    return () => {
+      viewport.removeEventListener('resize', scheduleUpdate);
+      viewport.removeEventListener('scroll', scheduleUpdate);
+      window.removeEventListener('orientationchange', handleOrientationChange);
+      document.removeEventListener('focusin', handleFocusIn);
+      document.removeEventListener('focusout', scheduleUpdate);
+      window.cancelAnimationFrame(frame);
+      window.cancelAnimationFrame(revealFrame);
+      root.classList.remove('mobile-keyboard-open');
+      root.style.removeProperty('--mobile-viewport-height');
+      root.style.removeProperty('--mobile-viewport-offset-top');
+    };
+  }, []);
+
+  useEffect(() => {
+    const hasOpenSelectDropdown = () =>
+      document.querySelector('.ant-select-dropdown:not(.ant-select-dropdown-hidden)') !== null;
+
+    const blockBackgroundScroll = (event: TouchEvent | WheelEvent) => {
+      if (!hasOpenSelectDropdown() || !event.cancelable) return;
+
+      // rc-virtual-list implements its own touch/wheel scrolling. Cancelling the
+      // browser default still lets that handler run, but prevents iOS from
+      // handing the same gesture to the drawer or page at the list boundaries.
+      event.preventDefault();
+    };
+
+    document.addEventListener('touchmove', blockBackgroundScroll, {
+      capture: true,
+      passive: false,
+    });
+    document.addEventListener('wheel', blockBackgroundScroll, {
+      capture: true,
+      passive: false,
+    });
+
+    return () => {
+      document.removeEventListener('touchmove', blockBackgroundScroll, { capture: true });
+      document.removeEventListener('wheel', blockBackgroundScroll, { capture: true });
+    };
+  }, []);
+
   const navigation = (theme: 'dark' | 'light') => (
     <Menu mode='inline' theme={theme} selectedKeys={[selectedKey]} items={menuItems} onClick={() => setDrawerOpen(false)} className='app-menu' />
   );
@@ -158,7 +276,7 @@ export function AppShell({ children }: PropsWithChildren) {
           rotationSpeed={[0.5, 3]}
           style={{
             position: 'fixed',
-            height: '100vh',
+            height: '100dvh',
             width: '100vw',
             zIndex: 1000,
           }}
