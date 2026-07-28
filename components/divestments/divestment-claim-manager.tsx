@@ -414,6 +414,7 @@ export function DivestmentClaimManager({
           </Button>
         </div>
         <Table
+          className="divestment-history-desktop"
           size="small"
           rowKey="id"
           columns={columns}
@@ -421,14 +422,76 @@ export function DivestmentClaimManager({
           pagination={{ defaultPageSize: 50, showSizeChanger: false }}
           scroll={{ x: "max-content" }}
         />
+        <ul className="divestment-history-mobile">
+          {visibleDivestments.map((record) => (
+            <li key={record.id}>
+              <div className="divestment-history-mobile-heading">
+                <div>
+                  <Text type="secondary">
+                    {formatDate(record.withdrawalDate)}
+                  </Text>
+                  <Text strong>{formatVnd(record.amount)}</Text>
+                </div>
+                <Popconfirm
+                  title="Xóa lần thu hồi này?"
+                  description={
+                    record.claims.length > 0
+                      ? "Nguồn tiền của các khoản đã chọn sẽ được hoàn lại thành Vốn chủ."
+                      : "Tổng vốn đã thu hồi sẽ được tính lại."
+                  }
+                  okText="Xóa"
+                  cancelText="Hủy"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={() => removeRecord(record.id)}
+                >
+                  <Button
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    aria-label="Xóa lần thu hồi"
+                  />
+                </Popconfirm>
+              </div>
+              <div className="divestment-history-mobile-claims">
+                {record.claims.length > 0 ? (
+                  <>
+                    {record.claims.slice(0, 2).map((claim) => (
+                      <div key={claim.sourceKey}>
+                        <Tag color={sourceTypeColor(claim.sourceType)}>
+                          {sourceTypeLabel(claim.sourceType)}
+                        </Tag>
+                        <Text>{claim.sourceName}</Text>
+                      </div>
+                    ))}
+                    {record.claims.length > 2 && (
+                      <Text type="secondary">
+                        +{record.claims.length - 2} khoản khác
+                      </Text>
+                    )}
+                  </>
+                ) : (
+                  <Text type="secondary">
+                    Bản ghi cũ, chưa gắn khoản lịch sử
+                  </Text>
+                )}
+              </div>
+              {record.note && (
+                <Text type="secondary" ellipsis>
+                  {record.note}
+                </Text>
+              )}
+            </li>
+          ))}
+        </ul>
       </Card>
 
       <Drawer
+        className="divestment-drawer"
         open={drawerOpen}
         title="Chọn khoản lịch sử để claim"
         placement="right"
         size="large"
-        extra={
+        footer={
           <Space>
             <Button onClick={resetDrawer}>Hủy</Button>
             <Button

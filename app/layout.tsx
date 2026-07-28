@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { AntdRegistry } from "@ant-design/nextjs-registry";
 import { AppShell } from "@/components/layout/app-shell";
 import { Providers } from "@/components/providers";
@@ -7,6 +7,10 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Sữa Tuyết — Quản lý vận hành",
   description: "Quản lý bán hàng, giá vốn và chi phí quán Sữa Tuyết",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#287f96",
 };
 
 export default function RootLayout({

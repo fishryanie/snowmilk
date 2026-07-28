@@ -91,7 +91,7 @@ export default function DivestmentsPage() {
     context.eligibleItems.length > 0;
 
   return (
-    <div className="page-wrap">
+    <div className="page-wrap divestments-page">
       <PageHeader
         title="Thoái vốn"
         description="Dùng tiền bán hàng còn lại để hoàn vốn cho phiếu nhập và tài sản trước đây đã trả bằng vốn chủ."

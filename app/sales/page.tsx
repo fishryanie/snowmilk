@@ -1,6 +1,10 @@
 "use client";
 
-import { EditOutlined, SaveOutlined } from "@ant-design/icons";
+import {
+  EditOutlined,
+  RightOutlined,
+  SaveOutlined,
+} from "@ant-design/icons";
 import {
   Alert,
   App,
@@ -499,6 +503,7 @@ export default function SalesPage() {
         style={{ marginTop: 16 }}
       >
         <Table
+          className="sales-history-desktop"
           size="small"
           rowKey={recordId}
           dataSource={data.history}
@@ -564,6 +569,59 @@ export default function SalesPage() {
             },
           ]}
         />
+        <ul className="sales-history-mobile">
+          {data.history.map((record) => {
+            const batch = data.batches.find(
+              (candidate) =>
+                batchRecordId(candidate) === String(record.batchId ?? "") ||
+                candidate.code === record.batchCode,
+            );
+            return (
+              <li key={recordId(record)}>
+                <div className="sales-history-heading">
+                  <div>
+                    <Text strong>{formatDate(record.saleDate)}</Text>
+                    <Text type="secondary">
+                      {batch
+                        ? `${batch.code} · ${batch.name}`
+                        : record.batchCode || record.batchName || "Chưa rõ mẻ"}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text type="secondary">Doanh thu</Text>
+                    <Text strong>{formatVnd(record.netRevenue)}</Text>
+                  </div>
+                </div>
+                <div className="sales-history-breakdown">
+                  <span>
+                    Tiền mặt <strong>{formatVnd(record.cashReceived ?? 0)}</strong>
+                  </span>
+                  <span>
+                    Chuyển khoản{" "}
+                    <strong>{formatVnd(record.bankTransferReceived ?? 0)}</strong>
+                  </span>
+                </div>
+                <Button
+                  type="text"
+                  className="sales-history-edit"
+                  onClick={() => editRecord(record)}
+                >
+                  <span>
+                    Lãi ước tính{" "}
+                    <strong
+                      className={
+                        record.estimatedProfit < 0 ? "is-negative" : ""
+                      }
+                    >
+                      {formatVnd(record.estimatedProfit)}
+                    </strong>
+                  </span>
+                  <RightOutlined />
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
       </Card>
       <div className="mobile-workflow-dock sales-mobile-save-dock">
         <div>

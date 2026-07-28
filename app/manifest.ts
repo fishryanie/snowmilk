@@ -8,7 +8,7 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/dashboard",
     display: "standalone",
     background_color: "#eef7fa",
-    theme_color: "#0c303a",
+    theme_color: "#287f96",
     icons: [
       {
         src: "/snowmilk-app-icon-transparent-192.png",

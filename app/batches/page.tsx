@@ -5,6 +5,7 @@ import {
   EditOutlined,
   MinusCircleOutlined,
   PlusOutlined,
+  RightOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
 import {
@@ -386,6 +387,7 @@ export default function BatchesPage() {
           </Button>
         </div>
         <Table
+          className="batch-desktop-table"
           size="small"
           rowKey={(record) => recordId(record) || record.code}
           columns={columns}
@@ -393,26 +395,83 @@ export default function BatchesPage() {
           pagination={{ defaultPageSize: 50, showSizeChanger: false }}
           scroll={{ x: "max-content" }}
         />
+        <ul className="batch-mobile-list">
+          {visibleBatches.map((batch) => (
+            <li className="batch-mobile-card" key={recordId(batch) || batch.code}>
+              <div className="batch-mobile-heading">
+                <div>
+                  <Text strong>{batch.name}</Text>
+                  <Text type="secondary">{batch.code}</Text>
+                </div>
+                <Text strong>{formatNumber(batch.actualLiters)} L</Text>
+              </div>
+              <dl className="batch-mobile-metrics">
+                <div>
+                  <dt>Tổng cost</dt>
+                  <dd>{formatVnd(batch.totalCost)}</dd>
+                </div>
+                <div>
+                  <dt>Cost/lít</dt>
+                  <dd>{formatVnd(batch.costPerLiter)}</dd>
+                </div>
+                <div>
+                  <dt>Cost/ml</dt>
+                  <dd>{formatVnd(batch.costPerMl)}</dd>
+                </div>
+              </dl>
+              <Button
+                type="text"
+                className="batch-mobile-edit"
+                icon={<EditOutlined />}
+                onClick={() => openEditor(batch)}
+              >
+                Xem công thức
+                <RightOutlined />
+              </Button>
+            </li>
+          ))}
+        </ul>
       </Card>
 
       <Drawer
+        className="batch-drawer"
         open={drawerOpen}
         title={editing ? "Chỉnh sửa mẻ sữa" : "Thêm mẻ sữa"}
         placement="right"
         size="large"
         onClose={closeEditor}
         destroyOnHidden
-        extra={
-          <Space>
-            <Button onClick={closeEditor}>Hủy</Button>
-            <Button
-              type="primary"
-              loading={saving}
-              onClick={() => form.submit()}
-            >
-              Lưu
-            </Button>
-          </Space>
+        footer={
+          <div className="batch-drawer-footer">
+            <div>
+              {editing ? (
+                <Popconfirm
+                  title="Xóa mẻ sữa này?"
+                  okText="Xóa"
+                  cancelText="Hủy"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={async () => {
+                    await removeRecord(editing);
+                    closeEditor();
+                  }}
+                >
+                  <Button danger icon={<DeleteOutlined />}>
+                    Xóa
+                  </Button>
+                </Popconfirm>
+              ) : null}
+            </div>
+            <Space>
+              <Button onClick={closeEditor}>Hủy</Button>
+              <Button
+                type="primary"
+                loading={saving}
+                onClick={() => form.submit()}
+              >
+                Lưu
+              </Button>
+            </Space>
+          </div>
         }
       >
         <Form<BatchForm> form={form} layout="vertical" onFinish={saveRecord}>

@@ -817,13 +817,41 @@ function InventoryEditor({
           </div>
         </div>
         {context.history.length ? (
-          <Table
-            rowKey="snapshotDate"
-            dataSource={context.history}
-            columns={historyColumns}
-            pagination={{ pageSize: 7, hideOnSinglePage: true }}
-            scroll={{ x: 720 }}
-          />
+          <>
+            <Table
+              className="inventory-history-desktop"
+              rowKey="snapshotDate"
+              dataSource={context.history}
+              columns={historyColumns}
+              pagination={{ pageSize: 7, hideOnSinglePage: true }}
+              scroll={{ x: 720 }}
+            />
+            <ul className="inventory-history-mobile">
+              {context.history.map((record) => (
+                <li key={record.snapshotDate}>
+                  <div>
+                    <Text strong>{formatDate(record.snapshotDate)}</Text>
+                    <Text type="secondary">Ngày chốt kho</Text>
+                  </div>
+                  <div>
+                    <Text strong className="inventory-money">
+                      {formatVnd(record.totalInventoryValue)}
+                    </Text>
+                    <Tag
+                      color={
+                        record.estimatedCupsSincePrevious >= 0
+                          ? "green"
+                          : "red"
+                      }
+                    >
+                      {record.estimatedCupsSincePrevious > 0 ? "+" : ""}
+                      {formatNumber(record.estimatedCupsSincePrevious)} ly
+                    </Tag>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
         ) : (
           <Empty description="Chưa có lần kiểm kho nào được lưu" />
         )}

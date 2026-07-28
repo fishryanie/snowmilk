@@ -177,6 +177,7 @@ export default function CostingPage() {
                 ))}
               </div>
               <Table
+                className="cost-breakdown-desktop"
                 size="small"
                 pagination={false}
                 rowKey="label"
@@ -201,6 +202,23 @@ export default function CostingPage() {
                   },
                 ]}
               />
+              <div className="cost-breakdown-mobile">
+                {[
+                  { label: "Sữa nền", amount: breakdown.milk },
+                  { label: "Topping", amount: breakdown.topping },
+                  { label: "Bao bì", amount: breakdown.packaging },
+                  { label: "Overhead biến đổi", amount: breakdown.overhead },
+                  {
+                    label: "Phân bổ cố định",
+                    amount: Number(product.allocatedFixedCost ?? 0),
+                  },
+                ].map((item) => (
+                  <div key={item.label}>
+                    <Text type="secondary">{item.label}</Text>
+                    <Text strong>{formatVnd(item.amount)}</Text>
+                  </div>
+                ))}
+              </div>
             </Card>
           </div>
         </>
@@ -211,6 +229,7 @@ export default function CostingPage() {
         style={{ marginTop: 16 }}
       >
         <Table
+          className="cost-batches-desktop"
           size="small"
           pagination={false}
           rowKey="code"
@@ -236,6 +255,24 @@ export default function CostingPage() {
             },
           ]}
         />
+        <ul className="cost-batches-mobile">
+          {batches.map((batch) => (
+            <li key={batch.code}>
+              <div>
+                <Text strong>{batch.name}</Text>
+                <Text type="secondary">
+                  {batch.code} · {batch.actualLiters} L
+                </Text>
+              </div>
+              <div>
+                <Text strong>{formatVnd(Number(batch.costPerLiter))}/L</Text>
+                <Text type="secondary">
+                  Tổng {formatVnd(Number(batch.totalCost))}
+                </Text>
+              </div>
+            </li>
+          ))}
+        </ul>
       </Card>
     </div>
   );

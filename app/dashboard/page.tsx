@@ -269,7 +269,7 @@ export default function DashboardPage() {
   if (loading) return <RouteSkeleton />;
 
   return (
-    <div className="page-wrap">
+    <div className="page-wrap dashboard-page">
       <PageHeader
         title="Tổng quan"
         description="Theo dõi doanh thu, giá vốn và tiến độ thu hồi vốn trên một màn hình."
@@ -293,6 +293,7 @@ export default function DashboardPage() {
       />
       {usingFallback && (
         <Alert
+          className="dashboard-fallback-alert"
           showIcon
           type="info"
           title="Đang hiển thị snapshot từ file Excel"
