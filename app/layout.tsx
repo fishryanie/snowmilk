@@ -1,23 +1,33 @@
-import type { Metadata, Viewport } from "next";
-import { AntdRegistry } from "@ant-design/nextjs-registry";
-import { AppShell } from "@/components/layout/app-shell";
-import { Providers } from "@/components/providers";
-import "./globals.css";
+import type { Metadata, Viewport } from 'next';
+import { AntdRegistry } from '@ant-design/nextjs-registry';
+import { AppShell } from '@/components/layout/app-shell';
+import { Providers } from '@/components/providers';
+import './globals.css';
 
 export const metadata: Metadata = {
-  title: "Sữa Tuyết — Quản lý vận hành",
-  description: "Quản lý bán hàng, giá vốn và chi phí quán Sữa Tuyết",
+  title: 'Sữa Tuyết — Quản lý vận hành',
+  description: 'Quản lý bán hàng, giá vốn và chi phí quán Sữa Tuyết',
 };
 
 export const viewport: Viewport = {
-  themeColor: "#287f96",
+  initialScale: 1,
+  maximumScale: 1,
+  minimumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
+  themeColor: '#287f96',
+  width: 'device-width',
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="vi">
+    <html lang='vi'>
+      <head>
+        <meta name='theme-color' content='#01A74E' />
+        <meta name='apple-mobile-web-app-capable' content='yes' />
+        <meta name='apple-mobile-web-app-status-bar-style' content='black-translucent' />
+        <meta name='apple-mobile-web-app-title' content='Sữa Tuyết' />
+      </head>
       <body>
         <AntdRegistry>
           <Providers>
