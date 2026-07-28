@@ -124,11 +124,10 @@ export function AppShell({ children }: PropsWithChildren) {
         <Snowfall
           images={snowflakeImages}
           snowflakeCount={200}
-          speed={[1, 3]}
-          wind={[-1, 1]}
-          radius={[10, 24]}
-          rotationSpeed={[1, 5]}
-          enable3DRotation
+          speed={[0.5, 1.5]}
+          wind={[-1, 3]}
+          radius={[5, 20]}
+          rotationSpeed={[0.5, 3]}
           style={{
             position: 'fixed',
             height: '100vh',
