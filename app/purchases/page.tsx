@@ -608,13 +608,10 @@ export default function PurchasesPage() {
           </div>
           <div
             className="purchase-summary-grid"
-            role="list"
-            aria-label="Thống kê nhập hàng theo bộ lọc"
           >
             <Card
               size="small"
               className="purchase-summary-card purchase-summary-card-total"
-              role="listitem"
             >
               <Statistic
                 title={
@@ -630,7 +627,6 @@ export default function PurchasesPage() {
             <Card
               size="small"
               className="purchase-summary-card purchase-summary-card-count"
-              role="listitem"
             >
               <Statistic
                 title={
@@ -647,7 +643,6 @@ export default function PurchasesPage() {
             <Card
               size="small"
               className="purchase-summary-card purchase-summary-card-packages"
-              role="listitem"
             >
               <Statistic
                 title={
@@ -664,7 +659,6 @@ export default function PurchasesPage() {
             <Card
               size="small"
               className="purchase-summary-card purchase-summary-card-average"
-              role="listitem"
             >
               <Statistic
                 title={
@@ -1012,6 +1006,20 @@ export default function PurchasesPage() {
           </Descriptions>
         </Card>
       </Drawer>
+      <div className="mobile-workflow-dock purchase-mobile-add-dock">
+        <div>
+          <Text type="secondary">Thao tác nhanh</Text>
+          <Text strong>Ghi hàng vừa mua</Text>
+        </div>
+        <Button
+          type="primary"
+          size="large"
+          icon={<PlusOutlined />}
+          onClick={() => openEditor()}
+        >
+          Thêm nhập hàng
+        </Button>
+      </div>
     </div>
   );
 }

@@ -215,6 +215,11 @@ body {
   z-index: 1;
 }
 
+.mobile-quick-nav,
+.mobile-workflow-dock {
+  display: none;
+}
+
 .page-wrap {
   width: min(1480px, 100%);
   margin: 0 auto;
@@ -1067,6 +1072,10 @@ body {
   align-self: start;
 }
 
+.daily-sales-total .ant-input-number {
+  background: var(--brand-soft);
+}
+
 .summary-row {
   display: flex;
   justify-content: space-between;
@@ -1157,6 +1166,10 @@ body {
     padding: 0 12px;
   }
 
+  .app-header > .ant-space:last-child {
+    display: none;
+  }
+
   .app-header .brand {
     height: auto;
     padding: 0;
@@ -1169,15 +1182,127 @@ body {
   }
 
   .app-content {
-    padding: 76px 12px 32px;
+    padding: 72px 10px calc(94px + env(safe-area-inset-bottom));
   }
 
   .app-content.ant-layout-content {
     min-height: 100vh;
   }
 
+  .mobile-quick-nav {
+    position: fixed;
+    z-index: 30;
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    left: 8px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    min-height: 64px;
+    padding: 6px;
+    border: 1px solid rgb(196 221 228 / 92%);
+    border-radius: 20px;
+    background: rgb(255 255 255 / 94%);
+    box-shadow:
+      0 14px 36px rgb(15 57 67 / 18%),
+      inset 0 1px 0 rgb(255 255 255 / 90%);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  .mobile-quick-nav a,
+  .mobile-quick-nav button {
+    display: flex;
+    min-width: 0;
+    min-height: 52px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 5px 2px;
+    color: var(--muted);
+    border: 0;
+    border-radius: 14px;
+    background: transparent;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1.1;
+    text-decoration: none;
+    touch-action: manipulation;
+  }
+
+  .mobile-quick-nav a.is-active {
+    color: var(--brand-strong);
+    background: var(--brand-soft);
+  }
+
+  .mobile-quick-nav-icon {
+    display: grid;
+    width: 26px;
+    height: 24px;
+    place-items: center;
+    font-size: 20px;
+  }
+
+  .mobile-workflow-dock {
+    position: fixed;
+    z-index: 24;
+    right: 10px;
+    bottom: calc(80px + env(safe-area-inset-bottom));
+    left: 10px;
+    display: flex;
+    min-height: 66px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 10px 9px 14px;
+    border: 1px solid rgb(196 221 228 / 94%);
+    border-radius: 18px;
+    background: rgb(255 255 255 / 96%);
+    box-shadow: 0 12px 34px rgb(15 57 67 / 17%);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  .mobile-workflow-dock > div {
+    display: grid;
+    min-width: 0;
+    gap: 1px;
+  }
+
+  .mobile-workflow-dock > div .ant-typography {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-workflow-dock .ant-btn {
+    min-width: 146px;
+    min-height: 48px;
+    flex: 0 0 auto;
+    font-weight: 700;
+  }
+
+  .page-wrap:has(.mobile-workflow-dock) {
+    padding-bottom: 76px;
+  }
+
   .page-heading {
     flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .page-heading h2.ant-typography {
+    margin-bottom: 2px;
+    font-size: 26px;
+    line-height: 1.2;
+  }
+
+  .page-heading .subtitle {
+    margin-bottom: 0;
+    font-size: 13px;
+    line-height: 1.45;
   }
 
   .table-toolbar {
@@ -1219,8 +1344,28 @@ body {
   }
 
   .purchase-filter-grid,
-  .purchase-summary-grid {
+  .purchase-form-grid,
+  .daily-sales-input-grid {
     grid-template-columns: 1fr;
+  }
+
+  .purchase-summary-grid {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    margin-inline: -14px;
+    padding: 0 14px 5px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .purchase-summary-grid::-webkit-scrollbar {
+    display: none;
+  }
+
+  .purchase-summary-card {
+    min-width: 188px;
+    scroll-snap-align: start;
   }
 
   .purchase-filter-grid .ant-input-affix-wrapper,
@@ -1475,6 +1620,55 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .sales-header-submit {
+    display: none !important;
+  }
+
+  .sales-grid {
+    gap: 12px;
+  }
+
+  .sales-grid > .surface-card > .ant-card-head {
+    min-height: 48px;
+    padding-inline: 16px;
+  }
+
+  .sales-grid > .surface-card > .ant-card-body {
+    padding: 16px;
+  }
+
+  .daily-sales-input-grid {
+    gap: 14px;
+  }
+
+  .daily-sales-cash {
+    order: 3;
+  }
+
+  .daily-sales-transfer {
+    order: 4;
+  }
+
+  .daily-sales-total {
+    order: 5;
+  }
+
+  .daily-sales-note {
+    order: 6;
+  }
+
+  .daily-sales-input-grid .ant-picker,
+  .daily-sales-input-grid .ant-select-selector,
+  .daily-sales-input-grid .ant-input-number,
+  .daily-sales-input-grid .ant-input-number-input {
+    min-height: 50px;
+  }
+
+  .daily-sales-input-grid .ant-input-number-input {
+    font-size: 17px;
+    font-weight: 650;
+  }
+
   .daily-sales-note {
     grid-column: auto;
   }
@@ -1546,6 +1740,7 @@ body {
 
 .inventory-content-stack > * {
   margin: 0 !important;
+  min-width: 0;
 }
 
 .inventory-overview-section {
@@ -1778,6 +1973,13 @@ body {
   width: 100%;
 }
 
+.inventory-mobile-list {
+  display: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .inventory-item-name {
   display: grid;
   gap: 6px;
@@ -1820,6 +2022,30 @@ body {
 }
 
 @media (max-width: 768px) {
+  .inventory-ingredient-card {
+    order: 1;
+  }
+
+  .inventory-batch-card {
+    order: 2;
+  }
+
+  .inventory-overview-section {
+    order: 3;
+  }
+
+  .inventory-reconciliation {
+    order: 4;
+  }
+
+  .inventory-save-card {
+    order: 5;
+  }
+
+  .inventory-history-card {
+    order: 6;
+  }
+
   .inventory-date-control {
     width: 100%;
     justify-content: space-between;
@@ -1870,7 +2096,7 @@ body {
   }
 
   .inventory-content-stack {
-    gap: 22px;
+    gap: 14px;
   }
 
   .inventory-hero-grid,
@@ -1879,12 +2105,118 @@ body {
   }
 
   .inventory-table-heading .ant-segmented {
+    max-width: 100%;
     width: 100%;
     overflow-x: auto;
   }
 
   .inventory-table-heading .ant-segmented-group {
     min-width: max-content;
+  }
+
+  .inventory-table-card .inventory-section-heading {
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 18px 14px 0;
+  }
+
+  .inventory-table-card {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .inventory-desktop-table {
+    display: none;
+  }
+
+  .inventory-mobile-list {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  .inventory-mobile-item {
+    display: grid;
+    gap: 14px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 15px;
+    background: #fff;
+    box-shadow: 0 6px 18px rgb(24 82 96 / 5%);
+  }
+
+  .inventory-mobile-item-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .inventory-mobile-item-heading > div {
+    display: grid;
+    min-width: 0;
+    gap: 5px;
+  }
+
+  .inventory-mobile-item-heading > .inventory-money {
+    flex: 0 0 auto;
+    font-size: 13px;
+  }
+
+  .inventory-mobile-input {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(150px, 0.9fr);
+    align-items: center;
+    gap: 12px;
+    color: var(--ink);
+    font-size: 14px;
+    font-weight: 720;
+  }
+
+  .inventory-mobile-input .ant-input-number {
+    width: 100%;
+    min-height: 50px;
+  }
+
+  .inventory-mobile-input .ant-input-number-input {
+    min-height: 48px;
+    font-size: 18px;
+    font-weight: 720;
+    text-align: right;
+  }
+
+  .inventory-mobile-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding-top: 11px;
+    color: var(--muted);
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+  }
+
+  .inventory-mobile-meta strong {
+    color: var(--ink);
+    font-weight: 650;
+  }
+
+  .inventory-mobile-total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 4px 4px;
+  }
+
+  .inventory-mobile-total .inventory-money {
+    font-size: 16px;
+  }
+
+  .inventory-reconciliation,
+  .inventory-save-card,
+  .inventory-history-card {
+    border-radius: 16px;
   }
 
   .inventory-save-footer .ant-btn {

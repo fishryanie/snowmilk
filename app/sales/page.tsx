@@ -124,7 +124,7 @@ export default function SalesPage() {
       id: batchRecordId(batch),
     })),
   });
-  const [saleDate, setSaleDate] = useState(dayjs());
+  const [saleDate, setSaleDate] = useState(() => dayjs());
   const [selectedBatchId, setSelectedBatchId] = useState("");
   const [netRevenue, setNetRevenue] = useState<number | null>(null);
   const [cashReceived, setCashReceived] = useState<number | null>(null);
@@ -272,6 +272,7 @@ export default function SalesPage() {
         description="Bạn nhập tiền mặt, tiền chuyển khoản và chọn mẻ sữa; tổng doanh thu được tự động cộng. Không cần nhớ số ly hay số lít đã bán."
         actions={
           <Button
+            className="sales-header-submit"
             type="primary"
             icon={<SaveOutlined />}
             loading={saving}
@@ -295,18 +296,20 @@ export default function SalesPage() {
       <div className="sales-grid">
         <Card className="surface-card" title="Số liệu bạn kiểm soát được">
           <div className="daily-sales-input-grid">
-            <div>
+            <div className="daily-sales-date">
               <Text type="secondary">Ngày bán</Text>
               <DatePicker
+                aria-label="Ngày bán"
                 value={saleDate}
                 format="DD/MM/YYYY"
                 onChange={(value) => value && setSaleDate(value)}
                 style={{ width: "100%", marginTop: 6 }}
               />
             </div>
-            <div>
+            <div className="daily-sales-batch">
               <Text type="secondary">Mẻ sữa đã bán</Text>
               <Select
+                aria-label="Mẻ sữa đã bán"
                 showSearch
                 optionFilterProp="label"
                 value={selectedBatchId || undefined}
@@ -323,9 +326,10 @@ export default function SalesPage() {
                 style={{ width: "100%", marginTop: 6 }}
               />
             </div>
-            <div>
+            <div className="daily-sales-total">
               <Text type="secondary">Tổng doanh thu cuối ngày</Text>
               <InputNumber
+                aria-label="Tổng doanh thu cuối ngày"
                 min={0}
                 precision={0}
                 step={1_000}
@@ -338,9 +342,10 @@ export default function SalesPage() {
                 style={{ width: "100%", marginTop: 6 }}
               />
             </div>
-            <div>
+            <div className="daily-sales-cash">
               <Text type="secondary">Tiền mặt đã nhận</Text>
               <InputNumber
+                aria-label="Tiền mặt đã nhận"
                 min={0}
                 precision={0}
                 step={1_000}
@@ -361,9 +366,10 @@ export default function SalesPage() {
                 style={{ width: "100%", marginTop: 6 }}
               />
             </div>
-            <div>
+            <div className="daily-sales-transfer">
               <Text type="secondary">Tiền chuyển khoản</Text>
               <InputNumber
+                aria-label="Tiền chuyển khoản đã nhận"
                 min={0}
                 precision={0}
                 step={1_000}
@@ -387,6 +393,7 @@ export default function SalesPage() {
             <div className="daily-sales-note">
               <Text type="secondary">Ghi chú</Text>
               <Input.TextArea
+                aria-label="Ghi chú bán hàng"
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
                 placeholder="Không bắt buộc"
@@ -558,6 +565,22 @@ export default function SalesPage() {
           ]}
         />
       </Card>
+      <div className="mobile-workflow-dock sales-mobile-save-dock">
+        <div>
+          <Text type="secondary">Doanh thu</Text>
+          <Text strong>{formatVnd(netRevenueValue)}</Text>
+        </div>
+        <Button
+          type="primary"
+          size="large"
+          icon={<SaveOutlined />}
+          loading={saving}
+          disabled={!selectedBatch || selectedBatch.costPerMl <= 0}
+          onClick={() => submit()}
+        >
+          Lưu bán hàng
+        </Button>
+      </div>
     </div>
   );
 }

@@ -585,7 +585,7 @@ function InventoryEditor({
         )}
       </Card>
 
-      <Card className="surface-card inventory-table-card">
+      <Card className="surface-card inventory-table-card inventory-ingredient-card">
         <div className="inventory-section-heading inventory-table-heading">
           <div>
             <Title level={4}>1. Tồn hàng hóa</Title>
@@ -600,6 +600,7 @@ function InventoryEditor({
           />
         </div>
         <Table
+          className="inventory-desktop-table"
           rowKey="itemKey"
           dataSource={visibleIngredients}
           columns={ingredientColumns}
@@ -618,9 +619,69 @@ function InventoryEditor({
             </Table.Summary.Row>
           )}
         />
+        <ul className="inventory-mobile-list">
+          {visibleIngredients.map((item) => (
+            <li
+              className="inventory-mobile-item"
+              key={item.itemKey}
+            >
+              <div className="inventory-mobile-item-heading">
+                <div>
+                  <Text strong>{item.itemName}</Text>
+                  <Space size={6} wrap>
+                    <Text type="secondary">{item.itemCode}</Text>
+                    <Tag color={categoryColor(item.category)}>
+                      {item.category}
+                    </Tag>
+                  </Space>
+                </div>
+                <Text strong className="inventory-money">
+                  {formatVnd(item.inventoryValue)}
+                </Text>
+              </div>
+              <label className="inventory-mobile-input">
+                <span>Tồn thực tế</span>
+                <InputNumber
+                  min={0}
+                  precision={3}
+                  size="large"
+                  value={ingredientQuantities[item.itemKey]}
+                  suffix={item.unit || "đv"}
+                  aria-label={`Tồn thực tế ${item.itemName}`}
+                  onChange={(value) =>
+                    setIngredientQuantities((current) => ({
+                      ...current,
+                      [item.itemKey]: Number(value ?? 0),
+                    }))
+                  }
+                />
+              </label>
+              <div className="inventory-mobile-meta">
+                <span>
+                  Đã nhập{" "}
+                  <strong>
+                    {formatNumber(item.totalPurchasedQuantity)} {item.unit}
+                  </strong>
+                </span>
+                <span>
+                  Đã dùng{" "}
+                  <strong>
+                    {formatNumber(item.inferredUsedQuantity)} {item.unit}
+                  </strong>
+                </span>
+              </div>
+            </li>
+          ))}
+          <li className="inventory-mobile-total">
+            <Text>Tổng tiền hàng hóa đang tồn</Text>
+            <Text strong className="inventory-money">
+              {formatVnd(preview.ingredientInventoryValue)}
+            </Text>
+          </li>
+        </ul>
       </Card>
 
-      <Card className="surface-card inventory-table-card">
+      <Card className="surface-card inventory-table-card inventory-batch-card">
         <div className="inventory-section-heading">
           <div>
             <Title level={4}>2. Tồn sữa thành phẩm</Title>
@@ -631,25 +692,84 @@ function InventoryEditor({
           <Tag color="cyan">Nhập tổng tồn thực tế</Tag>
         </div>
         {preview.milkBatchLines.length ? (
-          <Table
-            rowKey="batchKey"
-            dataSource={preview.milkBatchLines}
-            columns={batchColumns}
-            pagination={false}
-            scroll={{ x: 900 }}
-            summary={() => (
-              <Table.Summary.Row>
-                <Table.Summary.Cell index={0} colSpan={4}>
-                  <Text strong>Tổng tiền sữa thành phẩm đang tồn</Text>
-                </Table.Summary.Cell>
-                <Table.Summary.Cell index={4} align="right">
-                  <Text strong className="inventory-money">
-                    {formatVnd(preview.finishedMilkInventoryValue)}
-                  </Text>
-                </Table.Summary.Cell>
-              </Table.Summary.Row>
-            )}
-          />
+          <>
+            <Table
+              className="inventory-desktop-table"
+              rowKey="batchKey"
+              dataSource={preview.milkBatchLines}
+              columns={batchColumns}
+              pagination={false}
+              scroll={{ x: 900 }}
+              summary={() => (
+                <Table.Summary.Row>
+                  <Table.Summary.Cell index={0} colSpan={4}>
+                    <Text strong>Tổng tiền sữa thành phẩm đang tồn</Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={4} align="right">
+                    <Text strong className="inventory-money">
+                      {formatVnd(preview.finishedMilkInventoryValue)}
+                    </Text>
+                  </Table.Summary.Cell>
+                </Table.Summary.Row>
+              )}
+            />
+            <ul className="inventory-mobile-list">
+              {preview.milkBatchLines.map((batch) => (
+                <li
+                  className="inventory-mobile-item"
+                  key={batch.batchKey}
+                >
+                  <div className="inventory-mobile-item-heading">
+                    <div>
+                      <Text strong>
+                        {batch.batchCode} · {batch.batchName}
+                      </Text>
+                      <Text type="secondary">
+                        Đã làm {formatNumber(batch.producedLiters)} lít
+                      </Text>
+                    </div>
+                    <Text strong className="inventory-money">
+                      {formatVnd(batch.inventoryValue)}
+                    </Text>
+                  </div>
+                  <label className="inventory-mobile-input">
+                    <span>Lít còn lại</span>
+                    <InputNumber
+                      min={0}
+                      precision={3}
+                      size="large"
+                      value={batchQuantities[batch.batchKey]}
+                      suffix="lít"
+                      aria-label={`Lít còn lại của mẻ ${batch.batchCode}`}
+                      onChange={(value) =>
+                        setBatchQuantities((current) => ({
+                          ...current,
+                          [batch.batchKey]: Number(value ?? 0),
+                        }))
+                      }
+                    />
+                  </label>
+                  <div className="inventory-mobile-meta">
+                    <span>
+                      Đã xuất{" "}
+                      <strong>
+                        {formatNumber(batch.inferredUsedLiters)} lít
+                      </strong>
+                    </span>
+                    <span>
+                      Giá vốn <strong>{formatVnd(batch.costPerLiter)}/lít</strong>
+                    </span>
+                  </div>
+                </li>
+              ))}
+              <li className="inventory-mobile-total">
+                <Text>Tổng tiền sữa thành phẩm đang tồn</Text>
+                <Text strong className="inventory-money">
+                  {formatVnd(preview.finishedMilkInventoryValue)}
+                </Text>
+              </li>
+            </ul>
+          </>
         ) : (
           <Empty description="Chưa có mẻ sữa nào" />
         )}
@@ -708,12 +828,29 @@ function InventoryEditor({
           <Empty description="Chưa có lần kiểm kho nào được lưu" />
         )}
       </Card>
+      <div className="mobile-workflow-dock inventory-mobile-save-dock">
+        <div>
+          <Text type="secondary">
+            {context.saved ? "Đang cập nhật" : "Chưa chốt"}
+          </Text>
+          <Text strong>{formatVnd(preview.totalInventoryValue)}</Text>
+        </div>
+        <Button
+          type="primary"
+          size="large"
+          icon={<SaveOutlined />}
+          loading={saving}
+          onClick={saveInventory}
+        >
+          {context.saved ? "Cập nhật" : "Chốt kho"}
+        </Button>
+      </div>
     </div>
   );
 }
 
 export default function InventoryPage() {
-  const [snapshotDate, setSnapshotDate] = useState(
+  const [snapshotDate, setSnapshotDate] = useState(() =>
     dayjs().format("YYYY-MM-DD"),
   );
   const fallback = useMemo(

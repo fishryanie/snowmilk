@@ -46,6 +46,13 @@ const menuDefinitions: Array<{ key: string; icon: ReactNode; label: string }> = 
   { key: "/settings", icon: <SettingOutlined />, label: "Cài đặt" },
 ];
 
+const mobileQuickLinks = ["/sales", "/purchases", "/inventory"].flatMap(
+  (key) => {
+    const item = menuDefinitions.find((candidate) => candidate.key === key);
+    return item ? [item] : [];
+  },
+);
+
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <div className="brand">
@@ -185,6 +192,39 @@ export function AppShell({ children }: PropsWithChildren) {
       >
         {navigation("light")}
       </Drawer>
+      <nav className="mobile-quick-nav" aria-label="Thao tác nhanh">
+        {mobileQuickLinks.map((item) => {
+          const active = currentKey === item.key;
+          return (
+            <Link
+              key={item.key}
+              href={item.key}
+              className={active ? "is-active" : undefined}
+              aria-current={active ? "page" : undefined}
+              onNavigate={() => {
+                if (!active) setNavigatingTo(item.key);
+              }}
+            >
+              <span className="mobile-quick-nav-icon" aria-hidden="true">
+                {item.icon}
+              </span>
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Mở tất cả chức năng"
+          aria-controls="mobile-navigation"
+          aria-expanded={drawerOpen}
+        >
+          <span className="mobile-quick-nav-icon" aria-hidden="true">
+            <MenuOutlined />
+          </span>
+          <span>Thêm</span>
+        </button>
+      </nav>
     </Layout>
   );
 }
