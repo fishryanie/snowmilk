@@ -30,21 +30,21 @@ import Snowfall from 'react-snowfall';
 const { Header, Content, Sider } = Layout;
 const { Text, Title } = Typography;
 
-const menuDefinitions: Array<{ key: string; icon: ReactNode; label: string }> = [
+const menuDefinitions: Array<{ key: string; icon: ReactNode; label: string; pageTitle?: string }> = [
   { key: '/dashboard', icon: <BarChartOutlined />, label: 'Tổng quan' },
   { key: '/divestments', icon: <WalletOutlined />, label: 'Thoái vốn' },
-  { key: '/sales', icon: <DollarOutlined />, label: 'Bán hàng' },
-  { key: '/inventory', icon: <InboxOutlined />, label: 'Kiểm kho' },
+  { key: '/sales', icon: <DollarOutlined />, label: 'Bán hàng', pageTitle: 'Chốt bán hàng cuối ngày' },
+  { key: '/inventory', icon: <InboxOutlined />, label: 'Kiểm kho', pageTitle: 'Kiểm kho cuối ngày' },
   { key: '/batches', icon: <ExperimentOutlined />, label: 'Mẻ sữa' },
   { key: '/purchases', icon: <ShoppingCartOutlined />, label: 'Nhập hàng' },
   { key: '/expenses', icon: <ShoppingOutlined />, label: 'Chi phí' },
   { key: '/products', icon: <AppstoreOutlined />, label: 'Sản phẩm' },
   { key: '/sizes', icon: <ColumnWidthOutlined />, label: 'Size' },
   { key: '/ingredients', icon: <SkinOutlined />, label: 'Hàng hóa' },
-  { key: '/costing', icon: <CalculatorOutlined />, label: 'Giá vốn' },
-  { key: '/equipment', icon: <ToolOutlined />, label: 'Tài sản' },
-  { key: '/import', icon: <CloudUploadOutlined />, label: 'Nhập Excel' },
-  { key: '/settings', icon: <SettingOutlined />, label: 'Cài đặt' },
+  { key: '/costing', icon: <CalculatorOutlined />, label: 'Giá vốn', pageTitle: 'Công thức & giá vốn' },
+  { key: '/equipment', icon: <ToolOutlined />, label: 'Tài sản', pageTitle: 'Đầu tư & tài sản' },
+  { key: '/import', icon: <CloudUploadOutlined />, label: 'Nhập Excel', pageTitle: 'Nhập dữ liệu Excel' },
+  { key: '/settings', icon: <SettingOutlined />, label: 'Cài đặt', pageTitle: 'Cài đặt chi phí' },
 ];
 
 const mobileQuickLinks = ['/sales', '/purchases', '/inventory'].flatMap(key => {
@@ -74,9 +74,12 @@ export function AppShell({ children }: PropsWithChildren) {
   const mobile = !screens.lg;
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [headerScrolled, setHeaderScrolled] = useState(false);
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
   const [snowflakeImages, setSnowflakeImages] = useState<HTMLImageElement[]>([]);
-  const currentKey = menuDefinitions.find(item => pathname.startsWith(item.key))?.key ?? '/dashboard';
+  const currentItem = menuDefinitions.find(item => pathname.startsWith(item.key)) ?? menuDefinitions[0];
+  const currentKey = currentItem.key;
+  const currentPageTitle = currentItem.pageTitle ?? currentItem.label;
   const selectedKey = navigatingTo ?? currentKey;
   const menuItems = menuDefinitions.map(item => ({
     ...item,
@@ -114,6 +117,29 @@ export function AppShell({ children }: PropsWithChildren) {
     };
   }, []);
 
+  useEffect(() => {
+    let frame = 0;
+
+    const updateHeader = () => {
+      frame = 0;
+      const nextScrolled = window.scrollY > 20;
+      setHeaderScrolled(current => (current === nextScrolled ? current : nextScrolled));
+    };
+
+    const handleScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(updateHeader);
+    };
+
+    updateHeader();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, []);
+
   const navigation = (theme: 'dark' | 'light') => (
     <Menu mode='inline' theme={theme} selectedKeys={[selectedKey]} items={menuItems} onClick={() => setDrawerOpen(false)} className='app-menu' />
   );
@@ -123,9 +149,10 @@ export function AppShell({ children }: PropsWithChildren) {
       {snowflakeImages.length > 0 ? (
         <Snowfall
           images={snowflakeImages}
-          snowflakeCount={200}
+          changeFrequency={100}
+          snowflakeCount={100}
           speed={[0.5, 1.5]}
-          wind={[-1, 3]}
+          wind={[-1, 1]}
           radius={[5, 20]}
           rotationSpeed={[0.5, 3]}
           style={{
@@ -144,8 +171,8 @@ export function AppShell({ children }: PropsWithChildren) {
         </Sider>
       )}
       <Layout>
-        <Header className='app-header'>
-          <Space>
+        <Header className={`app-header${headerScrolled ? ' is-scrolled' : ''}`}>
+          <Space className='header-leading'>
             <Button
               type='text'
               className='header-menu-button'
@@ -155,7 +182,9 @@ export function AppShell({ children }: PropsWithChildren) {
               aria-controls={mobile ? 'mobile-navigation' : 'desktop-navigation'}
               aria-expanded={mobile ? drawerOpen : !collapsed}
             />
-            {mobile && <Brand compact />}
+            <span className='header-page-title' aria-hidden='true'>
+              {currentPageTitle}
+            </span>
           </Space>
           <Space>
             <Tag color='gold'>Local</Tag>

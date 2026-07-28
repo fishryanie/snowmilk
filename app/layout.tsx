@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description: 'Quản lý bán hàng, giá vốn và chi phí quán Sữa Tuyết',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default',
+    statusBarStyle: 'black-translucent',
     title: 'Sữa Tuyết',
   },
   other: {
