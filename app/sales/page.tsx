@@ -1,9 +1,14 @@
 "use client";
 
 import {
+  BankOutlined,
+  CalendarOutlined,
+  CheckCircleFilled,
+  DollarOutlined,
   EditOutlined,
   RightOutlined,
   SaveOutlined,
+  WalletOutlined,
 } from "@ant-design/icons";
 import {
   Alert,
@@ -140,11 +145,28 @@ export default function SalesPage() {
   const netRevenueValue = netRevenue ?? 0;
   const hasPaymentBreakdown =
     cashReceived !== null || bankTransferReceived !== null;
+  const defaultBatchId = useMemo(() => {
+    const latestSale = data.history[0];
+    const previousBatch = latestSale
+      ? data.batches.find(
+          (batch) =>
+            batchRecordId(batch) === String(latestSale.batchId ?? "") ||
+            batch.code === latestSale.batchCode,
+        )
+      : null;
+    return batchRecordId(
+      previousBatch ??
+        data.batches
+          .toReversed()
+          .find((batch) => batch.costPerMl > 0) ?? { id: "" },
+    );
+  }, [data.batches, data.history]);
+  const activeBatchId = selectedBatchId || defaultBatchId;
   const selectedBatch = useMemo(
     () =>
-      data.batches.find((batch) => batchRecordId(batch) === selectedBatchId) ??
+      data.batches.find((batch) => batchRecordId(batch) === activeBatchId) ??
       null,
-    [data.batches, selectedBatchId],
+    [activeBatchId, data.batches],
   );
   const selectedAssumptions = useMemo(
     () =>
@@ -165,9 +187,14 @@ export default function SalesPage() {
     [netRevenueValue, selectedAssumptions],
   );
 
+  const canSubmit =
+    Boolean(selectedBatch) &&
+    (selectedBatch?.costPerMl ?? 0) > 0 &&
+    hasPaymentBreakdown &&
+    netRevenueValue > 0;
+
   function clearForm() {
     setSaleDate(dayjs());
-    setSelectedBatchId("");
     setNetRevenue(null);
     setCashReceived(null);
     setBankTransferReceived(null);
@@ -200,7 +227,7 @@ export default function SalesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           saleDate: saleDate.format("YYYY-MM-DD"),
-          batchId: selectedBatchId,
+          batchId: activeBatchId,
           netRevenue: netRevenueValue,
           cashReceived: cashReceived ?? 0,
           bankTransferReceived: bankTransferReceived ?? 0,
@@ -270,17 +297,17 @@ export default function SalesPage() {
   if (loading) return <RouteSkeleton />;
 
   return (
-    <div className="page-wrap">
+    <div className="page-wrap sales-page">
       <PageHeader
-        title="Chốt bán hàng cuối ngày"
-        description="Bạn nhập tiền mặt, tiền chuyển khoản và chọn mẻ sữa; tổng doanh thu được tự động cộng. Không cần nhớ số ly hay số lít đã bán."
+        title="Chốt doanh thu"
+        description="Chọn ngày và mẻ sữa, nhập hai khoản tiền đã nhận, rồi kiểm tra tổng trước khi lưu."
         actions={
           <Button
             className="sales-header-submit"
             type="primary"
             icon={<SaveOutlined />}
             loading={saving}
-            disabled={!selectedBatch || selectedBatch.costPerMl <= 0}
+            disabled={!canSubmit}
             onClick={() => submit()}
           >
             Lưu chốt ngày
@@ -298,41 +325,129 @@ export default function SalesPage() {
       ) : null}
 
       <div className="sales-grid">
-        <Card className="surface-card" title="Số liệu bạn kiểm soát được">
-          <div className="daily-sales-input-grid">
-            <div className="daily-sales-date">
-              <Text type="secondary">Ngày bán</Text>
-              <DatePicker
-                aria-label="Ngày bán"
-                value={saleDate}
-                format="DD/MM/YYYY"
-                onChange={(value) => value && setSaleDate(value)}
-                style={{ width: "100%", marginTop: 6 }}
-              />
+        <Card className="surface-card sales-entry-card" title="Thông tin chốt ca">
+          <section className="sales-form-section">
+            <div className="sales-section-heading">
+              <span className="workflow-step">1</span>
+              <div>
+                <Text strong>Chọn ngày và mẻ sữa</Text>
+                <Text type="secondary">Dùng để tính đúng giá vốn của ca bán.</Text>
+              </div>
             </div>
-            <div className="daily-sales-batch">
-              <Text type="secondary">Mẻ sữa đã bán</Text>
-              <Select
-                aria-label="Mẻ sữa đã bán"
-                showSearch
-                optionFilterProp="label"
-                value={selectedBatchId || undefined}
-                placeholder="Chọn mẻ sữa để tính giá vốn"
-                onChange={setSelectedBatchId}
-                options={data.batches.map((batch) => ({
-                  value: batchRecordId(batch),
-                  label:
-                    batch.costPerMl > 0
-                      ? `${batch.code} · ${batch.name} · ${formatVnd(batch.costPerLiter)}/L`
-                      : `${batch.code} · ${batch.name} · chưa có giá vốn`,
-                  disabled: batch.costPerMl <= 0,
-                }))}
-                style={{ width: "100%", marginTop: 6 }}
-              />
+            <div className="sales-context-grid">
+              <label className="sales-field daily-sales-date">
+                <Text type="secondary">Ngày bán</Text>
+                <DatePicker
+                  aria-label="Ngày bán"
+                  value={saleDate}
+                  format="DD/MM/YYYY"
+                  suffixIcon={<CalendarOutlined />}
+                  onChange={(value) => value && setSaleDate(value)}
+                  style={{ width: "100%" }}
+                />
+              </label>
+              <label className="sales-field daily-sales-batch">
+                <Text type="secondary">Mẻ sữa đã bán</Text>
+                <Select
+                  aria-label="Mẻ sữa đã bán"
+                  showSearch
+                  optionFilterProp="label"
+                  value={activeBatchId || undefined}
+                  placeholder="Chọn mẻ sữa"
+                  onChange={setSelectedBatchId}
+                  options={data.batches.map((batch) => ({
+                    value: batchRecordId(batch),
+                    label:
+                      batch.costPerMl > 0
+                        ? `${batch.code} · ${batch.name} · ${formatVnd(batch.costPerLiter)}/L`
+                        : `${batch.code} · ${batch.name} · chưa có giá vốn`,
+                    disabled: batch.costPerMl <= 0,
+                  }))}
+                  style={{ width: "100%" }}
+                />
+              </label>
             </div>
-            <div className="daily-sales-total">
-              <Text type="secondary">Tổng doanh thu cuối ngày</Text>
+          </section>
+
+          <section className="sales-form-section">
+            <div className="sales-section-heading">
+              <span className="workflow-step">2</span>
+              <div>
+                <Text strong>Nhập tiền thực nhận</Text>
+                <Text type="secondary">
+                  Có thể nhập một hoặc cả hai hình thức thanh toán.
+                </Text>
+              </div>
+            </div>
+            <div className="sales-payment-grid">
+              <label className="sales-field daily-sales-cash">
+                <span className="sales-payment-label">
+                  <WalletOutlined /> Tiền mặt
+                </span>
+                <InputNumber
+                  aria-label="Tiền mặt đã nhận"
+                  min={0}
+                  precision={0}
+                  step={1_000}
+                  value={cashReceived}
+                  onChange={(value) => {
+                    const nextValue = value === null ? null : Number(value);
+                    setCashReceived(nextValue);
+                    setNetRevenue(
+                      nextValue === null && bankTransferReceived === null
+                        ? null
+                        : (nextValue ?? 0) + (bankTransferReceived ?? 0),
+                    );
+                  }}
+                  formatter={formatVndInput}
+                  parser={parseVndInput}
+                  placeholder="0"
+                  inputMode="numeric"
+                  style={{ width: "100%" }}
+                />
+              </label>
+              <label className="sales-field daily-sales-transfer">
+                <span className="sales-payment-label">
+                  <BankOutlined /> Chuyển khoản
+                </span>
+                <InputNumber
+                  aria-label="Tiền chuyển khoản đã nhận"
+                  min={0}
+                  precision={0}
+                  step={1_000}
+                  value={bankTransferReceived}
+                  onChange={(value) => {
+                    const nextValue = value === null ? null : Number(value);
+                    setBankTransferReceived(nextValue);
+                    setNetRevenue(
+                      nextValue === null && cashReceived === null
+                        ? null
+                        : (cashReceived ?? 0) + (nextValue ?? 0),
+                    );
+                  }}
+                  formatter={formatVndInput}
+                  parser={parseVndInput}
+                  placeholder="0"
+                  inputMode="numeric"
+                  style={{ width: "100%" }}
+                />
+              </label>
+            </div>
+
+            <div className="sales-total-banner">
+              <div>
+                <Text type="secondary">Tổng doanh thu</Text>
+                <Text strong>{formatVnd(netRevenueValue)}</Text>
+              </div>
+              {hasPaymentBreakdown ? (
+                <Tag color="green" icon={<CheckCircleFilled />}>
+                  Đã tự động cộng
+                </Tag>
+              ) : (
+                <Tag>Chưa nhập tiền</Tag>
+              )}
               <InputNumber
+                className="sales-total-accessible-input"
                 aria-label="Tổng doanh thu cuối ngày"
                 min={0}
                 precision={0}
@@ -341,71 +456,22 @@ export default function SalesPage() {
                 readOnly
                 formatter={formatVndInput}
                 parser={parseVndInput}
-                placeholder="Tự động cộng từ hai hình thức nhận tiền"
-                inputMode="numeric"
-                style={{ width: "100%", marginTop: 6 }}
               />
             </div>
-            <div className="daily-sales-cash">
-              <Text type="secondary">Tiền mặt đã nhận</Text>
-              <InputNumber
-                aria-label="Tiền mặt đã nhận"
-                min={0}
-                precision={0}
-                step={1_000}
-                value={cashReceived}
-                onChange={(value) => {
-                  const nextValue = value === null ? null : Number(value);
-                  setCashReceived(nextValue);
-                  setNetRevenue(
-                    nextValue === null && bankTransferReceived === null
-                      ? null
-                      : (nextValue ?? 0) + (bankTransferReceived ?? 0),
-                  );
-                }}
-                formatter={formatVndInput}
-                parser={parseVndInput}
-                placeholder="Ví dụ: 1.500.000"
-                inputMode="numeric"
-                style={{ width: "100%", marginTop: 6 }}
-              />
-            </div>
-            <div className="daily-sales-transfer">
-              <Text type="secondary">Tiền chuyển khoản</Text>
-              <InputNumber
-                aria-label="Tiền chuyển khoản đã nhận"
-                min={0}
-                precision={0}
-                step={1_000}
-                value={bankTransferReceived}
-                onChange={(value) => {
-                  const nextValue = value === null ? null : Number(value);
-                  setBankTransferReceived(nextValue);
-                  setNetRevenue(
-                    nextValue === null && cashReceived === null
-                      ? null
-                      : (cashReceived ?? 0) + (nextValue ?? 0),
-                  );
-                }}
-                formatter={formatVndInput}
-                parser={parseVndInput}
-                placeholder="Ví dụ: 1.000.000"
-                inputMode="numeric"
-                style={{ width: "100%", marginTop: 6 }}
-              />
-            </div>
+          </section>
+
+          <details className="sales-optional-note">
+            <summary>Thêm ghi chú (không bắt buộc)</summary>
             <div className="daily-sales-note">
-              <Text type="secondary">Ghi chú</Text>
               <Input.TextArea
                 aria-label="Ghi chú bán hàng"
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
-                placeholder="Không bắt buộc"
+                placeholder="Ví dụ: hoàn tiền, đơn biếu tặng..."
                 rows={3}
-                style={{ marginTop: 6 }}
               />
             </div>
-          </div>
+          </details>
 
           <Alert
             type="info"
@@ -424,7 +490,22 @@ export default function SalesPage() {
           />
         </Card>
 
-        <Card className="surface-card summary-panel" title="Lãi/lỗ ước tính">
+        <Card className="surface-card summary-panel" title="Kiểm tra trước khi lưu">
+          <div className="sales-profit-hero">
+            <DollarOutlined />
+            <div>
+              <Text type="secondary">Lợi nhuận ước tính</Text>
+              <Title
+                level={3}
+                type={estimate.estimatedProfit < 0 ? "danger" : "success"}
+              >
+                {formatVnd(estimate.estimatedProfit)}
+              </Title>
+              <Text type="secondary">
+                Biên lợi nhuận {(estimate.estimatedMargin * 100).toFixed(1)}%
+              </Text>
+            </div>
+          </div>
           <div className="summary-row">
             <Text type="secondary">Công thức giá vốn</Text>
             <Text>
@@ -449,51 +530,38 @@ export default function SalesPage() {
               </div>
             </>
           ) : null}
-          <div className="summary-row">
-            <Text type="secondary">Cost sữa nền ước tính</Text>
-            <Text>{formatVnd(estimate.totalMilkCost)}</Text>
-          </div>
-          <div className="summary-row">
-            <Text type="secondary">Cost bao bì</Text>
-            <Text>{formatVnd(estimate.totalPackagingCost)}</Text>
-          </div>
-          <div className="summary-row">
-            <Space size={6}>
-              <Text type="secondary">Cost topping</Text>
-              <Tag color="processing">ước tính</Tag>
-            </Space>
-            <Text>{formatVnd(estimate.estimatedToppingCost)}</Text>
-          </div>
-          <div className="summary-row">
-            <Text type="secondary">Overhead biến đổi</Text>
-            <Text>{formatVnd(estimate.estimatedOverheadCost)}</Text>
-          </div>
-          <div className="summary-row">
-            <Text type="secondary">Phân bổ cố định + khấu hao</Text>
-            <Text>{formatVnd(estimate.allocatedFixedCost)}</Text>
-          </div>
-          <div className="summary-row summary-total">
-            <Title level={5}>Lợi nhuận ước tính</Title>
-            <Title
-              level={4}
-              type={estimate.estimatedProfit < 0 ? "danger" : "success"}
-            >
-              {formatVnd(estimate.estimatedProfit)}
-            </Title>
-          </div>
-          <Descriptions size="small" column={1} style={{ marginTop: 12 }}>
-            <Descriptions.Item label="Khoảng có thể">
-              {formatVnd(estimate.estimatedProfitLow)} –{" "}
-              {formatVnd(estimate.estimatedProfitHigh)}
-            </Descriptions.Item>
-            <Descriptions.Item label="Biên lợi nhuận ước tính">
-              {(estimate.estimatedMargin * 100).toFixed(1)}%
-            </Descriptions.Item>
-          </Descriptions>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            Khoảng trên thay đổi theo topping rẻ nhất và đắt nhất trong các sản
-            phẩm có cost hợp lệ.
-          </Text>
+          <details className="sales-cost-details">
+            <summary>Xem chi tiết chi phí ước tính</summary>
+            <div className="summary-row">
+              <Text type="secondary">Cost sữa nền</Text>
+              <Text>{formatVnd(estimate.totalMilkCost)}</Text>
+            </div>
+            <div className="summary-row">
+              <Text type="secondary">Cost bao bì</Text>
+              <Text>{formatVnd(estimate.totalPackagingCost)}</Text>
+            </div>
+            <div className="summary-row">
+              <Space size={6}>
+                <Text type="secondary">Cost topping</Text>
+                <Tag color="processing">ước tính</Tag>
+              </Space>
+              <Text>{formatVnd(estimate.estimatedToppingCost)}</Text>
+            </div>
+            <div className="summary-row">
+              <Text type="secondary">Overhead biến đổi</Text>
+              <Text>{formatVnd(estimate.estimatedOverheadCost)}</Text>
+            </div>
+            <div className="summary-row">
+              <Text type="secondary">Cố định + khấu hao</Text>
+              <Text>{formatVnd(estimate.allocatedFixedCost)}</Text>
+            </div>
+            <Descriptions size="small" column={1} style={{ marginTop: 8 }}>
+              <Descriptions.Item label="Khoảng lợi nhuận">
+                {formatVnd(estimate.estimatedProfitLow)} –{" "}
+                {formatVnd(estimate.estimatedProfitHigh)}
+              </Descriptions.Item>
+            </Descriptions>
+          </details>
         </Card>
       </div>
 
@@ -633,7 +701,7 @@ export default function SalesPage() {
           size="large"
           icon={<SaveOutlined />}
           loading={saving}
-          disabled={!selectedBatch || selectedBatch.costPerMl <= 0}
+          disabled={!canSubmit}
           onClick={() => submit()}
         >
           Lưu bán hàng

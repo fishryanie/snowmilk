@@ -7,7 +7,6 @@ import {
   CloudUploadOutlined,
   DollarOutlined,
   ExperimentOutlined,
-  InboxOutlined,
   MenuFoldOutlined,
   MenuOutlined,
   MenuUnfoldOutlined,
@@ -34,20 +33,19 @@ const menuDefinitions: Array<{ key: string; icon: ReactNode; label: string; page
   { key: '/dashboard', icon: <BarChartOutlined />, label: 'Tổng quan' },
   { key: '/divestments', icon: <WalletOutlined />, label: 'Thoái vốn' },
   { key: '/sales', icon: <DollarOutlined />, label: 'Bán hàng', pageTitle: 'Chốt bán hàng cuối ngày' },
-  { key: '/inventory', icon: <InboxOutlined />, label: 'Kiểm kho', pageTitle: 'Kiểm kho cuối ngày' },
+  { key: '/ingredients', icon: <SkinOutlined />, label: 'Hàng hóa', pageTitle: 'Hàng hóa & kiểm kho' },
   { key: '/batches', icon: <ExperimentOutlined />, label: 'Mẻ sữa' },
   { key: '/purchases', icon: <ShoppingCartOutlined />, label: 'Nhập hàng' },
   { key: '/expenses', icon: <ShoppingOutlined />, label: 'Chi phí' },
   { key: '/products', icon: <AppstoreOutlined />, label: 'Sản phẩm' },
   { key: '/sizes', icon: <ColumnWidthOutlined />, label: 'Size' },
-  { key: '/ingredients', icon: <SkinOutlined />, label: 'Hàng hóa' },
   { key: '/costing', icon: <CalculatorOutlined />, label: 'Giá vốn', pageTitle: 'Công thức & giá vốn' },
   { key: '/equipment', icon: <ToolOutlined />, label: 'Tài sản', pageTitle: 'Đầu tư & tài sản' },
   { key: '/import', icon: <CloudUploadOutlined />, label: 'Nhập Excel', pageTitle: 'Nhập dữ liệu Excel' },
   { key: '/settings', icon: <SettingOutlined />, label: 'Cài đặt', pageTitle: 'Cài đặt chi phí' },
 ];
 
-const mobileQuickLinks = ['/sales', '/purchases', '/inventory'].flatMap(key => {
+const mobileQuickLinks = ['/sales', '/purchases', '/ingredients'].flatMap(key => {
   const item = menuDefinitions.find(candidate => candidate.key === key);
   return item ? [item] : [];
 });
@@ -269,7 +267,7 @@ export function AppShell({ children }: PropsWithChildren) {
         <Snowfall
           images={snowflakeImages}
           changeFrequency={100}
-          snowflakeCount={compactSnowfall ? 36 : 100}
+          snowflakeCount={compactSnowfall ? 16 : 40}
           speed={[0.5, 1.5]}
           wind={[-1, 1]}
           radius={compactSnowfall ? [2, 8] : [5, 20]}
