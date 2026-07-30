@@ -101,6 +101,9 @@ function recordId(record: { id?: string; _id?: string }) {
 }
 
 function comparePurchasesByDate(a: Purchase, b: Purchase) {
+  const fundingWarningDifference =
+    Number(hasMissingFundingSource(b)) - Number(hasMissingFundingSource(a));
+  if (fundingWarningDifference !== 0) return fundingWarningDifference;
   const dateDifference = dayjs(b.purchaseDate).valueOf() - dayjs(a.purchaseDate).valueOf();
   if (dateDifference !== 0) return dateDifference;
   return recordId(b).localeCompare(recordId(a), 'vi');
@@ -108,6 +111,10 @@ function comparePurchasesByDate(a: Purchase, b: Purchase) {
 
 function purchaseKey(record: Purchase) {
   return recordId(record) || `${record.purchaseDate}:${record.itemCode}:${record.packageCount}`;
+}
+
+function hasMissingFundingSource(record: Purchase) {
+  return record.fundingSource === undefined || record.fundingSource === null;
 }
 
 function fundingSourceTagColor(source?: PurchaseFundingSource) {
@@ -281,7 +288,12 @@ export default function PurchasesPage() {
     {
       title: 'Nguồn tiền',
       dataIndex: 'fundingSource',
-      render: (value: PurchaseFundingSource | undefined) => <Tag color={fundingSourceTagColor(value)}>{purchaseFundingSourceLabel(value)}</Tag>,
+      render: (value: PurchaseFundingSource | undefined) =>
+        value === undefined || value === null ? (
+          <Tag color='warning'>Chưa ghi nguồn tiền</Tag>
+        ) : (
+          <Tag color={fundingSourceTagColor(value)}>{purchaseFundingSourceLabel(value)}</Tag>
+        ),
     },
     { title: 'Nhà cung cấp', dataIndex: 'supplier' },
     {
@@ -611,6 +623,7 @@ export default function PurchasesPage() {
             }}
             pagination={{ defaultPageSize: 50, showSizeChanger: false }}
             scroll={{ x: 'max-content' }}
+            rowClassName={record => (hasMissingFundingSource(record) ? 'record-warning-row' : '')}
           />
         </div>
         <div className='purchase-mobile-list'>
@@ -618,7 +631,7 @@ export default function PurchasesPage() {
             <div className='ant-list-items'>
               {mobilePurchases.map(record => (
                 <div className='ant-list-item purchase-mobile-item' key={purchaseKey(record)}>
-                  <article className='purchase-mobile-card'>
+                  <article className={`purchase-mobile-card ${hasMissingFundingSource(record) ? 'record-warning-card' : ''}`}>
                     <Checkbox
                       className='purchase-card-checkbox'
                       checked={selectedPurchaseKeySet.has(purchaseKey(record))}

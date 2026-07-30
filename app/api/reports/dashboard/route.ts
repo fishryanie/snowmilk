@@ -470,13 +470,18 @@ export async function GET(request: Request) {
         Number(batch.producedLiters ?? 0),
     ).length;
     if (inventoryQuantityWarningCount > 0) {
+      const latestInventoryDate = latestInventorySnapshot?.snapshotDate
+        ? vietnamDateKey(new Date(latestInventorySnapshot.snapshotDate))
+        : null;
       healthIssues.push({
         key: "inventory-milk-basis",
         severity: "warning",
         title: "Tồn sữa đang lớn hơn sản lượng một mẻ",
         description:
           "Giá trị tồn vẫn dùng số kiểm thực tế, nhưng đối chiếu số ly theo sữa không còn đáng tin cho mốc kiểm kho mới nhất.",
-        href: "/inventory",
+        href: latestInventoryDate
+          ? `/ingredients?date=${latestInventoryDate}#inventory-milk-basis`
+          : "/ingredients#inventory-milk-basis",
       });
     }
     if (!latestInventorySnapshot) {

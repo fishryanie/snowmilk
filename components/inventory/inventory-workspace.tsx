@@ -7,7 +7,6 @@ import {
   Button,
   Card,
   DatePicker,
-  Descriptions,
   Empty,
   Input,
   InputNumber,
@@ -22,7 +21,7 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { PageHeader } from '@/components/common/page-header';
 import { RouteSkeleton } from '@/components/common/route-skeleton';
 import { useApiData } from '@/hooks/use-api-data';
@@ -465,7 +464,7 @@ function InventoryEditor({
         </div>
       </section>
 
-      <section className='inventory-table-card inventory-batch-card'>
+      <section id='inventory-milk-basis' className='inventory-table-card inventory-batch-card'>
         <div className='inventory-section-heading inventory-table-heading'>
           <div>
             <Title level={4}>1. Đếm tổng sữa thành phẩm còn lại</Title>
@@ -477,7 +476,14 @@ function InventoryEditor({
           <>
             <ul className='inventory-card-grid inventory-batch-grid'>
               {preview.milkBatchLines.map(batch => (
-                <li className={`inventory-count-card ${checkedKeys.has(batch.batchKey) ? 'is-checked' : ''}`} key={batch.batchKey}>
+                <li
+                  className={`inventory-count-card ${
+                    batch.remainingLiters > batch.producedLiters
+                      ? 'record-warning-card'
+                      : ''
+                  } ${checkedKeys.has(batch.batchKey) ? 'is-checked' : ''}`}
+                  key={batch.batchKey}
+                >
                   <div className='inventory-count-card-heading'>
                     <div className='inventory-count-title'>
                       <Text strong>{batch.batchName}</Text>
@@ -485,6 +491,11 @@ function InventoryEditor({
                     <Space size={6} wrap style={{ justifyContent: 'flex-end', flex: '0 0 auto', textAlign: 'right' }}>
                       <Text type='secondary'>{batch.batchCode}</Text>
                       <Tag color='cyan' style={{ marginInlineEnd: 0 }}>Sữa thành phẩm</Tag>
+                      {batch.remainingLiters > batch.producedLiters ? (
+                        <Tag color='warning' style={{ marginInlineEnd: 0 }}>
+                          Tồn vượt sản lượng
+                        </Tag>
+                      ) : null}
                     </Space>
                   </div>
                   <div className='inventory-count-meta-compact'>
@@ -612,11 +623,35 @@ function InventoryEditor({
   );
 }
 
-export function InventoryWorkspace({ embedded = false }: { embedded?: boolean }) {
-  const [snapshotDate, setSnapshotDate] = useState(() => dayjs().format('YYYY-MM-DD'));
+export function InventoryWorkspace({
+  embedded = false,
+  initialSnapshotDate,
+}: {
+  embedded?: boolean;
+  initialSnapshotDate?: string;
+}) {
+  const [snapshotDate, setSnapshotDate] = useState(
+    () => initialSnapshotDate ?? dayjs().format('YYYY-MM-DD'),
+  );
+  const hasScrolledToIssue = useRef(false);
   const fallback = useMemo(() => fallbackContext(snapshotDate), [snapshotDate]);
   const { data, loading, usingFallback, setData } = useApiData<InventoryContext>(`/api/inventory?date=${snapshotDate}`, fallback);
   const awaitingSelectedDate = !usingFallback && data.snapshotDate !== snapshotDate;
+
+  useEffect(() => {
+    if (
+      hasScrolledToIssue.current ||
+      !initialSnapshotDate ||
+      loading ||
+      awaitingSelectedDate
+    ) {
+      return;
+    }
+    hasScrolledToIssue.current = true;
+    document
+      .getElementById('inventory-milk-basis')
+      ?.scrollIntoView({ block: 'start' });
+  }, [awaitingSelectedDate, initialSnapshotDate, loading]);
 
   const workspaceHeading = embedded ? (
     <div className='inventory-embedded-heading'>

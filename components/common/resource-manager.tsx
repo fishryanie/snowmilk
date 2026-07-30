@@ -30,7 +30,7 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   formatDate,
   formatNumber,
@@ -61,15 +61,37 @@ export type ResourceField = {
   hiddenInTable?: boolean;
   hiddenInEditor?: boolean;
   editable?: boolean;
+  missingWarningLabel?: string;
 };
 
 type ResourceRecord = Record<string, unknown> & { id?: string; _id?: string };
+
+function isMissingValue(value: unknown) {
+  return value === undefined || value === null || value === "";
+}
+
+function hasResourceWarning(
+  record: ResourceRecord,
+  fields: ResourceField[],
+) {
+  return (
+    Boolean(record.hasCostWarning) ||
+    fields.some(
+      (field) =>
+        Boolean(field.missingWarningLabel) &&
+        isMissingValue(record[field.key]),
+    )
+  );
+}
 
 function renderResourceValue(
   field: ResourceField,
   value: unknown,
   record: ResourceRecord,
 ) {
+  if (field.missingWarningLabel && isMissingValue(value)) {
+    return <Tag color="warning">{field.missingWarningLabel}</Tag>;
+  }
   const resolvedValue = value ?? field.legacyValue;
   if (field.type === "purchaseSummary") {
     return (
@@ -162,6 +184,15 @@ export function ResourceManager({
     ? deriveValues({ ...(editing ?? {}), ...(watchedValues ?? {}) })
     : { ...(editing ?? {}), ...(watchedValues ?? {}) };
   const tableFields = fields.filter((field) => !field.hiddenInTable);
+  const displayedRecords = useMemo(
+    () =>
+      data.toSorted(
+        (first, second) =>
+          Number(hasResourceWarning(second, fields)) -
+          Number(hasResourceWarning(first, fields)),
+      ),
+    [data, fields],
+  );
   const primaryField =
     tableFields.find((field) => field.key === "name") ??
     tableFields.find((field) => field.key === "description") ??
@@ -188,7 +219,7 @@ export function ResourceManager({
     mobilePage,
     Math.max(1, Math.ceil(data.length / mobilePageSize)),
   );
-  const mobileRecords = data.slice(
+  const mobileRecords = displayedRecords.slice(
     (safeMobilePage - 1) * mobilePageSize,
     safeMobilePage * mobilePageSize,
   );
@@ -352,10 +383,12 @@ export function ResourceManager({
           size="small"
           rowKey={(record) => record.id ?? record._id ?? JSON.stringify(record)}
           columns={columns}
-          dataSource={data}
+          dataSource={displayedRecords}
           pagination={{ defaultPageSize: 50, showSizeChanger: false }}
           scroll={{ x: "max-content" }}
-          rowClassName={(record) => (record.hasCostWarning ? "warning-row" : "")}
+          rowClassName={(record) =>
+            hasResourceWarning(record, fields) ? "record-warning-row" : ""
+          }
         />
         <ul className="resource-mobile-list">
           {mobileRecords.map((record) => {
@@ -364,7 +397,9 @@ export function ResourceManager({
             return (
               <li
                 className={`resource-mobile-card ${
-                  record.hasCostWarning ? "is-warning" : ""
+                  hasResourceWarning(record, fields)
+                    ? "record-warning-card"
+                    : ""
                 }`}
                 key={key}
               >

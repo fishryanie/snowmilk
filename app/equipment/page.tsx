@@ -28,6 +28,7 @@ const fields = [
     options: PURCHASE_FUNDING_SOURCE_OPTIONS,
     defaultValue: "sales_revenue",
     legacyValue: DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
+    missingWarningLabel: "Chưa ghi nguồn tiền",
     required: true,
   },
   { key: "residualValue", label: "Giá trị còn lại", type: "money" as const },

@@ -1415,6 +1415,34 @@ body::before {
   background: #fff8ed;
 }
 
+.ant-table-wrapper .ant-table-tbody > tr.record-warning-row > td {
+  background: #fff7e8;
+  border-bottom-color: rgb(217 147 46 / 34%);
+}
+
+.ant-table-wrapper .ant-table-tbody > tr.record-warning-row:hover > td {
+  background: #ffefd2 !important;
+}
+
+.ant-table-wrapper
+  .ant-table-tbody
+  > tr.record-warning-row
+  > td:first-child {
+  box-shadow: inset 4px 0 0 var(--amber);
+}
+
+.record-warning-card {
+  border-color: rgb(217 147 46 / 58%) !important;
+  background: #fff8eb !important;
+  box-shadow:
+    0 8px 24px rgb(217 147 46 / 10%),
+    inset 4px 0 0 var(--amber) !important;
+}
+
+#inventory-milk-basis {
+  scroll-margin-top: 88px;
+}
+
 .cost-grid {
   display: grid;
   grid-template-columns: minmax(240px, 0.7fr) minmax(0, 1.3fr);
@@ -3515,6 +3543,12 @@ body::before {
 
   .inventory-total-card {
     min-height: 170px;
+  }
+
+  .inventory-overview-section,
+  .inventory-reconciliation,
+  .inventory-workflow-guide {
+    display: none;
   }
 
   .inventory-total-icon {
