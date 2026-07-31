@@ -17,5 +17,9 @@ Ngày chạy dry-run: 23/07/2026.
 
 - 69 bản ghi nghiệp vụ được nhận diện, 69 hợp lệ về cấu trúc, 0 lỗi bắt buộc.
 - Có 8 cảnh báo: 6 sản phẩm cost bất thường và 2 mẻ thiếu ngày nấu.
-- Import kỹ thuật có thể chạy; **đối chiếu tài chính chưa thể xem là hoàn tất** cho đến khi xác nhận đơn vị topping và tính lại workbook.
+- Bảng trên là kết quả dry-run lịch sử ngày 23/07/2026. Từ ngày 31/07/2026,
+  importer và phép tính server đã tự quy đổi kg/gram; dữ liệu MongoDB cũ đã
+  được backfill bằng `bun run repair:cost-units --apply`.
+- Hai snapshot kiểm kho Oreo nhập `0,7` với nhãn legacy `gram` đã được sửa
+  thành `0,7 kg` (quy cách gói `0,4 kg`) và tính lại giá trị tồn kho.
 - Dashboard fallback cố ý hiển thị snapshot `Tổng quan` để người dùng thấy đúng số đang có trong Excel; dashboard MongoDB sau import sẽ dùng dữ liệu sale đã chuẩn hóa.

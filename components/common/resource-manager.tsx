@@ -12,6 +12,8 @@ import {
   App,
   Button,
   Card,
+  Checkbox,
+  Col,
   DatePicker,
   Descriptions,
   Drawer,
@@ -20,6 +22,8 @@ import {
   InputNumber,
   Pagination,
   Popconfirm,
+  Radio,
+  Row,
   Select,
   Skeleton,
   Space,
@@ -51,13 +55,20 @@ export type ResourceField = {
     | "money"
     | "date"
     | "select"
+    | "radio"
     | "boolean"
     | "textarea"
     | "purchaseSummary";
   required?: boolean;
-  options?: Array<string | { value: string; label: string }>;
+  options?: Array<
+    string | { value: string; label: string; color?: string }
+  >;
   defaultValue?: unknown;
   legacyValue?: unknown;
+  mobilePriority?: number;
+  formSpan?: 12 | 24;
+  booleanControl?: "switch" | "checkbox";
+  booleanLabel?: string;
   hiddenInTable?: boolean;
   hiddenInEditor?: boolean;
   editable?: boolean;
@@ -112,13 +123,20 @@ function renderResourceValue(
   if (field.type === "boolean") {
     return value ? <Tag color="green">Có</Tag> : <Tag>Không</Tag>;
   }
-  if (field.type === "select") {
+  if (field.type === "select" || field.type === "radio") {
     const option = field.options?.find((candidate) =>
       typeof candidate === "string"
         ? candidate === resolvedValue
         : candidate.value === resolvedValue,
     );
-    if (option) return typeof option === "string" ? option : option.label;
+    if (option) {
+      if (typeof option === "string") return option;
+      return option.color ? (
+        <Tag color={option.color}>{option.label}</Tag>
+      ) : (
+        option.label
+      );
+    }
   }
   if (field.key === "name" && record.hasCostWarning) {
     return (
@@ -134,12 +152,13 @@ function renderResourceValue(
 }
 
 function mobileFieldPriority(field: ResourceField) {
+  if (field.mobilePriority !== undefined) return field.mobilePriority;
   if (field.type === "money") return 0;
   if (field.type === "purchaseSummary") return 1;
   if (field.type === "number") return 2;
   if (field.type === "boolean") return 3;
   if (field.type === "date") return 4;
-  if (field.type === "select") return 5;
+  if (field.type === "select" || field.type === "radio") return 5;
   return 6;
 }
 
@@ -151,6 +170,7 @@ export function ResourceManager({
   deriveValues,
   fallbackLabel = "Snapshot Excel",
   onMutation,
+  editorColumns = 1,
 }: {
   resource: string;
   fields: ResourceField[];
@@ -161,6 +181,7 @@ export function ResourceManager({
   ) => Record<string, unknown>;
   fallbackLabel?: string;
   onMutation?: () => void;
+  editorColumns?: 1 | 2;
 }) {
   const { message } = App.useApp();
   const [query, setQuery] = useState("");
@@ -535,50 +556,101 @@ export function ResourceManager({
           onFinish={saveRecord}
           style={{ marginTop: 20 }}
         >
-          {fields.filter((field) => field.editable !== false).map((field) => (
-            <Form.Item
-              key={field.key}
-              name={field.key}
-              label={field.label}
-              valuePropName={field.type === "boolean" ? "checked" : "value"}
-              rules={
-                field.required
-                  ? [{ required: true, message: `Vui lòng nhập ${field.label.toLowerCase()}` }]
-                  : undefined
-              }
-            >
-              {field.type === "number" || field.type === "money" ? (
-                <InputNumber
-                  min={0}
-                  style={{ width: "100%" }}
-                  precision={field.type === "money" ? 0 : undefined}
-                  step={field.type === "money" ? 1_000 : undefined}
-                  formatter={field.type === "money" ? formatVndInput : undefined}
-                  parser={field.type === "money" ? parseVndInput : undefined}
-                  placeholder={field.type === "money" ? "Ví dụ: 2.200.000" : undefined}
-                  inputMode={field.type === "money" ? "numeric" : undefined}
-                />
-              ) : field.type === "date" ? (
-                <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }} />
-              ) : field.type === "select" ? (
-                <Select
-                  showSearch
-                  optionFilterProp="label"
-                  options={field.options?.map((option) =>
-                    typeof option === "string"
-                      ? { value: option, label: option }
-                      : option,
-                  )}
-                />
-              ) : field.type === "boolean" ? (
-                <Switch />
-              ) : field.type === "textarea" ? (
-                <Input.TextArea rows={3} />
-              ) : (
-                <Input />
-              )}
-            </Form.Item>
-          ))}
+          <Row gutter={16}>
+            {fields
+              .filter((field) => field.editable !== false)
+              .map((field) => (
+                <Col
+                  key={field.key}
+                  xs={24}
+                  md={
+                    field.formSpan ??
+                    (editorColumns === 2 && field.type !== "textarea"
+                      ? 12
+                      : 24)
+                  }
+                >
+                  <Form.Item
+                    name={field.key}
+                    label={field.label}
+                    valuePropName={
+                      field.type === "boolean" ? "checked" : "value"
+                    }
+                    rules={
+                      field.required
+                        ? [
+                            {
+                              required: true,
+                              message: `Vui lòng nhập ${field.label.toLowerCase()}`,
+                            },
+                          ]
+                        : undefined
+                    }
+                  >
+                    {field.type === "number" || field.type === "money" ? (
+                      <InputNumber
+                        min={0}
+                        style={{ width: "100%" }}
+                        precision={field.type === "money" ? 0 : undefined}
+                        step={field.type === "money" ? 1_000 : undefined}
+                        formatter={
+                          field.type === "money" ? formatVndInput : undefined
+                        }
+                        parser={
+                          field.type === "money" ? parseVndInput : undefined
+                        }
+                        placeholder={
+                          field.type === "money"
+                            ? "Ví dụ: 2.200.000"
+                            : undefined
+                        }
+                        inputMode={
+                          field.type === "money" ? "numeric" : undefined
+                        }
+                      />
+                    ) : field.type === "date" ? (
+                      <DatePicker
+                        format="DD/MM/YYYY"
+                        style={{ width: "100%" }}
+                      />
+                    ) : field.type === "select" ? (
+                      <Select
+                        showSearch
+                        optionFilterProp="label"
+                        options={field.options?.map((option) =>
+                          typeof option === "string"
+                            ? { value: option, label: option }
+                            : option,
+                        )}
+                      />
+                    ) : field.type === "radio" ? (
+                      <Radio.Group
+                        block
+                        buttonStyle="solid"
+                        optionType="button"
+                        options={field.options?.map((option) =>
+                          typeof option === "string"
+                            ? { value: option, label: option }
+                            : { value: option.value, label: option.label },
+                        )}
+                      />
+                    ) : field.type === "boolean" ? (
+                      field.booleanControl === "checkbox" ? (
+                        <Checkbox>
+                          {field.booleanLabel ?? field.label}
+                        </Checkbox>
+                      ) : (
+                        <Switch />
+                      )
+                    ) : field.type === "textarea" ? (
+                      <Input.TextArea rows={3} />
+                    ) : (
+                      <Input />
+                    )}
+                  </Form.Item>
+                </Col>
+              ))}
+          </Row>
         </Form>
         {calculatedFields.length > 0 && (
           <Card

@@ -17,7 +17,8 @@
     "db:backup": "bun scripts/db-backup.ts",
     "db:restore": "bun scripts/db-restore.ts",
     "recalculate:estimated-sales": "bun scripts/recalculate-estimated-sales.ts",
-    "recalculate:products": "bun scripts/recalculate-product-costs.ts"
+    "recalculate:products": "bun scripts/recalculate-product-costs.ts",
+    "repair:cost-units": "bun scripts/repair-cost-units.ts"
   },
   "dependencies": {
     "@ant-design/charts": "^2.6.7",

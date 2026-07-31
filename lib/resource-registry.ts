@@ -34,7 +34,12 @@ export const resourceSearchFields: Record<ResourceName, string[]> = {
     "category",
     "fundingSource",
   ],
-  expenses: ["description", "category", "paymentMethod", "fundingSource"],
+  expenses: [
+    "description",
+    "category",
+    "paymentStatus",
+    "fundingSource",
+  ],
   divestments: ["note"],
   equipment: ["name", "code", "category", "fundingSource"],
   batches: ["name", "code"],

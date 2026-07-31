@@ -10,7 +10,10 @@ import { Purchase } from "@/models/Purchase";
 import { Sale } from "@/models/Sale";
 import { Setting } from "@/models/Setting";
 import { ProductSize } from "@/models/Size";
-import { recalculateProductCosts } from "@/services/resource.service";
+import {
+  recalculateIngredientAverages,
+  recalculateProductCosts,
+} from "@/services/resource.service";
 
 const upserts = (
   records: Record<string, unknown>[],
@@ -147,6 +150,13 @@ export async function persistWorkbook(
         )
       : null,
   ]);
+  await recalculateIngredientAverages(
+    {},
+    {
+      normalizePurchaseUnits: true,
+      recalculateProducts: false,
+    },
+  );
   await recalculateProductCosts();
 
   const summary = importSummary(parsed);

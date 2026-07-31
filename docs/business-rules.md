@@ -19,3 +19,7 @@
 17. Phiếu nhập, chi phí và tài sản cũ hoặc được import từ workbook không có thông tin nguồn tiền được mặc định là `Vốn chủ` để giữ tương thích với số liệu lịch sử. Bản ghi mới mặc định dùng `Tiền bán hàng` trên giao diện.
 18. Tiến độ thu hồi vốn là số lũy kế: tổng vốn chủ ban đầu trừ tổng các lần thu hồi. Khoảng ngày trên Dashboard không được làm thay đổi chỉ số này.
 19. Gợi ý thoái vốn dùng cùng số dư tiền doanh nghiệp với hạn mức claim để không trừ một khoản thu hồi hai lần; quỹ dự phòng vẫn lấy chi vận hành trong kỳ đang chọn.
+20. Chi phí có trạng thái `Đã thanh toán` hoặc `Chưa thanh toán`. Dữ liệu cũ chưa có trạng thái được coi là `Đã thanh toán`; khoản mới trên giao diện mặc định là `Chưa thanh toán`.
+21. Quỹ lương trong tháng chỉ là số tạm tính và không được rút. Sau khi tháng kết thúc, hệ thống chốt snapshot theo tháng; snapshot giữ nguyên tổng quỹ, tỷ lệ và phần của từng nhân sự dù dữ liệu hoặc tỷ lệ ở các tháng sau thay đổi.
+22. Tiền sạch để chốt quỹ lương là doanh thu lũy kế trừ toàn bộ phiếu nhập, chi phí, tài sản, các quỹ tháng đã chốt trước đó và vốn xoay vòng cần giữ. Phép tính không phụ thuộc nguồn tiền, nên khoản dùng vốn chủ/chưa claim và nghĩa vụ chưa thanh toán đều được trừ trước khi chia.
+23. Mỗi nhân sự chỉ có một phiếu rút cho mỗi tháng đã chốt. API phải lấy số tiền từ snapshot tháng trên server; tháng hiện tại hoặc con số do client tự thay đổi không được phép rút.

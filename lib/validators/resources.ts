@@ -3,6 +3,10 @@ import {
   DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
   PURCHASE_FUNDING_SOURCES,
 } from "@/lib/purchase-funding";
+import {
+  DEFAULT_LEGACY_EXPENSE_PAYMENT_STATUS,
+  EXPENSE_PAYMENT_STATUSES,
+} from "@/lib/expense-payment-status";
 
 const nonNegative = z.coerce.number().min(0);
 const requiredText = z.string().trim().min(1);
@@ -74,15 +78,18 @@ export const resourceSchemas = {
       category: requiredText,
       description: requiredText,
       amount: nonNegative,
+      paymentStatus: z
+        .enum(EXPENSE_PAYMENT_STATUSES)
+        .optional()
+        .default(DEFAULT_LEGACY_EXPENSE_PAYMENT_STATUS),
       fundingSource: z
         .enum(PURCHASE_FUNDING_SOURCES)
         .optional()
         .default(DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE),
-      paymentMethod: optionalText,
       isRecurring: z.boolean().optional().default(false),
       note: optionalText,
     })
-    .passthrough(),
+    .strict(),
   divestments: z
     .object({
       withdrawalDate: z.coerce.date(),

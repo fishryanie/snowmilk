@@ -5,6 +5,11 @@ import {
   type InventoryIngredientLine,
   type InventoryMilkBatchLine,
 } from "@/lib/calculations/inventory";
+import {
+  summarizePurchases,
+  type PurchaseQuantityRecord,
+} from "@/lib/calculations/purchases";
+import { convertQuantity } from "@/lib/calculations/units";
 import { connectMongo } from "@/lib/mongodb";
 import {
   isVietnamDateKey,
@@ -56,6 +61,17 @@ function recordKey(record: { _id?: unknown; id?: unknown; code?: unknown }) {
   return String(record._id ?? record.id ?? record.code ?? "");
 }
 
+function snapshotQuantityInUnit(
+  quantity: unknown,
+  sourceUnit: unknown,
+  targetUnit: string,
+) {
+  const value = Number(quantity ?? 0);
+  const fromUnit = String(sourceUnit ?? "").trim();
+  if (!fromUnit || !targetUnit) return value;
+  return convertQuantity(value, fromUnit, targetUnit);
+}
+
 async function inventoryContext(date: string) {
   const boundary = vietnamDayBoundary(date);
   const endOfDay = vietnamDayBoundary(date, true);
@@ -70,7 +86,9 @@ async function inventoryContext(date: string) {
   ] = await Promise.all([
     Ingredient.find({ isActive: true }).sort({ category: 1, name: 1 }).lean(),
     Purchase.find({ purchaseDate: { $lte: endOfDay } })
-      .select("ingredientId itemCode convertedQuantity")
+      .select(
+        "ingredientId itemCode packageCount costUnit convertedQuantity totalAmount",
+      )
       .lean(),
     MilkBatch.find()
       .sort({ cookedAt: 1, createdAt: 1 })
@@ -92,20 +110,22 @@ async function inventoryContext(date: string) {
       .lean(),
   ]);
 
-  const purchasedById = new Map<string, number>();
-  const purchasedByCode = new Map<string, number>();
+  const purchasedById = new Map<string, PurchaseQuantityRecord[]>();
+  const purchasedByCode = new Map<string, PurchaseQuantityRecord[]>();
   for (const purchase of purchases) {
-    const quantity = Number(purchase.convertedQuantity ?? 0);
     const ingredientId = String(purchase.ingredientId ?? "");
     const code = String(purchase.itemCode ?? "");
     if (ingredientId) {
-      purchasedById.set(
-        ingredientId,
-        (purchasedById.get(ingredientId) ?? 0) + quantity,
-      );
+      purchasedById.set(ingredientId, [
+        ...(purchasedById.get(ingredientId) ?? []),
+        purchase,
+      ]);
     }
     if (code) {
-      purchasedByCode.set(code, (purchasedByCode.get(code) ?? 0) + quantity);
+      purchasedByCode.set(code, [
+        ...(purchasedByCode.get(code) ?? []),
+        purchase,
+      ]);
     }
   }
 
@@ -125,20 +145,31 @@ async function inventoryContext(date: string) {
     (ingredient) => {
       const itemKey = recordKey(ingredient);
       const itemCode = String(ingredient.code ?? "");
+      const unit = String(ingredient.costUnit ?? "");
+      const purchaseHistory =
+        purchasedById.get(itemKey) ?? purchasedByCode.get(itemCode) ?? [];
       const totalPurchasedQuantity =
-        purchasedById.get(itemKey) ??
-        purchasedByCode.get(itemCode) ??
-        Number(
-          (ingredient as { totalPurchasedQuantity?: number })
-            .totalPurchasedQuantity ?? 0,
-        );
+        purchaseHistory.length > 0
+          ? summarizePurchases(purchaseHistory, unit)
+              .totalPurchasedQuantity
+          : Number(
+              (ingredient as { totalPurchasedQuantity?: number })
+                .totalPurchasedQuantity ?? 0,
+            );
       const saved = savedItems.get(itemKey);
       const previous = previousItems.get(itemKey);
+      const previousTotalPurchasedQuantity = previous
+        ? snapshotQuantityInUnit(
+            previous.totalPurchasedQuantity,
+            previous.unit,
+            unit,
+          )
+        : 0;
       const purchasesSincePrevious = previous
         ? Math.max(
             0,
             totalPurchasedQuantity -
-              Number(previous.totalPurchasedQuantity ?? 0),
+              previousTotalPurchasedQuantity,
           )
         : 0;
       return {
@@ -146,14 +177,22 @@ async function inventoryContext(date: string) {
         itemCode,
         itemName: String(ingredient.name ?? ""),
         category: String(ingredient.category ?? "Khác"),
-        unit: String(ingredient.costUnit ?? ""),
+        unit,
         totalPurchasedQuantity,
         onHandQuantity:
-          Number(saved?.onHandQuantity) ||
+          snapshotQuantityInUnit(
+            saved?.onHandQuantity,
+            saved?.unit,
+            unit,
+          ) ||
           (saved?.onHandQuantity === 0
             ? 0
             : previous
-              ? Number(previous.onHandQuantity ?? 0) + purchasesSincePrevious
+              ? snapshotQuantityInUnit(
+                  previous.onHandQuantity,
+                  previous.unit,
+                  unit,
+                ) + purchasesSincePrevious
               : totalPurchasedQuantity),
         unitCost: Number(ingredient.averageUnitCost ?? 0),
       };

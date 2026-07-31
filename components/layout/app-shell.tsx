@@ -14,6 +14,7 @@ import {
   ShoppingCartOutlined,
   ShoppingOutlined,
   SkinOutlined,
+  TeamOutlined,
   ColumnWidthOutlined,
   ToolOutlined,
   WalletOutlined,
@@ -37,6 +38,7 @@ const menuDefinitions: Array<{ key: string; icon: ReactNode; label: string; page
   { key: '/batches', icon: <ExperimentOutlined />, label: 'Mẻ sữa' },
   { key: '/purchases', icon: <ShoppingCartOutlined />, label: 'Nhập hàng' },
   { key: '/expenses', icon: <ShoppingOutlined />, label: 'Chi phí' },
+  { key: '/payroll', icon: <TeamOutlined />, label: 'Chi lương', pageTitle: 'Chi lương nhân sự' },
   { key: '/products', icon: <AppstoreOutlined />, label: 'Sản phẩm' },
   { key: '/sizes', icon: <ColumnWidthOutlined />, label: 'Size' },
   { key: '/costing', icon: <CalculatorOutlined />, label: 'Giá vốn', pageTitle: 'Công thức & giá vốn' },
@@ -81,7 +83,8 @@ export function AppShell({ children }: PropsWithChildren) {
   const currentPageTitle = currentItem.pageTitle ?? currentItem.label;
   const selectedKey = navigatingTo ?? currentKey;
   const menuItems = menuDefinitions.map(item => ({
-    ...item,
+    key: item.key,
+    icon: item.icon,
     label: (
       <Link
         href={item.key}

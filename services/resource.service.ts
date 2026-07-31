@@ -5,6 +5,11 @@ import {
   calculatePurchasePricing,
 } from "@/lib/calculations/costing";
 import {
+  normalizePurchaseUnit,
+  summarizePurchases,
+  type PurchaseQuantityRecord,
+} from "@/lib/calculations/purchases";
+import {
   resourceModels,
   resourceSearchFields,
 } from "@/lib/resource-registry";
@@ -383,6 +388,139 @@ async function purchasePayload(payload: PurchaseInput) {
   };
 }
 
+type IngredientForPurchaseSummary = {
+  _id: unknown;
+  code?: unknown;
+  category?: unknown;
+  costUnit?: unknown;
+};
+
+type PurchaseForSummary = PurchaseQuantityRecord & {
+  _id?: unknown;
+  ingredientId?: unknown;
+  itemCode?: unknown;
+};
+
+function groupPurchasesByIngredient(
+  ingredients: IngredientForPurchaseSummary[],
+  purchases: PurchaseForSummary[],
+) {
+  const ingredientIdByCode = new Map(
+    ingredients.map((ingredient) => [
+      String(ingredient.code ?? ""),
+      String(ingredient._id),
+    ]),
+  );
+  const ingredientIds = new Set(
+    ingredients.map((ingredient) => String(ingredient._id)),
+  );
+  const grouped = new Map<string, PurchaseForSummary[]>();
+
+  for (const purchase of purchases) {
+    const linkedId = String(purchase.ingredientId ?? "");
+    const ingredientId = ingredientIds.has(linkedId)
+      ? linkedId
+      : ingredientIdByCode.get(String(purchase.itemCode ?? ""));
+    if (!ingredientId) continue;
+    grouped.set(ingredientId, [
+      ...(grouped.get(ingredientId) ?? []),
+      purchase,
+    ]);
+  }
+
+  return grouped;
+}
+
+export async function recalculateIngredientAverages(
+  filter: Record<string, unknown> = {},
+  options: {
+    normalizePurchaseUnits?: boolean;
+    recalculateProducts?: boolean;
+  } = {},
+) {
+  await connectMongo();
+  const ingredients = (await Ingredient.find(filter)
+    .select("_id code category costUnit")
+    .lean()) as IngredientForPurchaseSummary[];
+  if (ingredients.length === 0) {
+    return { found: 0, updated: 0, normalizedPurchases: 0 };
+  }
+
+  const ingredientIds = ingredients.map((ingredient) => ingredient._id);
+  const ingredientCodes = ingredients
+    .map((ingredient) => String(ingredient.code ?? ""))
+    .filter(Boolean);
+  const purchases = (await Purchase.find({
+    $or: [
+      { ingredientId: { $in: ingredientIds } },
+      { itemCode: { $in: ingredientCodes } },
+    ],
+  })
+    .select(
+      "_id ingredientId itemCode packageCount packageQuantity costUnit convertedQuantity totalAmount",
+    )
+    .lean()) as PurchaseForSummary[];
+  const purchasesByIngredient = groupPurchasesByIngredient(
+    ingredients,
+    purchases,
+  );
+  const ingredientUpdates = [];
+  const purchaseUpdates = [];
+
+  for (const ingredient of ingredients) {
+    const history =
+      purchasesByIngredient.get(String(ingredient._id)) ?? [];
+    const targetUnit =
+      String(ingredient.costUnit ?? "").trim() ||
+      String(history[0]?.costUnit ?? "").trim();
+    const summary = summarizePurchases(history, targetUnit);
+    ingredientUpdates.push({
+      updateOne: {
+        filter: { _id: ingredient._id },
+        update: { $set: { averageUnitCost: summary.averageUnitCost } },
+      },
+    });
+
+    if (options.normalizePurchaseUnits && targetUnit) {
+      for (const purchase of history) {
+        if (String(purchase.costUnit ?? "").trim() === targetUnit) continue;
+        purchaseUpdates.push({
+          updateOne: {
+            filter: { _id: purchase._id },
+            update: {
+              $set: normalizePurchaseUnit(purchase, targetUnit),
+            },
+          },
+        });
+      }
+    }
+  }
+
+  if (purchaseUpdates.length > 0) {
+    await Purchase.bulkWrite(purchaseUpdates, { ordered: false });
+  }
+  if (ingredientUpdates.length > 0) {
+    await Ingredient.bulkWrite(ingredientUpdates, { ordered: false });
+  }
+
+  if (options.recalculateProducts !== false) {
+    const toppingIds = ingredients
+      .filter((ingredient) => ingredient.category === "Topping")
+      .map((ingredient) => ingredient._id);
+    if (toppingIds.length > 0) {
+      await recalculateProductCosts({
+        toppingIngredientId: { $in: toppingIds },
+      });
+    }
+  }
+
+  return {
+    found: ingredients.length,
+    updated: ingredientUpdates.length,
+    normalizedPurchases: purchaseUpdates.length,
+  };
+}
+
 async function refreshIngredientAverage(
   ingredientId: unknown,
   itemCode?: string,
@@ -394,30 +532,10 @@ async function refreshIngredientAverage(
         ? await Ingredient.findOne({ code: itemCode }).select("_id").lean()
         : null;
   if (!ingredient) return;
-
-  const match = itemCode
-    ? { $or: [{ ingredientId: ingredient._id }, { itemCode }] }
-    : { ingredientId: ingredient._id };
-  const totals = await Purchase.aggregate<{
-    totalAmount: number;
-    convertedQuantity: number;
-  }>([
-    { $match: match },
-    {
-      $group: {
-        _id: null,
-        totalAmount: { $sum: "$totalAmount" },
-        convertedQuantity: { $sum: "$convertedQuantity" },
-      },
-    },
-  ]);
-  const total = totals[0];
-  const averageUnitCost =
-    total && total.convertedQuantity > 0
-      ? total.totalAmount / total.convertedQuantity
-      : 0;
-  await Ingredient.findByIdAndUpdate(ingredient._id, { averageUnitCost });
-  await recalculateProductCosts({ toppingIngredientId: ingredient._id });
+  await recalculateIngredientAverages(
+    { _id: ingredient._id },
+    { normalizePurchaseUnits: true },
+  );
 }
 
 export async function recalculateProductCosts(
@@ -508,73 +626,38 @@ export async function listResources(
   const ingredientCodes = ingredients
     .map((ingredient) => String(ingredient.code ?? ""))
     .filter(Boolean);
-  const purchaseTotals = await Purchase.aggregate<{
-    _id: { ingredientId?: unknown; itemCode?: string };
-    totalPurchasedPackages: number;
-    totalPurchasedQuantity: number;
-    totalPurchasedAmount: number;
-  }>([
-    {
-      $match: {
-        $or: [
-          { ingredientId: { $in: ingredientIds } },
-          { itemCode: { $in: ingredientCodes } },
-        ],
-      },
-    },
-    {
-      $group: {
-        _id: {
-          ingredientId: "$ingredientId",
-          itemCode: "$itemCode",
-        },
-        totalPurchasedPackages: { $sum: "$packageCount" },
-        totalPurchasedQuantity: { $sum: "$convertedQuantity" },
-        totalPurchasedAmount: { $sum: "$totalAmount" },
-      },
-    },
-  ]);
-
-  type Totals = {
-    totalPurchasedPackages: number;
-    totalPurchasedQuantity: number;
-    totalPurchasedAmount: number;
-  };
-  const emptyTotals = (): Totals => ({
+  const purchases = (await Purchase.find({
+    $or: [
+      { ingredientId: { $in: ingredientIds } },
+      { itemCode: { $in: ingredientCodes } },
+    ],
+  })
+    .select(
+      "ingredientId itemCode packageCount costUnit convertedQuantity totalAmount",
+    )
+    .lean()) as PurchaseForSummary[];
+  const purchasesByIngredient = groupPurchasesByIngredient(
+    ingredients,
+    purchases,
+  );
+  const emptyTotals = () => ({
     totalPurchasedPackages: 0,
     totalPurchasedQuantity: 0,
     totalPurchasedAmount: 0,
   });
-  const ingredientById = new Map(
-    ingredients.map((ingredient) => [String(ingredient._id), ingredient]),
-  );
-  const ingredientIdByCode = new Map(
-    ingredients.map((ingredient) => [
-      String(ingredient.code ?? ""),
-      String(ingredient._id),
-    ]),
-  );
-  const totalsByIngredientId = new Map<string, Totals>();
-
-  for (const purchaseTotal of purchaseTotals) {
-    const linkedIngredientId = String(
-      purchaseTotal._id.ingredientId ?? "",
-    );
-    const ingredientId = ingredientById.has(linkedIngredientId)
-      ? linkedIngredientId
-      : ingredientIdByCode.get(String(purchaseTotal._id.itemCode ?? ""));
-    if (!ingredientId) continue;
-
-    const total = totalsByIngredientId.get(ingredientId) ?? emptyTotals();
-    total.totalPurchasedPackages += purchaseTotal.totalPurchasedPackages;
-    total.totalPurchasedQuantity += purchaseTotal.totalPurchasedQuantity;
-    total.totalPurchasedAmount += purchaseTotal.totalPurchasedAmount;
-    totalsByIngredientId.set(ingredientId, total);
-  }
 
   return ingredients.map((ingredient) => ({
     ...ingredient,
-    ...(totalsByIngredientId.get(String(ingredient._id)) ?? emptyTotals()),
+    ...(purchasesByIngredient.has(String(ingredient._id))
+      ? summarizePurchases(
+          purchasesByIngredient.get(String(ingredient._id)) ?? [],
+          String(ingredient.costUnit ?? "").trim() ||
+            String(
+              purchasesByIngredient.get(String(ingredient._id))?.[0]
+                ?.costUnit ?? "",
+            ).trim(),
+        )
+      : emptyTotals()),
   }));
 }
 
@@ -677,12 +760,36 @@ export async function updateResource(
     );
   }
   if (resource === "ingredients") {
+    const existing = await Ingredient.findById(id)
+      .select("_id code")
+      .lean();
+    if (!existing) return null;
+    const targetUnit = String(payload.costUnit ?? "").trim();
+    const purchaseHistory = (await Purchase.find({
+      $or: [
+        { ingredientId: existing._id },
+        { itemCode: existing.code },
+      ],
+    })
+      .select("costUnit convertedQuantity")
+      .lean()) as PurchaseForSummary[];
+    if (purchaseHistory.length > 0 && !targetUnit) {
+      throw new Error(
+        "Không thể bỏ đơn vị cost khi hàng hóa đã có lịch sử nhập.",
+      );
+    }
+    summarizePurchases(purchaseHistory, targetUnit);
+
     const ingredient = await Ingredient.findByIdAndUpdate(id, payload, {
       returnDocument: "after",
       runValidators: true,
     });
-    if (ingredient?.category === "Topping") {
-      await recalculateProductCosts({ toppingIngredientId: ingredient._id });
+    if (ingredient) {
+      await recalculateIngredientAverages(
+        { _id: ingredient._id },
+        { normalizePurchaseUnits: true },
+      );
+      return Ingredient.findById(ingredient._id);
     }
     return ingredient;
   }

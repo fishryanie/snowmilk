@@ -12,7 +12,8 @@
 
 ## Lưu ý mở
 
-- Cần chủ dữ liệu xác nhận cách quy đổi topping kg → gram.
+- Quy đổi topping kg ↔ gram đã được chuẩn hóa trong phép tính, import và
+  backfill dữ liệu cũ.
 - Cần bổ sung ngày nấu cho hai mẻ mẫu nếu muốn báo cáo theo lịch nấu.
 - Import chính thức đã chạy; các cảnh báo dữ liệu được giữ nguyên để đối soát.
 - React Doctor không chạy được do lớp bảo mật chặn thực thi gói từ xa; các kiểm tra cục bộ thay thế đều đạt.

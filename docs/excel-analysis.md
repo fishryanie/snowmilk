@@ -120,7 +120,9 @@ chiếu với số dư ngân hàng, khoản phải trả và nghĩa vụ thuế.
 
 ### 6.1. Sai đơn vị cost topping
 
-Các topping `Dâu giòn`, `Sữa chua sấy`, `Choco Ball` lưu đơn vị cost là `kg`, nhưng công thức sản phẩm nhân trực tiếp với lượng dùng `15` gram:
+Workbook gốc từng lưu các topping `Dâu giòn`, `Sữa chua sấy`, `Choco Ball`
+với đơn vị cost là `kg`, nhưng công thức sản phẩm nhân trực tiếp với lượng
+dùng `15` gram:
 
 | Topping | Giá vốn BQ trong workbook | Công thức hiện tại | Hệ quả |
 |---|---:|---:|---|
@@ -128,7 +130,11 @@ Các topping `Dâu giòn`, `Sữa chua sấy`, `Choco Ball` lưu đơn vị cost
 | Sữa chua sấy | 323.700 đ/kg | `15 × 323.700` | 4.855.500 đ/ly |
 | Choco Ball | 285.333 đ/kg | `15 × 285.333` | 4.280.000 đ/ly |
 
-Không tự sửa trong migration. Phương án an toàn: chuẩn hóa tất cả topping về `đ/gram` hoặc đổi lượng sử dụng từ `15` thành `0,015 kg`, sau khi chủ dữ liệu xác nhận.
+Hệ thống hiện quy đổi lượng công thức sang đơn vị cost trước khi nhân
+(`15 g = 0,015 kg`). Lịch sử mua có nhiều đơn vị cũng được quy đổi về đơn vị
+danh mục trước khi cộng; đổi đơn vị danh mục sẽ chuẩn hóa purchase cũ, tính
+lại giá vốn bình quân và tính lại các sản phẩm liên quan. Backfill ngày
+31/07/2026 đã sửa dữ liệu MongoDB cũ.
 
 ### 6.2. Cache công thức giữa các sheet chưa đồng bộ
 

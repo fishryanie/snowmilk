@@ -45,6 +45,14 @@ export function convertQuantity(
   return (quantity * from.baseFactor) / to.baseFactor;
 }
 
+export function convertUnitCost(
+  unitCost: number,
+  fromUnit: string,
+  toUnit: string,
+) {
+  return unitCost * convertQuantity(1, toUnit, fromUnit);
+}
+
 export function compatibleUnitOptions(costUnit: string) {
   const definition = definitionFor(costUnit);
   if (!definition) return [{ value: costUnit, label: costUnit }];

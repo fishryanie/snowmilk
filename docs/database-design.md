@@ -34,7 +34,11 @@ Một document cho mỗi tổ hợp ngày + mẻ + phương thức thanh toán. 
 
 ### `expenses`
 
-Chi phí ngoài nhập hàng/tài sản: điện, nước, mặt bằng, vận chuyển, marketing, sửa chữa hoặc khác. Mỗi chi phí ghi `fundingSource`; bản ghi cũ không có nguồn tiền được coi là `owner_capital`. Workbook chưa có sheet riêng nên collection khởi tạo rỗng.
+Chi phí ngoài nhập hàng/tài sản: điện, nước, mặt bằng, vận chuyển, marketing, sửa chữa hoặc khác. Mỗi chi phí ghi `paymentStatus` (`paid` hoặc `unpaid`) và `fundingSource`; bản ghi cũ không có trạng thái được coi là `paid`, không có nguồn tiền được coi là `owner_capital`. Workbook chưa có sheet riêng nên collection khởi tạo rỗng.
+
+### `payrollperiodsettlements`
+
+Snapshot quỹ lương sau khi tháng kết thúc: lưu kỳ `YYYY-MM`, ngày chốt, doanh thu/nhập hàng/chi phí/tài sản trong kỳ, số lũy kế, vốn xoay vòng, tổng tiền sạch được chia và snapshot tỷ lệ/số tiền của từng nhân sự. `period` là duy nhất; dữ liệu tháng hiện tại chỉ được tính tạm thời và chưa ghi collection.
 
 ### `settings`
 

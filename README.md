@@ -123,4 +123,7 @@ docs/                   phân tích, schema, business rules, đối chiếu
 - Kiểm kho là snapshot cuối ngày: nhập tồn thực tế để định giá kho và đối chiếu
   số ly theo vỏ ly. Số ly suy ra là chỉ báo vận hành, không phải số bán thực tế.
 - Import giữ `sourceSheet`, `sourceRow`, `legacyId`.
-- Workbook có lỗi quy đổi kg/gram ở 6 biến thể topping; hệ thống cảnh báo và không tự sửa. Xem `docs/excel-analysis.md` và `docs/data-verification.md`.
+- Số lượng mua và công thức được tự quy đổi về cùng đơn vị cost trước khi
+  cộng hoặc tính giá vốn; đổi `gram` ↔ `kg` sẽ chuẩn hóa lịch sử mua và tính
+  lại sản phẩm liên quan. Xem `docs/excel-analysis.md` và
+  `docs/data-verification.md`.

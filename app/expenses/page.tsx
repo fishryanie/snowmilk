@@ -3,6 +3,11 @@
 import { PageHeader } from "@/components/common/page-header";
 import { ResourceManager } from "@/components/common/resource-manager";
 import {
+  DEFAULT_LEGACY_EXPENSE_PAYMENT_STATUS,
+  DEFAULT_NEW_EXPENSE_PAYMENT_STATUS,
+  EXPENSE_PAYMENT_STATUS_OPTIONS,
+} from "@/lib/expense-payment-status";
+import {
   DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
   PURCHASE_FUNDING_SOURCE_OPTIONS,
 } from "@/lib/purchase-funding";
@@ -13,6 +18,16 @@ const fields = [
   { key: "description", label: "Nội dung", required: true },
   { key: "amount", label: "Số tiền", type: "money" as const, required: true },
   {
+    key: "paymentStatus",
+    label: "Trạng thái",
+    type: "radio" as const,
+    options: EXPENSE_PAYMENT_STATUS_OPTIONS,
+    defaultValue: DEFAULT_NEW_EXPENSE_PAYMENT_STATUS,
+    legacyValue: DEFAULT_LEGACY_EXPENSE_PAYMENT_STATUS,
+    mobilePriority: 1,
+    required: true,
+  },
+  {
     key: "fundingSource",
     label: "Nguồn tiền",
     type: "select" as const,
@@ -22,9 +37,20 @@ const fields = [
     missingWarningLabel: "Chưa ghi nguồn tiền",
     required: true,
   },
-  { key: "paymentMethod", label: "Thanh toán", type: "select" as const, options: ["Tiền mặt", "Chuyển khoản", "Khác"] },
-  { key: "isRecurring", label: "Định kỳ", type: "boolean" as const },
-  { key: "note", label: "Ghi chú", type: "textarea" as const, hiddenInTable: true },
+  {
+    key: "isRecurring",
+    label: "Định kỳ",
+    type: "boolean" as const,
+    booleanControl: "checkbox" as const,
+    booleanLabel: "Đây là chi phí định kỳ",
+  },
+  {
+    key: "note",
+    label: "Ghi chú",
+    type: "textarea" as const,
+    formSpan: 12 as const,
+    hiddenInTable: true,
+  },
 ];
 
 export default function ExpensesPage() {
@@ -32,9 +58,15 @@ export default function ExpensesPage() {
     <div className="page-wrap">
       <PageHeader
         title="Chi phí"
-        description="Chi phí phát sinh ngoài tiền nhập nguyên liệu và tài sản đầu tư, kèm nguồn tiền thanh toán."
+        description="Chi phí phát sinh ngoài tiền nhập nguyên liệu và tài sản đầu tư, kèm trạng thái và nguồn tiền thanh toán."
       />
-      <ResourceManager resource="expenses" fields={fields} initialData={[]} addLabel="Thêm chi phí" />
+      <ResourceManager
+        resource="expenses"
+        fields={fields}
+        initialData={[]}
+        addLabel="Thêm chi phí"
+        editorColumns={2}
+      />
     </div>
   );
 }
