@@ -1,14 +1,16 @@
 import {
   calculatePeriodDistribution,
-  calculateWorkingCapitalReserve,
-  type DailyOperatingCash,
+  PAYROLL_WORKING_CAPITAL_RESERVE,
   type PayrollShareInput,
 } from "@/lib/payroll";
+import { DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE } from "@/lib/purchase-funding";
 import { vietnamDateKey, vietnamDayBoundary } from "@/lib/vietnam-date";
+import { Divestment } from "@/models/Divestment";
 import { Equipment } from "@/models/Equipment";
 import { Expense } from "@/models/Expense";
 import { PayrollEmployee } from "@/models/PayrollEmployee";
 import { PayrollPeriodSettlement } from "@/models/PayrollPeriodSettlement";
+import { PayrollWithdrawal } from "@/models/PayrollWithdrawal";
 import { Purchase } from "@/models/Purchase";
 import { Sale } from "@/models/Sale";
 
@@ -19,10 +21,28 @@ type SaleRecord = {
 };
 
 type CostRecord = {
+  _id: unknown;
   purchaseDate?: Date;
   expenseDate?: Date;
   totalAmount?: number;
   amount?: number;
+  fundingSource?: string | null;
+};
+
+type DivestmentClaimRecord = {
+  sourceType?: string;
+  sourceId?: unknown;
+  sourceDate?: Date;
+  amount?: number;
+};
+
+type DivestmentRecord = {
+  withdrawalDate: Date;
+  claims?: DivestmentClaimRecord[];
+};
+
+type WithdrawalRecord = {
+  period: string;
 };
 
 type EmployeeRecord = {
@@ -43,6 +63,7 @@ type AllocationRecord = {
 };
 
 type SettlementRecord = {
+  _id?: unknown;
   period: string;
   closedAt: Date;
   periodRevenue: number;
@@ -51,6 +72,8 @@ type SettlementRecord = {
   periodEquipmentTotal: number;
   cumulativeRevenue: number;
   cumulativeCosts: number;
+  businessCashBalance?: number;
+  outstandingOwnerCapital?: number;
   workingCapitalReserve: number;
   distributablePool: number;
   allocatedTotal: number;
@@ -63,7 +86,9 @@ type PeriodLedger = {
   purchaseTotal: number;
   expenseTotal: number;
   equipmentTotal: number;
-  daily: Map<string, DailyOperatingCash>;
+  salesFundedOutflow: number;
+  ownerCapitalAdded: number;
+  ownerCapitalClaimed: number;
 };
 
 function emptyLedger(): PeriodLedger {
@@ -72,7 +97,9 @@ function emptyLedger(): PeriodLedger {
     purchaseTotal: 0,
     expenseTotal: 0,
     equipmentTotal: 0,
-    daily: new Map(),
+    salesFundedOutflow: 0,
+    ownerCapitalAdded: 0,
+    ownerCapitalClaimed: 0,
   };
 }
 
@@ -126,6 +153,9 @@ function settlementDto(
       settlement.periodEquipmentTotal,
     cumulativeRevenue: settlement.cumulativeRevenue,
     cumulativeCosts: settlement.cumulativeCosts,
+    businessCashBalance: settlement.businessCashBalance ?? 0,
+    outstandingOwnerCapital:
+      settlement.outstandingOwnerCapital ?? 0,
     workingCapitalReserve: settlement.workingCapitalReserve,
     distributablePool: settlement.distributablePool,
     allocatedTotal: settlement.allocatedTotal,
@@ -140,53 +170,51 @@ function settlementDto(
   };
 }
 
-function dailyCash(
-  ledger: PeriodLedger,
-  date: string,
-) {
-  const current = ledger.daily.get(date) ?? {
-    revenue: 0,
-    purchaseTotal: 0,
-    expenseTotal: 0,
-  };
-  ledger.daily.set(date, current);
-  return current;
-}
-
 export async function getPayrollPeriodSummaries(now = new Date()) {
   const [
     sales,
     purchases,
     expenses,
     equipment,
+    divestments,
     employees,
     existingSettlements,
+    payrollWithdrawals,
   ] = await Promise.all([
     Sale.find({})
       .select("saleDate entryMode netRevenue")
       .lean<SaleRecord[]>(),
     Purchase.find({})
-      .select("purchaseDate totalAmount")
+      .select("purchaseDate totalAmount fundingSource")
       .lean<CostRecord[]>(),
     Expense.find({})
-      .select("expenseDate amount")
+      .select("expenseDate amount fundingSource")
       .lean<CostRecord[]>(),
     Equipment.find({})
-      .select("purchaseDate totalAmount")
+      .select("purchaseDate totalAmount fundingSource")
       .lean<CostRecord[]>(),
+    Divestment.find({})
+      .select(
+        "withdrawalDate claims.sourceType claims.sourceId claims.sourceDate claims.amount",
+      )
+      .lean<DivestmentRecord[]>(),
     PayrollEmployee.find({})
       .sort({ createdAt: 1 })
       .lean<EmployeeRecord[]>(),
     PayrollPeriodSettlement.find({})
       .sort({ period: 1 })
       .lean<SettlementRecord[]>(),
+    PayrollWithdrawal.find({})
+      .select("period")
+      .lean<WithdrawalRecord[]>(),
   ]);
 
-  const dailySummaryDates = new Set(
-    sales
-      .filter((sale) => sale.entryMode === "daily-summary")
-      .map((sale) => vietnamDateKey(new Date(sale.saleDate))),
-  );
+  const dailySummaryDates = new Set<string>();
+  for (const sale of sales) {
+    if (sale.entryMode === "daily-summary") {
+      dailySummaryDates.add(vietnamDateKey(new Date(sale.saleDate)));
+    }
+  }
   const effectiveSales = sales.filter((sale) => {
     const day = vietnamDateKey(new Date(sale.saleDate));
     return (
@@ -200,6 +228,24 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
     ledgers.set(period, ledger);
     return ledger;
   };
+  const claimBySource = new Map<string, DivestmentClaimRecord>();
+  for (const divestment of divestments) {
+    for (const claim of divestment.claims ?? []) {
+      if (
+        (claim.sourceType === "purchase" ||
+          claim.sourceType === "equipment") &&
+        claim.sourceId
+      ) {
+        claimBySource.set(
+          `${claim.sourceType}:${String(claim.sourceId)}`,
+          claim,
+        );
+      }
+    }
+  }
+  const presentInvestmentSources = new Set<string>();
+  const normalizedFundingSource = (record: CostRecord) =>
+    record.fundingSource || DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE;
 
   for (const sale of effectiveSales) {
     const date = vietnamDateKey(new Date(sale.saleDate));
@@ -207,7 +253,6 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
     const amount = safeAmount(sale.netRevenue);
     const ledger = ledgerFor(period);
     ledger.revenue += amount;
-    dailyCash(ledger, date).revenue += amount;
     sourcePeriods.push(period);
   }
   for (const purchase of purchases) {
@@ -217,7 +262,16 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
     const amount = safeAmount(purchase.totalAmount);
     const ledger = ledgerFor(period);
     ledger.purchaseTotal += amount;
-    dailyCash(ledger, date).purchaseTotal += amount;
+    const sourceKey = `purchase:${String(purchase._id)}`;
+    presentInvestmentSources.add(sourceKey);
+    if (
+      claimBySource.has(sourceKey) ||
+      normalizedFundingSource(purchase) === "owner_capital"
+    ) {
+      ledger.ownerCapitalAdded += amount;
+    } else if (normalizedFundingSource(purchase) === "sales_revenue") {
+      ledger.salesFundedOutflow += amount;
+    }
     sourcePeriods.push(period);
   }
   for (const expense of expenses) {
@@ -227,15 +281,56 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
     const amount = safeAmount(expense.amount);
     const ledger = ledgerFor(period);
     ledger.expenseTotal += amount;
-    dailyCash(ledger, date).expenseTotal += amount;
+    if (normalizedFundingSource(expense) === "sales_revenue") {
+      ledger.salesFundedOutflow += amount;
+    }
     sourcePeriods.push(period);
   }
   for (const item of equipment) {
     if (!item.purchaseDate) continue;
     const period = periodFromDate(new Date(item.purchaseDate));
     const ledger = ledgerFor(period);
-    ledger.equipmentTotal += safeAmount(item.totalAmount);
+    const amount = safeAmount(item.totalAmount);
+    ledger.equipmentTotal += amount;
+    const sourceKey = `equipment:${String(item._id)}`;
+    presentInvestmentSources.add(sourceKey);
+    if (
+      claimBySource.has(sourceKey) ||
+      normalizedFundingSource(item) === "owner_capital"
+    ) {
+      ledger.ownerCapitalAdded += amount;
+    } else if (normalizedFundingSource(item) === "sales_revenue") {
+      ledger.salesFundedOutflow += amount;
+    }
     sourcePeriods.push(period);
+  }
+  for (const divestment of divestments) {
+    const claimPeriod = periodFromDate(new Date(divestment.withdrawalDate));
+    const claimLedger = ledgerFor(claimPeriod);
+    for (const claim of divestment.claims ?? []) {
+      if (
+        claim.sourceType !== "purchase" &&
+        claim.sourceType !== "equipment"
+      ) {
+        continue;
+      }
+      const amount = safeAmount(claim.amount);
+      const sourceKey = `${claim.sourceType}:${String(claim.sourceId ?? "")}`;
+      if (!presentInvestmentSources.has(sourceKey) && claim.sourceDate) {
+        const sourcePeriod = periodFromDate(new Date(claim.sourceDate));
+        const sourceLedger = ledgerFor(sourcePeriod);
+        sourceLedger.ownerCapitalAdded += amount;
+        if (claim.sourceType === "purchase") {
+          sourceLedger.purchaseTotal += amount;
+        } else {
+          sourceLedger.equipmentTotal += amount;
+        }
+        sourcePeriods.push(sourcePeriod);
+      }
+      claimLedger.ownerCapitalClaimed += amount;
+      claimLedger.salesFundedOutflow += amount;
+    }
+    sourcePeriods.push(claimPeriod);
   }
 
   const currentPeriod = periodFromDate(now);
@@ -259,7 +354,12 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
 
   let cumulativeRevenue = 0;
   let cumulativeCosts = 0;
+  let businessCashBalance = 0;
+  let outstandingOwnerCapital = 0;
   let previouslySettledPools = 0;
+  const periodsWithWithdrawals = new Set(
+    payrollWithdrawals.map((withdrawal) => withdrawal.period),
+  );
   const summaries = [];
 
   for (const period of periods) {
@@ -267,35 +367,42 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
     cumulativeRevenue += ledger.revenue;
     cumulativeCosts +=
       ledger.purchaseTotal + ledger.expenseTotal + ledger.equipmentTotal;
+    businessCashBalance += ledger.revenue - ledger.salesFundedOutflow;
+    outstandingOwnerCapital = Math.max(
+      0,
+      outstandingOwnerCapital +
+        ledger.ownerCapitalAdded -
+        ledger.ownerCapitalClaimed,
+    );
     const isClosed = period < currentPeriod;
     const existing = existingByPeriod.get(period);
+    const hasWithdrawals = periodsWithWithdrawals.has(period);
 
-    if (isClosed && existing) {
+    const hasOwnerCapitalSnapshot =
+      Number.isFinite(existing?.businessCashBalance) &&
+      Number.isFinite(existing?.outstandingOwnerCapital);
+    if (isClosed && existing && hasWithdrawals) {
       summaries.push(settlementDto(existing, true));
       previouslySettledPools += existing.distributablePool;
       continue;
     }
 
     const endOfPeriod = vietnamDayBoundary(periodEndKey(period), true);
-    const shares: PayrollShareInput[] = employees
-      .filter(
-        (employee) =>
-          employee.isActive && new Date(employee.joinedAt) <= endOfPeriod,
-      )
-      .map((employee) => ({
-        employeeId: String(employee._id),
-        employeeName: employee.name,
-        role: employee.role,
-        sharePercent: employee.sharePercent,
-      }));
-    const workingCapitalReserve = calculateWorkingCapitalReserve(
-      [...ledger.daily.entries()]
-        .toSorted(([left], [right]) => left.localeCompare(right))
-        .map(([, day]) => day),
-    );
+    const shares: PayrollShareInput[] = [];
+    for (const employee of employees) {
+      if (employee.isActive && new Date(employee.joinedAt) <= endOfPeriod) {
+        shares.push({
+          employeeId: String(employee._id),
+          employeeName: employee.name,
+          role: employee.role,
+          sharePercent: employee.sharePercent,
+        });
+      }
+    }
+    const workingCapitalReserve = PAYROLL_WORKING_CAPITAL_RESERVE;
     const distribution = calculatePeriodDistribution({
-      cumulativeRevenue,
-      cumulativeCosts,
+      businessCashBalance,
+      outstandingOwnerCapital,
       previouslySettledPools,
       workingCapitalReserve,
       shares,
@@ -309,12 +416,64 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
       periodEquipmentTotal: ledger.equipmentTotal,
       cumulativeRevenue,
       cumulativeCosts,
+      businessCashBalance,
+      outstandingOwnerCapital,
       workingCapitalReserve,
       ...distribution,
     };
 
     if (!isClosed) {
       summaries.push(settlementDto(computed, false));
+      continue;
+    }
+
+    if (existing) {
+      const allocationsMatch =
+        existing.allocations.length === computed.allocations.length &&
+        existing.allocations.every((allocation, index) => {
+          const next = computed.allocations[index];
+          return (
+            Boolean(next) &&
+            String(allocation.employeeId) === next.employeeId &&
+            allocation.employeeName === next.employeeName &&
+            allocation.role === next.role &&
+            allocation.sharePercent === next.sharePercent &&
+            allocation.amount === next.amount
+          );
+        });
+      const snapshotMatches =
+        hasOwnerCapitalSnapshot &&
+        existing.periodRevenue === computed.periodRevenue &&
+        existing.periodPurchaseTotal === computed.periodPurchaseTotal &&
+        existing.periodExpenseTotal === computed.periodExpenseTotal &&
+        existing.periodEquipmentTotal === computed.periodEquipmentTotal &&
+        existing.cumulativeRevenue === computed.cumulativeRevenue &&
+        existing.cumulativeCosts === computed.cumulativeCosts &&
+        existing.businessCashBalance === computed.businessCashBalance &&
+        existing.outstandingOwnerCapital ===
+          computed.outstandingOwnerCapital &&
+        existing.workingCapitalReserve === computed.workingCapitalReserve &&
+        existing.distributablePool === computed.distributablePool &&
+        existing.allocatedTotal === computed.allocatedTotal &&
+        existing.unallocatedPool === computed.unallocatedPool &&
+        allocationsMatch;
+
+      if (snapshotMatches) {
+        summaries.push(settlementDto(existing, true));
+        previouslySettledPools += existing.distributablePool;
+        continue;
+      }
+
+      const migrated = await PayrollPeriodSettlement.findOneAndUpdate(
+        { period },
+        { $set: computed },
+        { new: true, runValidators: true },
+      ).lean<SettlementRecord>();
+      if (!migrated) {
+        throw new Error(`Không thể cập nhật quỹ lương tháng ${period}.`);
+      }
+      summaries.push(settlementDto(migrated, true));
+      previouslySettledPools += migrated.distributablePool;
       continue;
     }
 

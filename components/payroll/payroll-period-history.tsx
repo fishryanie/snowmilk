@@ -15,6 +15,7 @@ import {
   Typography,
 } from "antd";
 import dayjs from "dayjs";
+import { PayrollHelpTitle } from "@/components/payroll/payroll-explanation";
 import { formatDate, formatVnd } from "@/lib/formatters";
 
 const { Text, Title } = Typography;
@@ -38,6 +39,8 @@ export type PayrollPeriodSummary = {
   periodCostTotal: number;
   cumulativeRevenue: number;
   cumulativeCosts: number;
+  businessCashBalance: number;
+  outstandingOwnerCapital: number;
   workingCapitalReserve: number;
   distributablePool: number;
   allocatedTotal: number;
@@ -82,6 +85,8 @@ export function PayrollPeriodHistory({
   loading,
   onEdit,
   onWithdraw,
+  onExplain,
+  onExplainPeriod,
 }: {
   employees: PayrollHistoryEmployee[];
   periods: PayrollPeriodSummary[];
@@ -94,6 +99,8 @@ export function PayrollPeriodHistory({
     period: PayrollPeriodSummary,
     allocation: PayrollPeriodAllocation,
   ) => void;
+  onExplain: () => void;
+  onExplainPeriod: (period: PayrollPeriodSummary) => void;
 }) {
   const withdrawalByPeriodEmployee = new Map(
     withdrawals.map((withdrawal) => [
@@ -115,7 +122,13 @@ export function PayrollPeriodHistory({
       <Card className="surface-card payroll-period-summary-card">
         <div className="payroll-period-summary-heading">
           <div>
-            <Text type="secondary">Tổng tất cả các tháng</Text>
+            <Text type="secondary">
+              <PayrollHelpTitle
+                title="Tổng tất cả các tháng"
+                topic="period-total"
+                onOpen={onExplain}
+              />
+            </Text>
             <Title level={3}>{formatVnd(grandTotal)}</Title>
           </div>
           <Statistic
@@ -128,9 +141,16 @@ export function PayrollPeriodHistory({
           {periods.map((period) => (
             <div className="payroll-period-total-row" key={period.period}>
               <span>
-                <Text strong>Tháng {periodLabel(period.period)}</Text>
+                <Text strong>
+                  <PayrollHelpTitle
+                    title={`Tháng ${periodLabel(period.period)}`}
+                    topic="distributable-pool"
+                    onOpen={() => onExplainPeriod(period)}
+                  />
+                </Text>
                 <Text type="secondary">
-                  Đã trừ {formatVnd(period.periodCostTotal)} chi phí phát sinh
+                  Chừa {formatVnd(period.outstandingOwnerCapital)} vốn chủ chưa
+                  claim
                 </Text>
               </span>
               <strong>{formatVnd(period.allocatedTotal)}</strong>
@@ -224,7 +244,13 @@ export function PayrollPeriodHistory({
                         >
                           <div className="payroll-employee-month-heading">
                             <span>
-                              <Text strong>Tháng {monthText}</Text>
+                              <Text strong>
+                                <PayrollHelpTitle
+                                  title={`Tháng ${monthText}`}
+                                  topic="distributable-pool"
+                                  onOpen={() => onExplainPeriod(period)}
+                                />
+                              </Text>
                               <Text type="secondary">
                                 {allocation.sharePercent}% ·{" "}
                                 {period.isClosed

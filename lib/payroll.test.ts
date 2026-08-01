@@ -3,35 +3,28 @@ import {
   calculateEmployeeEntitlement,
   calculatePeriodDistribution,
   calculatePayrollSummary,
+  PAYROLL_WORKING_CAPITAL_RESERVE,
 } from "./payroll";
 
 describe("payroll allocation", () => {
-  test("keeps only the largest working-capital shortfall", () => {
+  test("always keeps the fixed 10-million working-capital reserve", () => {
     expect(
       calculatePayrollSummary({
         businessCashBalance: 50_000_000,
-        dailyOperatingCash: [
-          { revenue: 0, purchaseTotal: 8_000_000, expenseTotal: 0 },
-          { revenue: 5_000_000, purchaseTotal: 3_000_000, expenseTotal: 0 },
-          { revenue: 10_000_000, purchaseTotal: 2_000_000, expenseTotal: 0 },
-        ],
         withdrawnTotal: 0,
         allocatedPercent: 100,
       }),
     ).toEqual({
-      operatingReserve: 8_000_000,
-      grossPayrollPool: 42_000_000,
-      availablePayrollPool: 42_000_000,
+      operatingReserve: PAYROLL_WORKING_CAPITAL_RESERVE,
+      grossPayrollPool: 40_000_000,
+      availablePayrollPool: 40_000_000,
       unallocatedPool: 0,
     });
   });
 
   test("never exposes cash when the operating reserve is not covered", () => {
     const summary = calculatePayrollSummary({
-      businessCashBalance: 18_000_000,
-      dailyOperatingCash: [
-        { revenue: 0, purchaseTotal: 20_000_000, expenseTotal: 0 },
-      ],
+      businessCashBalance: 8_000_000,
       withdrawnTotal: 2_000_000,
       allocatedPercent: 75,
     });
@@ -43,10 +36,6 @@ describe("payroll allocation", () => {
   test("deducts withdrawals and keeps the unassigned percentage in the company", () => {
     const summary = calculatePayrollSummary({
       businessCashBalance: 60_000_000,
-      dailyOperatingCash: [
-        { revenue: 0, purchaseTotal: 10_000_000, expenseTotal: 0 },
-        { revenue: 12_000_000, purchaseTotal: 0, expenseTotal: 0 },
-      ],
       withdrawnTotal: 6_000_000,
       allocatedPercent: 70,
     });
@@ -58,28 +47,23 @@ describe("payroll allocation", () => {
     );
   });
 
-  test("sales fund same-day restocking and inactive days add no reserve", () => {
+  test("does not lower the fixed reserve when the cash balance is smaller", () => {
     const summary = calculatePayrollSummary({
-      businessCashBalance: 18_000_000,
-      dailyOperatingCash: [
-        { revenue: 1_000_000, purchaseTotal: 800_000, expenseTotal: 0 },
-        { revenue: 0, purchaseTotal: 0, expenseTotal: 0 },
-        { revenue: 2_000_000, purchaseTotal: 1_200_000, expenseTotal: 300_000 },
-      ],
+      businessCashBalance: 3_000_000,
       withdrawnTotal: 0,
       allocatedPercent: 100,
     });
 
-    expect(summary.operatingReserve).toBe(0);
-    expect(summary.grossPayrollPool).toBe(18_000_000);
+    expect(summary.operatingReserve).toBe(10_000_000);
+    expect(summary.grossPayrollPool).toBe(0);
   });
 
-  test("closes only clean cash after every cost and prior monthly pool", () => {
+  test("reserves unclaimed owner capital before closing a monthly pool", () => {
     const distribution = calculatePeriodDistribution({
-      cumulativeRevenue: 20_000_000,
-      cumulativeCosts: 12_000_000,
+      businessCashBalance: 18_000_000,
+      outstandingOwnerCapital: 2_000_000,
       previouslySettledPools: 1_000_000,
-      workingCapitalReserve: 2_000_000,
+      workingCapitalReserve: PAYROLL_WORKING_CAPITAL_RESERVE,
       shares: [
         {
           employeeId: "employee-1",
@@ -101,6 +85,53 @@ describe("payroll allocation", () => {
     expect(distribution.unallocatedPool).toBe(500_000);
     expect(distribution.allocations.map((item) => item.amount)).toEqual([
       3_000_000, 1_500_000,
+    ]);
+  });
+
+  test("does not deduct owner capital twice after it is claimed", () => {
+    const beforeClaim = calculatePeriodDistribution({
+      businessCashBalance: 18_000_000,
+      outstandingOwnerCapital: 2_000_000,
+      previouslySettledPools: 1_000_000,
+      workingCapitalReserve: PAYROLL_WORKING_CAPITAL_RESERVE,
+      shares: [],
+    });
+    const afterClaim = calculatePeriodDistribution({
+      businessCashBalance: 16_000_000,
+      outstandingOwnerCapital: 0,
+      previouslySettledPools: 1_000_000,
+      workingCapitalReserve: PAYROLL_WORKING_CAPITAL_RESERVE,
+      shares: [],
+    });
+
+    expect(afterClaim.distributablePool).toBe(
+      beforeClaim.distributablePool,
+    );
+  });
+
+  test("recalculates the closed amount immediately from updated shares", () => {
+    const distribution = calculatePeriodDistribution({
+      businessCashBalance: 21_767_000,
+      outstandingOwnerCapital: 3_984_500,
+      previouslySettledPools: 0,
+      workingCapitalReserve: PAYROLL_WORKING_CAPITAL_RESERVE,
+      shares: [
+        ["employee-1", 28],
+        ["employee-2", 20],
+        ["employee-3", 34],
+        ["employee-4", 3],
+        ["employee-5", 15],
+      ].map(([employeeId, sharePercent]) => ({
+        employeeId: String(employeeId),
+        employeeName: String(employeeId),
+        role: "Nhân sự",
+        sharePercent: Number(sharePercent),
+      })),
+    });
+
+    expect(distribution.distributablePool).toBe(7_782_500);
+    expect(distribution.allocations.map((item) => item.amount)).toEqual([
+      2_179_100, 1_556_500, 2_646_050, 233_475, 1_167_375,
     ]);
   });
 });

@@ -4039,6 +4039,87 @@ body::before {
   font-weight: 600;
 }
 
+.payroll-help-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.payroll-help-trigger {
+  width: 19px;
+  height: 19px;
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  color: var(--brand-strong);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  border: 1px solid color-mix(in srgb, var(--brand) 38%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--brand) 9%, white);
+  cursor: pointer;
+  transition: 160ms ease;
+}
+
+.payroll-help-trigger:hover,
+.payroll-help-trigger:focus-visible {
+  color: white;
+  border-color: var(--brand);
+  outline: none;
+  background: var(--brand);
+  transform: translateY(-1px);
+}
+
+.payroll-help-content > h5.ant-typography {
+  margin: 0 0 12px;
+  color: var(--brand-strong);
+}
+
+.payroll-formula-box {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--brand) 18%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--brand) 5%, white);
+}
+
+.payroll-formula-box strong {
+  color: var(--brand-strong);
+  font-size: 17px;
+  line-height: 1.55;
+}
+
+.payroll-help-footnote {
+  margin-bottom: 0 !important;
+}
+
+.payroll-help-calculation-list {
+  display: grid;
+  border-block: 1px solid var(--line);
+}
+
+.payroll-help-calculation-list > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(240px, 1.3fr);
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.payroll-help-calculation-list > div:last-child {
+  border-bottom: 0;
+}
+
+.payroll-help-calculation-list strong {
+  color: var(--ink);
+  text-align: right;
+}
+
 .payroll-page .payroll-kpi-card .ant-statistic-content {
   margin-block: 8px 4px;
   color: var(--payroll-kpi-color);
@@ -4064,27 +4145,54 @@ body::before {
 }
 
 .payroll-overview-grid {
-  display: grid;
-  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.4fr);
-  gap: 16px;
+  display: block;
 }
 
 .payroll-overview-grid > .ant-card {
   min-width: 0;
 }
 
-.payroll-allocation-card .ant-card-body,
-.payroll-timeline-card .ant-card-body {
+.payroll-allocation-card .ant-card-body {
   min-height: 390px;
 }
 
-.payroll-allocation-summary h3.ant-typography {
-  margin: 2px 0 8px;
-  color: var(--brand-strong);
+.payroll-allocation-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(28px, 5vw, 72px);
 }
 
-.payroll-allocation-summary > .ant-typography {
-  margin: 8px 0 18px;
+.payroll-donut-frame {
+  position: relative;
+  width: min(100%, 310px);
+  aspect-ratio: 1;
+  margin-inline: auto;
+}
+
+.payroll-donut-center {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  display: grid;
+  justify-items: center;
+  transform: translate(-50%, -50%);
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.payroll-donut-center strong {
+  color: var(--brand-strong);
+  font-size: clamp(28px, 4vw, 44px);
+  letter-spacing: -0.045em;
+}
+
+.payroll-donut-center span {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.payroll-allocation-note {
+  margin: 0 0 8px !important;
 }
 
 .payroll-allocation-list {
@@ -4110,52 +4218,6 @@ body::before {
   height: 9px;
   border-radius: 50%;
   box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 12%, transparent);
-}
-
-.payroll-timeline-note {
-  margin-top: -4px;
-}
-
-.payroll-timeline-frame,
-.payroll-timeline-empty {
-  height: 300px;
-}
-
-.payroll-timeline-empty {
-  display: grid;
-  place-items: center;
-}
-
-.payroll-zero-state {
-  width: min(360px, 100%);
-  display: grid;
-  justify-items: center;
-  gap: 7px;
-  padding: 24px;
-  color: var(--muted);
-  text-align: center;
-}
-
-.payroll-zero-state strong {
-  color: var(--ink);
-  font-size: 16px;
-}
-
-.payroll-zero-state > span:last-child {
-  line-height: 1.55;
-}
-
-.payroll-zero-state-icon {
-  width: 52px;
-  height: 52px;
-  margin-bottom: 4px;
-  display: grid;
-  place-items: center;
-  color: var(--brand);
-  font-size: 23px;
-  border-radius: 16px;
-  background: linear-gradient(145deg, #e3f3f6, #f3fafb);
-  box-shadow: inset 0 0 0 1px rgb(40 127 150 / 10%);
 }
 
 .payroll-section-heading {
@@ -4480,8 +4542,9 @@ body::before {
 }
 
 @media (max-width: 960px) {
-  .payroll-overview-grid {
+  .payroll-allocation-layout {
     grid-template-columns: 1fr;
+    gap: 20px;
   }
 }
 
@@ -4518,6 +4581,20 @@ body::before {
     line-height: 1.35;
   }
 
+  .payroll-help-trigger {
+    width: 18px;
+    height: 18px;
+  }
+
+  .payroll-help-calculation-list > div {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  .payroll-help-calculation-list strong {
+    text-align: left;
+  }
+
   .payroll-page .payroll-kpi-card .ant-statistic-content {
     font-size: 16px;
   }
@@ -4526,10 +4603,13 @@ body::before {
     font-size: 11px;
   }
 
-  .payroll-allocation-card .ant-card-body,
-  .payroll-timeline-card .ant-card-body {
+  .payroll-allocation-card .ant-card-body {
     min-height: auto;
     padding: 16px;
+  }
+
+  .payroll-donut-frame {
+    width: min(100%, 250px);
   }
 
   .payroll-allocation-row {
@@ -4539,11 +4619,6 @@ body::before {
   .payroll-allocation-row > :last-child {
     grid-column: 2 / -1;
     color: var(--brand-strong);
-  }
-
-  .payroll-timeline-frame,
-  .payroll-timeline-empty {
-    height: 260px;
   }
 
   .payroll-employee-grid {

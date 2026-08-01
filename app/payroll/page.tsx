@@ -20,7 +20,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Progress,
   Skeleton,
   Space,
   Statistic,
@@ -39,7 +38,12 @@ import {
   type PayrollPeriodAllocation,
   type PayrollPeriodSummary,
 } from "@/components/payroll/payroll-period-history";
-import type { PayrollTimelineSeries } from "@/components/payroll/payroll-timeline-chart";
+import type { PayrollAllocationDonutItem } from "@/components/payroll/payroll-allocation-donut";
+import {
+  PayrollExplanationModal,
+  PayrollHelpTitle,
+  type PayrollHelpTopic,
+} from "@/components/payroll/payroll-explanation";
 import { useApiData } from "@/hooks/use-api-data";
 import {
   formatDate,
@@ -50,14 +54,14 @@ import {
 
 const { Paragraph, Text, Title } = Typography;
 
-const PayrollTimelineChart = dynamic(
+const PayrollAllocationDonut = dynamic(
   () =>
-    import("@/components/payroll/payroll-timeline-chart").then(
-      (module) => module.PayrollTimelineChart,
+    import("@/components/payroll/payroll-allocation-donut").then(
+      (module) => module.PayrollAllocationDonut,
     ),
   {
     ssr: false,
-    loading: () => <Skeleton active paragraph={{ rows: 6 }} />,
+    loading: () => <Skeleton active avatar paragraph={{ rows: 3 }} />,
   },
 );
 
@@ -149,11 +153,32 @@ async function mutate<T>(url: string, method: "POST" | "PUT", payload: unknown) 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  if (!response.ok) {
+    const errorBody = (await response.json().catch(() => null)) as
+      | ApiEnvelope<T>
+      | null;
+    throw new Error(errorBody?.message || "Không thể lưu dữ liệu");
+  }
   const body = (await response.json()) as ApiEnvelope<T>;
-  if (!response.ok || !body.success || !body.data) {
+  if (!body.success || !body.data) {
     throw new Error(body.message || "Không thể lưu dữ liệu");
   }
   return body;
+}
+
+async function query<T>(url: string) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    const errorBody = (await response.json().catch(() => null)) as
+      | ApiEnvelope<T>
+      | null;
+    throw new Error(errorBody?.message || "Không thể tải dữ liệu mới");
+  }
+  const body = (await response.json()) as ApiEnvelope<T>;
+  if (!body.success || !body.data) {
+    throw new Error(body.message || "Không thể tải dữ liệu mới");
+  }
+  return body.data;
 }
 
 export default function PayrollPage() {
@@ -164,6 +189,8 @@ export default function PayrollPage() {
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [pendingWithdrawal, setPendingWithdrawal] =
     useState<PendingWithdrawal | null>(null);
+  const [helpTopic, setHelpTopic] = useState<PayrollHelpTopic | null>(null);
+  const [helpPeriod, setHelpPeriod] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [employeeForm] = Form.useForm<EmployeeFormValues>();
   const [withdrawalForm] = Form.useForm<WithdrawalFormValues>();
@@ -197,6 +224,7 @@ export default function PayrollPage() {
     data: payrollPeriods,
     loading: periodsLoading,
     usingFallback: periodsUnavailable,
+    setData: setPayrollPeriods,
   } = useApiData<PayrollPeriodSummary[]>("/api/payroll/periods", []);
 
   const activeEmployees = useMemo(
@@ -220,6 +248,11 @@ export default function PayrollPage() {
     0,
   );
   const operatingReserve = selectedPayrollPeriod?.workingCapitalReserve ?? 0;
+  const periodBusinessCashBalance =
+    selectedPayrollPeriod?.businessCashBalance ??
+    dashboard.kpis.businessCashBalance;
+  const outstandingOwnerCapital =
+    selectedPayrollPeriod?.outstandingOwnerCapital ?? 0;
   const grossPayrollPool = selectedPayrollPeriod?.distributablePool ?? 0;
   const availablePayrollPool = Math.max(
     0,
@@ -239,55 +272,72 @@ export default function PayrollPage() {
     (total, allocation) => total + allocation.sharePercent,
     0,
   );
-  const withdrawnByEmployee = useMemo(
-    () =>
-      new Map(
-        selectedWithdrawals.map((withdrawal) => [
-          withdrawal.employeeId,
-          withdrawal,
-        ]),
-      ),
-    [selectedWithdrawals],
+  const donutItems: PayrollAllocationDonutItem[] = selectedAllocations.map(
+    (allocation, index) => ({
+      name: allocation.employeeName,
+      sharePercent: allocation.sharePercent,
+      amount: allocation.amount,
+      color: employeeColors[index % employeeColors.length],
+    }),
   );
-
-  const timelineSeries: PayrollTimelineSeries[] = (() => {
-    if (!dashboard.daily.length || !selectedAllocations.length) return [];
-    const totalRevenue = dashboard.daily.reduce(
-      (total, day) => total + Math.max(0, day.revenue),
+  const explainedPayrollPeriod =
+    payrollPeriods.find((item) => item.period === helpPeriod) ??
+    selectedPayrollPeriod;
+  const explainedPeriod = explainedPayrollPeriod?.period ?? period;
+  const explainedWithdrawnTotal = withdrawals.reduce(
+    (total, withdrawal) =>
+      withdrawal.period === explainedPeriod
+        ? total + withdrawal.amount
+        : total,
+    0,
+  );
+  const explainedPreviouslySettledPools = payrollPeriods.reduce(
+    (total, item) =>
+      item.period < explainedPeriod ? total + item.distributablePool : total,
+    0,
+  );
+  const explainedBusinessCashBalance =
+    explainedPayrollPeriod?.businessCashBalance ?? periodBusinessCashBalance;
+  const explainedAllocatedTotal =
+    explainedPayrollPeriod?.allocatedTotal ?? 0;
+  const payrollExplanationData = {
+    periodLabel: dayjs(`${explainedPeriod}-01`).format("MM/YYYY"),
+    cumulativeRevenue: explainedPayrollPeriod?.cumulativeRevenue ?? 0,
+    businessCashBalance: explainedBusinessCashBalance,
+    companyFundedOutflow: Math.max(
       0,
-    );
-    let cumulativeRevenue = 0;
-    const ratios = dashboard.daily.map((day, index) => {
-      cumulativeRevenue += Math.max(0, day.revenue);
-      return {
-        date: day.date,
-        ratio:
-          totalRevenue > 0
-            ? cumulativeRevenue / totalRevenue
-            : (index + 1) / dashboard.daily.length,
-      };
-    });
-
-    return selectedAllocations.map((allocation, index) => {
-      const entitlement = allocation.amount;
-      const withdrawal = withdrawnByEmployee.get(allocation.employeeId);
-      return {
-        name: allocation.employeeName,
-        color: employeeColors[index % employeeColors.length],
-        points: ratios.map(({ date, ratio }) => ({
-          date,
-          value: Math.max(
-            0,
-            entitlement * ratio -
-              (withdrawal &&
-              !dayjs(date).isBefore(dayjs(withdrawal.withdrawalDate), "day")
-                ? withdrawal.amount
-                : 0),
-          ),
-        })),
-      };
-    });
-  })();
+      (explainedPayrollPeriod?.cumulativeRevenue ?? 0) -
+        explainedBusinessCashBalance,
+    ),
+    outstandingOwnerCapital:
+      explainedPayrollPeriod?.outstandingOwnerCapital ??
+      outstandingOwnerCapital,
+    workingCapitalReserve:
+      explainedPayrollPeriod?.workingCapitalReserve ?? operatingReserve,
+    previouslySettledPools: explainedPreviouslySettledPools,
+    distributablePool:
+      explainedPayrollPeriod?.distributablePool ?? grossPayrollPool,
+    allocatedTotal: explainedAllocatedTotal,
+    withdrawnTotal: explainedWithdrawnTotal,
+    availablePool: Math.max(
+      0,
+      explainedAllocatedTotal - explainedWithdrawnTotal,
+    ),
+    allocations: (explainedPayrollPeriod?.allocations ?? selectedAllocations).map((allocation) => ({
+      employeeName: allocation.employeeName,
+      sharePercent: allocation.sharePercent,
+      amount: allocation.amount,
+    })),
+    periods: payrollPeriods.map((item) => ({
+      periodLabel: dayjs(`${item.period}-01`).format("MM/YYYY"),
+      allocatedTotal: item.allocatedTotal,
+      isClosed: item.isClosed,
+    })),
+  };
+  const openHelp = (topic: PayrollHelpTopic) => {
+    setHelpPeriod(period);
+    setHelpTopic(topic);
+  };
 
   const openEmployeeForm = (employee?: Employee) => {
     const editing = employee ?? null;
@@ -333,6 +383,15 @@ export default function PayrollPage() {
             )
           : [...current, saved],
       );
+      try {
+        setPayrollPeriods(
+          await query<PayrollPeriodSummary[]>("/api/payroll/periods"),
+        );
+      } catch {
+        message.warning(
+          "Đã lưu tỷ lệ mới nhưng chưa tải lại được số tiền. Hãy tải lại trang.",
+        );
+      }
       message.success(body.message);
       setEmployeeModalOpen(false);
       setEditingEmployee(null);
@@ -489,36 +548,64 @@ export default function PayrollPage() {
       <section className="payroll-kpi-grid" aria-label="Tổng quan quỹ lương">
         <Card className="surface-card payroll-kpi-card payroll-kpi-balance">
           <Statistic
-            title="Tiền trong doanh nghiệp"
-            value={dashboard.kpis.businessCashBalance}
+            title={
+              <PayrollHelpTitle
+                title="Tiền doanh nghiệp cuối tháng"
+                topic="business-cash"
+                onOpen={openHelp}
+              />
+            }
+            value={periodBusinessCashBalance}
             formatter={(value) => formatVnd(Number(value))}
             prefix={<BankOutlined />}
           />
-          <Text type="secondary">Số dư thực tế đang ghi nhận</Text>
+          <Text type="secondary">
+            {selectedPayrollPeriod?.isClosed
+              ? "Số dư tại thời điểm chốt tháng"
+              : "Số dư thực tế đang ghi nhận"}
+          </Text>
         </Card>
         <Card className="surface-card payroll-kpi-card payroll-kpi-reserve">
           <Statistic
-            title="Vốn xoay vòng cần giữ"
+            title={
+              <PayrollHelpTitle
+                title="Vốn xoay vòng cần giữ"
+                topic="working-capital"
+                onOpen={openHelp}
+              />
+            }
             value={operatingReserve}
             formatter={(value) => formatVnd(Number(value))}
             prefix={<SafetyCertificateOutlined />}
           />
-          <Text type="secondary">Doanh thu tự bù chi phí theo ngày</Text>
+          <Text type="secondary">Mức cố định theo quy tắc doanh nghiệp</Text>
         </Card>
         <Card className="surface-card payroll-kpi-card payroll-kpi-share">
           <Statistic
-            title="Quỹ có thể chia"
+            title={
+              <PayrollHelpTitle
+                title="Quỹ có thể chia"
+                topic="distributable-pool"
+                onOpen={openHelp}
+              />
+            }
             value={grossPayrollPool}
             formatter={(value) => formatVnd(Number(value))}
             prefix={<TeamOutlined />}
           />
           <Text type="secondary">
-            Đã trừ toàn bộ chi phí, kể cả khoản chưa claim
+            Đã chừa {formatVnd(outstandingOwnerCapital)} vốn chủ chưa claim
           </Text>
         </Card>
         <Card className="surface-card payroll-kpi-card payroll-kpi-available">
           <Statistic
-            title="Còn có thể rút"
+            title={
+              <PayrollHelpTitle
+                title="Còn có thể rút"
+                topic="available-pool"
+                onOpen={openHelp}
+              />
+            }
             value={availablePayrollPool}
             formatter={(value) => formatVnd(Number(value))}
             prefix={<WalletOutlined />}
@@ -537,7 +624,11 @@ export default function PayrollPage() {
           title={
             <Space>
               <TeamOutlined />
-              <span>Phân bổ quỹ lương</span>
+              <PayrollHelpTitle
+                title="Phân bổ quỹ lương"
+                topic="allocation"
+                onOpen={openHelp}
+              />
             </Space>
           }
           extra={
@@ -546,68 +637,48 @@ export default function PayrollPage() {
             </Tag>
           }
         >
-          <div className="payroll-allocation-summary">
-            <div>
-              <Text type="secondary">Tỷ lệ nhân sự</Text>
-              <Title level={3}>{selectedTotalShare}%</Title>
-            </div>
-            <Progress
-              percent={Math.min(100, selectedTotalShare)}
-              showInfo={false}
-              strokeColor={{ "0%": "#287f96", "100%": "#65b7c6" }}
+          <div className="payroll-allocation-layout">
+            <PayrollAllocationDonut
+              items={donutItems}
+              allocatedPercent={selectedTotalShare}
             />
-            <Paragraph type="secondary">
-              {selectedTotalShare < 100
-                ? `${formatVnd(unallocatedPool)} chưa được gán và vẫn nằm trong doanh nghiệp.`
-                : "Toàn bộ quỹ có thể chia đã được gán cho nhân sự."}
-            </Paragraph>
-          </div>
-          <div className="payroll-allocation-list">
-            {selectedAllocations.length ? (
-              selectedAllocations.map((allocation, index) => (
-                <div
-                  className="payroll-allocation-row"
-                  key={allocation.employeeId}
-                >
-                  <span
-                    className="payroll-color-dot"
-                    style={{
-                      backgroundColor:
-                        employeeColors[index % employeeColors.length],
-                    }}
+            <div>
+              <Paragraph type="secondary" className="payroll-allocation-note">
+                {selectedTotalShare < 100
+                  ? `${formatVnd(unallocatedPool)} chưa được gán và vẫn nằm trong doanh nghiệp.`
+                  : "Toàn bộ quỹ có thể chia đã được gán cho nhân sự."}
+              </Paragraph>
+              <div className="payroll-allocation-list">
+                {selectedAllocations.length ? (
+                  selectedAllocations.map((allocation, index) => (
+                    <div
+                      className="payroll-allocation-row"
+                      key={allocation.employeeId}
+                    >
+                      <span
+                        className="payroll-color-dot"
+                        style={{
+                          backgroundColor:
+                            employeeColors[index % employeeColors.length],
+                        }}
+                      />
+                      <span>
+                        <Text strong>{allocation.employeeName}</Text>
+                        <Text type="secondary">{allocation.role}</Text>
+                      </span>
+                      <Text strong>{allocation.sharePercent}%</Text>
+                      <Text>{formatVnd(allocation.amount)}</Text>
+                    </div>
+                  ))
+                ) : (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="Thêm nhân sự để bắt đầu phân bổ"
                   />
-                  <span>
-                    <Text strong>{allocation.employeeName}</Text>
-                    <Text type="secondary">{allocation.role}</Text>
-                  </span>
-                  <Text strong>{allocation.sharePercent}%</Text>
-                  <Text>{formatVnd(allocation.amount)}</Text>
-                </div>
-              ))
-            ) : (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="Thêm nhân sự để bắt đầu phân bổ"
-              />
-            )}
+                )}
+              </div>
+            </div>
           </div>
-        </Card>
-
-        <Card
-          className="surface-card payroll-timeline-card"
-          title={
-            <Space>
-              <HistoryOutlined />
-              <span>Lũy kế đến hiện tại</span>
-            </Space>
-          }
-          extra={<Text type="secondary">{month.format("MM/YYYY")}</Text>}
-        >
-          <Paragraph type="secondary" className="payroll-timeline-note">
-            Đường tiền tăng theo doanh thu đã ghi nhận trong tháng và giảm tại
-            ngày nhân sự tạo phiếu rút.
-          </Paragraph>
-          <PayrollTimelineChart series={timelineSeries} />
         </Card>
       </section>
 
@@ -637,6 +708,11 @@ export default function PayrollPage() {
               allocation,
             )
           }
+          onExplain={() => openHelp("period-total")}
+          onExplainPeriod={(selectedPeriod) => {
+            setHelpPeriod(selectedPeriod.period);
+            setHelpTopic("distributable-pool");
+          }}
         />
       </section>
 
@@ -645,7 +721,11 @@ export default function PayrollPage() {
         title={
           <Space>
             <HistoryOutlined />
-            <span>Lịch sử rút lương</span>
+            <PayrollHelpTitle
+              title="Lịch sử rút lương"
+              topic="withdrawal-history"
+              onOpen={openHelp}
+            />
           </Space>
         }
         extra={<Text type="secondary">{withdrawals.length} phiếu</Text>}
@@ -660,6 +740,15 @@ export default function PayrollPage() {
           scroll={{ x: 760 }}
         />
       </Card>
+
+      <PayrollExplanationModal
+        topic={helpTopic}
+        data={payrollExplanationData}
+        onClose={() => {
+          setHelpTopic(null);
+          setHelpPeriod(null);
+        }}
+      />
 
       <Modal
         centered

@@ -37,6 +37,8 @@ const PayrollPeriodSettlementSchema = new Schema(
     periodEquipmentTotal: { type: Number, required: true, min: 0 },
     cumulativeRevenue: { type: Number, required: true, min: 0 },
     cumulativeCosts: { type: Number, required: true, min: 0 },
+    businessCashBalance: { type: Number, required: true },
+    outstandingOwnerCapital: { type: Number, required: true, min: 0 },
     workingCapitalReserve: { type: Number, required: true, min: 0 },
     distributablePool: { type: Number, required: true, min: 0 },
     allocatedTotal: { type: Number, required: true, min: 0 },
@@ -48,6 +50,18 @@ const PayrollPeriodSettlementSchema = new Schema(
   },
   schemaOptions,
 );
+
+const cachedPayrollPeriodSettlement =
+  mongoose.models.PayrollPeriodSettlement;
+
+if (
+  process.env.NODE_ENV !== "production" &&
+  cachedPayrollPeriodSettlement &&
+  (!cachedPayrollPeriodSettlement.schema.path("businessCashBalance") ||
+    !cachedPayrollPeriodSettlement.schema.path("outstandingOwnerCapital"))
+) {
+  mongoose.deleteModel("PayrollPeriodSettlement");
+}
 
 export const PayrollPeriodSettlement =
   mongoose.models.PayrollPeriodSettlement ??
