@@ -14,6 +14,8 @@ const ExpenseSchema = new Schema(
     expenseDate: { type: Date, required: true, index: true },
     category: { type: String, required: true, trim: true },
     description: { type: String, required: true, trim: true },
+    milkLiters: { type: Number, min: 0 },
+    milkUnitPrice: { type: Number, min: 0 },
     amount: { type: Number, min: 0, required: true },
     paymentStatus: {
       type: String,
@@ -43,6 +45,8 @@ if (
   cachedExpenseModel &&
   (!cachedExpenseModel.schema.path("fundingSource") ||
     !cachedExpenseModel.schema.path("paymentStatus") ||
+    !cachedExpenseModel.schema.path("milkLiters") ||
+    !cachedExpenseModel.schema.path("milkUnitPrice") ||
     Boolean(cachedExpenseModel.schema.path("paymentMethod")))
 ) {
   mongoose.deleteModel("Expense");

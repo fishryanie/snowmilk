@@ -7,6 +7,10 @@ import {
   DEFAULT_LEGACY_EXPENSE_PAYMENT_STATUS,
   EXPENSE_PAYMENT_STATUSES,
 } from "@/lib/expense-payment-status";
+import {
+  MILK_STERILIZATION_EXPENSE_CATEGORY,
+  milkSterilizationDescription,
+} from "@/lib/expense-categories";
 
 const nonNegative = z.coerce.number().min(0);
 const requiredText = z.string().trim().min(1);
@@ -73,11 +77,13 @@ export const resourceSchemas = {
     )
     .strict(),
   expenses: z
-    .object({
+    .strictObject({
       expenseDate: z.coerce.date(),
       category: requiredText,
-      description: requiredText,
+      description: z.string().trim().optional().default(""),
       amount: nonNegative,
+      milkLiters: z.coerce.number().positive().optional(),
+      milkUnitPrice: z.coerce.number().positive().optional(),
       paymentStatus: z
         .enum(EXPENSE_PAYMENT_STATUSES)
         .optional()
@@ -89,7 +95,51 @@ export const resourceSchemas = {
       isRecurring: z.boolean().optional().default(false),
       note: optionalText,
     })
-    .strict(),
+    .superRefine((expense, context) => {
+      if (
+        expense.category !== MILK_STERILIZATION_EXPENSE_CATEGORY &&
+        !expense.description
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Vui lòng nhập nội dung",
+          path: ["description"],
+        });
+      }
+      if (expense.category !== MILK_STERILIZATION_EXPENSE_CATEGORY) return;
+      if (expense.milkLiters === undefined) {
+        context.addIssue({
+          code: "custom",
+          message: "Vui lòng nhập số lít sữa",
+          path: ["milkLiters"],
+        });
+      }
+      if (expense.milkUnitPrice === undefined) {
+        context.addIssue({
+          code: "custom",
+          message: "Vui lòng nhập giá mỗi lít sữa",
+          path: ["milkUnitPrice"],
+        });
+      }
+    })
+    .transform((expense) => {
+      if (expense.category === MILK_STERILIZATION_EXPENSE_CATEGORY) {
+        return {
+          ...expense,
+          amount:
+            Number(expense.milkLiters ?? 0) *
+            Number(expense.milkUnitPrice ?? 0),
+          description: milkSterilizationDescription(
+            Number(expense.milkLiters ?? 0),
+            Number(expense.milkUnitPrice ?? 0),
+          ),
+        };
+      }
+      const normalized = { ...expense };
+      delete normalized.milkLiters;
+      delete normalized.milkUnitPrice;
+      return normalized;
+    }),
   divestments: z
     .object({
       withdrawalDate: z.coerce.date(),

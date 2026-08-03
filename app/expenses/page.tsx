@@ -11,12 +11,85 @@ import {
   DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
   PURCHASE_FUNDING_SOURCE_OPTIONS,
 } from "@/lib/purchase-funding";
+import {
+  EXPENSE_CATEGORY_OPTIONS,
+  MILK_STERILIZATION_EXPENSE_CATEGORY,
+  milkSterilizationDescription,
+} from "@/lib/expense-categories";
+
+function calculateSterilizationValues(
+  changedValues: Record<string, unknown>,
+  values: Record<string, unknown>,
+) {
+  const milkLiters = Number(values.milkLiters ?? 0);
+  const milkUnitPrice = Number(values.milkUnitPrice ?? 0);
+  const description = milkSterilizationDescription(
+    milkLiters,
+    milkUnitPrice,
+  );
+  if (values.category !== MILK_STERILIZATION_EXPENSE_CATEGORY) {
+    return Object.hasOwn(changedValues, "category") &&
+      values.description === description
+      ? { description: "" }
+      : {};
+  }
+  return {
+    amount: milkLiters * milkUnitPrice,
+    description,
+  };
+}
 
 const fields = [
   { key: "expenseDate", label: "Ngày", type: "date" as const, required: true },
-  { key: "category", label: "Nhóm chi phí", type: "select" as const, options: ["Điện", "Nước", "Mặt bằng", "Vận chuyển", "Marketing", "Sửa chữa", "Khác"], required: true },
-  { key: "description", label: "Nội dung", required: true },
-  { key: "amount", label: "Số tiền", type: "money" as const, required: true },
+  { key: "category", label: "Nhóm chi phí", type: "select" as const, options: [...EXPENSE_CATEGORY_OPTIONS], required: true },
+  {
+    key: "description",
+    label: "Nội dung",
+    disabledWhen: {
+      field: "category",
+      equals: MILK_STERILIZATION_EXPENSE_CATEGORY,
+    },
+    hint: "Tự động gán khi chọn Tiệt trùng sữa",
+    required: true,
+  },
+  {
+    key: "milkLiters",
+    label: "Số lít sữa",
+    type: "number" as const,
+    min: 0.01,
+    precision: 2,
+    step: 0.5,
+    suffix: "lít",
+    visibleWhen: {
+      field: "category",
+      equals: MILK_STERILIZATION_EXPENSE_CATEGORY,
+    },
+    hiddenInTable: true,
+    required: true,
+  },
+  {
+    key: "milkUnitPrice",
+    label: "Giá mỗi lít sữa",
+    type: "money" as const,
+    min: 1,
+    visibleWhen: {
+      field: "category",
+      equals: MILK_STERILIZATION_EXPENSE_CATEGORY,
+    },
+    hiddenInTable: true,
+    required: true,
+  },
+  {
+    key: "amount",
+    label: "Tổng tiền",
+    type: "money" as const,
+    disabledWhen: {
+      field: "category",
+      equals: MILK_STERILIZATION_EXPENSE_CATEGORY,
+    },
+    hint: "Tự động tính khi chọn Tiệt trùng sữa",
+    required: true,
+  },
   {
     key: "paymentStatus",
     label: "Trạng thái",
@@ -66,6 +139,14 @@ export default function ExpensesPage() {
         initialData={[]}
         addLabel="Thêm chi phí"
         editorColumns={2}
+        selectionAmountField="amount"
+        selectionTitle="Danh sách chi phí"
+        selectionPdfExportUrl="/api/export/expenses/pdf"
+        selectionPdfFileName="hoa-don-chi-phi.pdf"
+        selectionPdfLabel="Tạo hóa đơn PDF"
+        onEditorValuesChange={(changedValues, allValues) =>
+          calculateSterilizationValues(changedValues, allValues)
+        }
       />
     </div>
   );

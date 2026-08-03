@@ -4,6 +4,7 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
+  FilePdfOutlined,
   PlusOutlined,
   RightOutlined,
   SearchOutlined,
@@ -34,7 +35,7 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type Key } from "react";
 import {
   formatDate,
   formatNumber,
@@ -43,6 +44,7 @@ import {
   parseVndInput,
 } from "@/lib/formatters";
 import { useApiData } from "@/hooks/use-api-data";
+import { milkSterilizationDescription } from "@/lib/expense-categories";
 
 const { Text } = Typography;
 
@@ -73,12 +75,30 @@ export type ResourceField = {
   hiddenInEditor?: boolean;
   editable?: boolean;
   missingWarningLabel?: string;
+  visibleWhen?: { field: string; equals: unknown };
+  disabledWhen?: { field: string; equals: unknown };
+  hint?: string;
+  min?: number;
+  precision?: number;
+  step?: number;
+  suffix?: string;
 };
 
 type ResourceRecord = Record<string, unknown> & { id?: string; _id?: string };
 
+function resourceRecordKey(record: ResourceRecord): Key {
+  return record.id ?? record._id ?? JSON.stringify(record);
+}
+
 function isMissingValue(value: unknown) {
   return value === undefined || value === null || value === "";
+}
+
+function matchesFieldCondition(
+  condition: ResourceField["visibleWhen"] | ResourceField["disabledWhen"],
+  values: Record<string, unknown>,
+) {
+  return !condition || values[condition.field] === condition.equals;
 }
 
 function hasResourceWarning(
@@ -138,6 +158,24 @@ function renderResourceValue(
       );
     }
   }
+  if (field.key === "description") {
+    const milkLiters = Number(record.milkLiters ?? 0);
+    const milkUnitPrice = Number(record.milkUnitPrice ?? 0);
+    const milkDetail = milkSterilizationDescription(
+      milkLiters,
+      milkUnitPrice,
+    );
+    if (milkDetail && resolvedValue !== milkDetail) {
+      return (
+        <span className="resource-description">
+          <Text>{String(resolvedValue ?? "—")}</Text>
+          <Text type="secondary" className="resource-description-detail">
+            {milkDetail}
+          </Text>
+        </span>
+      );
+    }
+  }
   if (field.key === "name" && record.hasCostWarning) {
     return (
       <Space size={[6, 4]} wrap>
@@ -171,6 +209,12 @@ export function ResourceManager({
   fallbackLabel = "Snapshot Excel",
   onMutation,
   editorColumns = 1,
+  selectionAmountField,
+  selectionTitle = "Danh sách",
+  selectionPdfExportUrl,
+  selectionPdfFileName = "du-lieu-da-chon.pdf",
+  selectionPdfLabel = "Xuất PDF",
+  onEditorValuesChange,
 }: {
   resource: string;
   fields: ResourceField[];
@@ -182,6 +226,15 @@ export function ResourceManager({
   fallbackLabel?: string;
   onMutation?: () => void;
   editorColumns?: 1 | 2;
+  selectionAmountField?: string;
+  selectionTitle?: string;
+  selectionPdfExportUrl?: string;
+  selectionPdfFileName?: string;
+  selectionPdfLabel?: string;
+  onEditorValuesChange?: (
+    changedValues: Record<string, unknown>,
+    allValues: Record<string, unknown>,
+  ) => Record<string, unknown> | undefined;
 }) {
   const { message } = App.useApp();
   const [query, setQuery] = useState("");
@@ -189,6 +242,8 @@ export function ResourceManager({
   const [editing, setEditing] = useState<ResourceRecord | null>(null);
   const [saving, setSaving] = useState(false);
   const [mobilePage, setMobilePage] = useState(1);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [form] = Form.useForm();
   const url = `/api/${resource}${query ? `?q=${encodeURIComponent(query)}` : ""}`;
   const { data, loading, usingFallback, setData } = useApiData<ResourceRecord[]>(
@@ -204,6 +259,11 @@ export function ResourceManager({
   const displayedValues = deriveValues
     ? deriveValues({ ...(editing ?? {}), ...(watchedValues ?? {}) })
     : { ...(editing ?? {}), ...(watchedValues ?? {}) };
+  const editorFields = fields.filter(
+    (field) =>
+      field.editable !== false &&
+      matchesFieldCondition(field.visibleWhen, displayedValues),
+  );
   const tableFields = fields.filter((field) => !field.hiddenInTable);
   const displayedRecords = useMemo(
     () =>
@@ -244,6 +304,36 @@ export function ResourceManager({
     (safeMobilePage - 1) * mobilePageSize,
     safeMobilePage * mobilePageSize,
   );
+  const displayedRecordKeys = useMemo(
+    () => displayedRecords.map(resourceRecordKey),
+    [displayedRecords],
+  );
+  const selectedRowKeySet = useMemo(
+    () => new Set(selectedRowKeys),
+    [selectedRowKeys],
+  );
+  const selectedSummary = useMemo(() => {
+    if (!selectionAmountField) return { count: 0, totalAmount: 0 };
+
+    let count = 0;
+    let totalAmount = 0;
+    for (const record of data) {
+      if (!selectedRowKeySet.has(resourceRecordKey(record))) continue;
+      count += 1;
+      totalAmount += Number(record[selectionAmountField] ?? 0);
+    }
+    return { count, totalAmount };
+  }, [data, selectedRowKeySet, selectionAmountField]);
+  const selectedDisplayedRecordCount = useMemo(() => {
+    let count = 0;
+    for (const key of displayedRecordKeys) {
+      if (selectedRowKeySet.has(key)) count += 1;
+    }
+    return count;
+  }, [displayedRecordKeys, selectedRowKeySet]);
+  const allDisplayedRecordsSelected =
+    displayedRecordKeys.length > 0 &&
+    selectedDisplayedRecordCount === displayedRecordKeys.length;
 
   if (loading) {
     return (
@@ -309,6 +399,71 @@ export function ResourceManager({
     setModalOpen(true);
   }
 
+  function toggleRecordSelection(key: Key, checked: boolean) {
+    setSelectedRowKeys((current) => {
+      const next = new Set(current);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return Array.from(next);
+    });
+  }
+
+  function toggleAllDisplayedRecords(checked: boolean) {
+    setSelectedRowKeys((current) => {
+      const next = new Set(current);
+      for (const key of displayedRecordKeys) {
+        if (checked) next.add(key);
+        else next.delete(key);
+      }
+      return Array.from(next);
+    });
+  }
+
+  async function exportSelectedPdf() {
+    if (!selectionPdfExportUrl || selectedSummary.count === 0) return;
+    const ids = data.flatMap((record) => {
+      const key = resourceRecordKey(record);
+      if (!selectedRowKeySet.has(key)) return [];
+      const id = record.id ?? record._id;
+      return id ? [String(id)] : [];
+    });
+    if (ids.length === 0) {
+      message.warning("Các dòng đã chọn chưa có mã để xuất PDF");
+      return;
+    }
+
+    setExportingPdf(true);
+    try {
+      const response = await fetch(selectionPdfExportUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as
+          | { message?: string }
+          | null;
+        throw new Error(body?.message ?? "Không thể tạo file PDF");
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = selectionPdfFileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      message.success("Đã tạo hóa đơn PDF");
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : "Không thể tạo file PDF",
+      );
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   async function saveRecord(values: Record<string, unknown>) {
     setSaving(true);
     try {
@@ -330,12 +485,18 @@ export function ResourceManager({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      if (!response.ok) {
+        const errorBody = (await response.json().catch(() => null)) as
+          | { message?: string }
+          | null;
+        throw new Error(errorBody?.message ?? "Không thể lưu dữ liệu");
+      }
       const body = (await response.json()) as {
         success: boolean;
         message: string;
         data?: ResourceRecord;
       };
-      if (!response.ok || !body.success || !body.data) throw new Error(body.message);
+      if (!body.success || !body.data) throw new Error(body.message);
       setData((current) =>
         id
           ? current.map((item) =>
@@ -361,9 +522,16 @@ export function ResourceManager({
     if (!id) return;
     try {
       const response = await fetch(`/api/${resource}/${id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const errorBody = (await response.json().catch(() => null)) as
+          | { message?: string }
+          | null;
+        throw new Error(errorBody?.message ?? "Không thể xóa dữ liệu");
+      }
       const body = (await response.json()) as { success: boolean; message: string };
-      if (!response.ok || !body.success) throw new Error(body.message);
+      if (!body.success) throw new Error(body.message);
       setData((current) => current.filter((item) => (item.id ?? item._id) !== id));
+      setSelectedRowKeys((current) => current.filter((key) => key !== id));
       message.success(body.message);
       onMutation?.();
     } catch (error) {
@@ -399,12 +567,82 @@ export function ResourceManager({
             </Button>
           </Space>
         </div>
+        {selectionAmountField ? (
+          <div className="resource-selection-bar">
+            <div className="resource-selection-heading">
+              <span className="resource-selection-icon" aria-hidden="true">
+                <FilePdfOutlined />
+              </span>
+              <div className="resource-selection-title">
+                <Text strong>{selectionTitle}</Text>
+                <Text type="secondary">
+                  Chọn các khoản cần đưa vào hóa đơn
+                </Text>
+              </div>
+              <Checkbox
+                className="resource-mobile-select-all"
+                checked={allDisplayedRecordsSelected}
+                indeterminate={
+                  selectedDisplayedRecordCount > 0 &&
+                  !allDisplayedRecordsSelected
+                }
+                disabled={displayedRecordKeys.length === 0}
+                onChange={(event) =>
+                  toggleAllDisplayedRecords(event.target.checked)
+                }
+              >
+                Chọn tất cả
+              </Checkbox>
+            </div>
+            <div className="resource-selection-controls">
+              <div className="resource-selection-summary" aria-live="polite">
+                <span>
+                  <Text type="secondary">Đã chọn</Text>
+                  <Text strong>{formatNumber(selectedSummary.count)} khoản</Text>
+                </span>
+                <span>
+                  <Text type="secondary">Tổng hóa đơn</Text>
+                  <Text strong>{formatVnd(selectedSummary.totalAmount)}</Text>
+                </span>
+              </div>
+              {selectionPdfExportUrl ? (
+                <Button
+                  type="primary"
+                  size="large"
+                  icon={<FilePdfOutlined />}
+                  disabled={selectedSummary.count === 0}
+                  loading={exportingPdf}
+                  onClick={exportSelectedPdf}
+                >
+                  {selectionPdfLabel}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         <Table
           className="resource-desktop-table"
           size="small"
-          rowKey={(record) => record.id ?? record._id ?? JSON.stringify(record)}
+          rowKey={resourceRecordKey}
           columns={columns}
           dataSource={displayedRecords}
+          rowSelection={
+            selectionAmountField
+              ? {
+                  selectedRowKeys,
+                  onChange: setSelectedRowKeys,
+                  columnWidth: 44,
+                  preserveSelectedRowKeys: true,
+                  getCheckboxProps: (record) => ({
+                    "aria-label": `Chọn ${String(
+                      primaryField
+                        ? (record[primaryField.key] ?? "bản ghi")
+                        : "bản ghi",
+                    )}`,
+                  }),
+                }
+              : undefined
+          }
           pagination={{ defaultPageSize: 50, showSizeChanger: false }}
           scroll={{ x: "max-content" }}
           rowClassName={(record) =>
@@ -413,8 +651,7 @@ export function ResourceManager({
         />
         <ul className="resource-mobile-list">
           {mobileRecords.map((record) => {
-            const key =
-              record.id ?? record._id ?? JSON.stringify(record);
+            const key = resourceRecordKey(record);
             return (
               <li
                 className={`resource-mobile-card ${
@@ -424,33 +661,49 @@ export function ResourceManager({
                 }`}
                 key={key}
               >
-                <div className="resource-mobile-card-heading">
-                  <div>
-                    <div className="resource-mobile-card-title">
-                      {primaryField
-                        ? renderResourceValue(
-                            primaryField,
-                            record[primaryField.key],
-                            record,
-                          )
-                        : "Bản ghi"}
-                    </div>
-                    <Space size={6} wrap>
-                      {codeField && codeField.key !== primaryField?.key ? (
-                        <Tag>{String(record[codeField.key] ?? "—")}</Tag>
-                      ) : null}
-                      {categoryField ? (
-                        <Text type="secondary">
-                          {String(record[categoryField.key] ?? "—")}
-                        </Text>
-                      ) : null}
-                    </Space>
-                  </div>
-                  {dateField ? (
-                    <Text type="secondary" className="resource-mobile-card-date">
-                      {formatDate(record[dateField.key] as string)}
-                    </Text>
+                <div className="resource-mobile-card-topline">
+                  {selectionAmountField ? (
+                    <Checkbox
+                      className="resource-mobile-card-checkbox"
+                      checked={selectedRowKeySet.has(key)}
+                      aria-label={`Chọn ${String(
+                        primaryField
+                          ? (record[primaryField.key] ?? "bản ghi")
+                          : "bản ghi",
+                      )}`}
+                      onChange={(event) =>
+                        toggleRecordSelection(key, event.target.checked)
+                      }
+                    />
                   ) : null}
+                  <div className="resource-mobile-card-heading">
+                    <div>
+                      <div className="resource-mobile-card-title">
+                        {primaryField
+                          ? renderResourceValue(
+                              primaryField,
+                              record[primaryField.key],
+                              record,
+                            )
+                          : "Bản ghi"}
+                      </div>
+                      <Space size={6} wrap>
+                        {codeField && codeField.key !== primaryField?.key ? (
+                          <Tag>{String(record[codeField.key] ?? "—")}</Tag>
+                        ) : null}
+                        {categoryField ? (
+                          <Text type="secondary">
+                            {String(record[categoryField.key] ?? "—")}
+                          </Text>
+                        ) : null}
+                      </Space>
+                    </div>
+                    {dateField ? (
+                      <Text type="secondary" className="resource-mobile-card-date">
+                        {formatDate(record[dateField.key] as string)}
+                      </Text>
+                    ) : null}
+                  </div>
                 </div>
                 <dl className="resource-mobile-metrics">
                   {mobileMetricFields.map((field) => (
@@ -554,12 +807,19 @@ export function ResourceManager({
           form={form}
           layout="vertical"
           onFinish={saveRecord}
+          onValuesChange={(changedValues, allValues) => {
+            const updates = onEditorValuesChange?.(
+              changedValues,
+              allValues,
+            );
+            if (updates && Object.keys(updates).length > 0) {
+              form.setFieldsValue(updates);
+            }
+          }}
           style={{ marginTop: 20 }}
         >
           <Row gutter={16}>
-            {fields
-              .filter((field) => field.editable !== false)
-              .map((field) => (
+            {editorFields.map((field) => (
                 <Col
                   key={field.key}
                   xs={24}
@@ -586,13 +846,25 @@ export function ResourceManager({
                           ]
                         : undefined
                     }
+                    extra={field.hint}
                   >
                     {field.type === "number" || field.type === "money" ? (
                       <InputNumber
-                        min={0}
+                        min={field.min ?? 0}
                         style={{ width: "100%" }}
-                        precision={field.type === "money" ? 0 : undefined}
-                        step={field.type === "money" ? 1_000 : undefined}
+                        precision={
+                          field.precision ??
+                          (field.type === "money" ? 0 : undefined)
+                        }
+                        step={
+                          field.step ??
+                          (field.type === "money" ? 1_000 : undefined)
+                        }
+                        addonAfter={field.suffix}
+                        disabled={matchesFieldCondition(
+                          field.disabledWhen,
+                          displayedValues,
+                        ) && Boolean(field.disabledWhen)}
                         formatter={
                           field.type === "money" ? formatVndInput : undefined
                         }
@@ -645,7 +917,14 @@ export function ResourceManager({
                     ) : field.type === "textarea" ? (
                       <Input.TextArea rows={3} />
                     ) : (
-                      <Input />
+                      <Input
+                        disabled={
+                          matchesFieldCondition(
+                            field.disabledWhen,
+                            displayedValues,
+                          ) && Boolean(field.disabledWhen)
+                        }
+                      />
                     )}
                   </Form.Item>
                 </Col>

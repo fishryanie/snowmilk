@@ -21,6 +21,7 @@ import {
 import type { ResourceName } from "@/lib/validators/resources";
 import { Ingredient } from "@/models/Ingredient";
 import { Equipment } from "@/models/Equipment";
+import { Expense } from "@/models/Expense";
 import { MilkBatch } from "@/models/MilkBatch";
 import { Product } from "@/models/Product";
 import { Purchase } from "@/models/Purchase";
@@ -800,6 +801,20 @@ export async function updateResource(
     });
     if (size) await recalculateProductCosts({ sizeId: size._id });
     return size;
+  }
+  if (resource === "expenses") {
+    const keepsMilkDetails =
+      payload.milkLiters !== undefined && payload.milkUnitPrice !== undefined;
+    return Expense.findByIdAndUpdate(
+      id,
+      keepsMilkDetails
+        ? { $set: payload }
+        : {
+            $set: payload,
+            $unset: { milkLiters: 1, milkUnitPrice: 1 },
+          },
+      { returnDocument: "after", runValidators: true },
+    );
   }
   return resourceModels[resource].findByIdAndUpdate(id, payload, {
     returnDocument: "after",
