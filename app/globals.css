@@ -4629,10 +4629,16 @@ body::before {
   min-height: 40px;
 }
 
-.payroll-withdrawn-button.ant-btn:disabled {
+.payroll-withdrawn-button.ant-btn {
   color: var(--success);
   border-color: rgb(63 147 111 / 20%);
   background: #edf8f2;
+}
+
+.payroll-withdrawn-button.ant-btn:hover {
+  color: #256f54 !important;
+  border-color: rgb(63 147 111 / 42%) !important;
+  background: #e4f5ec !important;
 }
 
 .payroll-employee-footer {
@@ -4704,7 +4710,34 @@ body::before {
 
 .payroll-withdrawal-footnote {
   display: block;
+  margin-top: 12px;
   line-height: 1.5;
+}
+
+.payroll-preview-button.ant-btn {
+  min-height: 42px;
+  color: var(--brand-strong);
+  border-color: color-mix(in srgb, var(--brand) 34%, var(--line));
+  background: color-mix(in srgb, var(--brand) 5%, white);
+}
+
+.payroll-preview-button.ant-btn:hover {
+  color: var(--brand) !important;
+  border-color: var(--brand) !important;
+  background: var(--brand-soft) !important;
+}
+
+.payroll-payslip-preview-modal .ant-modal-body {
+  display: grid;
+  gap: 14px;
+}
+
+.payroll-payslip-preview-frame {
+  width: 100%;
+  height: min(72vh, 780px);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f4f7f6;
 }
 
 .payroll-dialog .ant-modal-body {
@@ -4870,6 +4903,19 @@ body::before {
   .payroll-dialog .ant-modal-footer {
     flex: 0 0 auto;
     padding-top: 10px;
+  }
+
+  .payroll-payslip-preview-modal {
+    max-width: calc(100vw - 20px);
+    margin: 10px auto;
+  }
+
+  .payroll-payslip-preview-modal .ant-modal-container {
+    padding: 16px 12px 12px;
+  }
+
+  .payroll-payslip-preview-frame {
+    height: 64vh;
   }
 }
 

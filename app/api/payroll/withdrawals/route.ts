@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { apiError, apiSuccess, errorMessage } from "@/lib/api-response";
 import { connectMongo } from "@/lib/mongodb";
+import { createPayrollPayslipSnapshot } from "@/lib/payroll-payslip";
 import { vietnamDateKey } from "@/lib/vietnam-date";
 import { payrollWithdrawalSchema } from "@/lib/validators/payroll";
 import { PayrollEmployee } from "@/models/PayrollEmployee";
@@ -44,16 +45,22 @@ export async function POST(request: Request) {
 
     await connectMongo();
     const employeeId = new mongoose.Types.ObjectId(parsed.data.employeeId);
-    const [employee, settlement, existing] = await Promise.all([
-      PayrollEmployee.findById(employeeId).lean(),
-      PayrollPeriodSettlement.findOne({
-        period: parsed.data.period,
-      }).lean(),
-      PayrollWithdrawal.exists({
-        employeeId,
-        period: parsed.data.period,
-      }),
-    ]);
+    const [employee, settlement, existing, previousSettlements] =
+      await Promise.all([
+        PayrollEmployee.findById(employeeId).lean(),
+        PayrollPeriodSettlement.findOne({
+          period: parsed.data.period,
+        }).lean(),
+        PayrollWithdrawal.exists({
+          employeeId,
+          period: parsed.data.period,
+        }),
+        PayrollPeriodSettlement.find({
+          period: { $lt: parsed.data.period },
+        })
+          .select("distributablePool")
+          .lean<Array<{ distributablePool?: number }>>(),
+      ]);
     if (!employee) {
       return apiError("Nhân sự không tồn tại", 404);
     }
@@ -97,6 +104,14 @@ export async function POST(request: Request) {
       );
     }
 
+    const payslipSnapshot = createPayrollPayslipSnapshot({
+      settlement,
+      allocation,
+      previouslySettledPools: previousSettlements.reduce(
+        (total, item) => total + Number(item.distributablePool ?? 0),
+        0,
+      ),
+    });
     const withdrawal = await PayrollWithdrawal.create({
       employeeId,
       employeeName: allocation.employeeName,
@@ -106,8 +121,13 @@ export async function POST(request: Request) {
       entitlementSnapshot: amount,
       sharePercentSnapshot: allocation.sharePercent,
       note: parsed.data.note,
+      payslipSnapshot,
     });
-    return apiSuccess(withdrawal.toJSON(), "Đã ghi nhận phiếu rút lương", 201);
+    return apiSuccess(
+      withdrawal.toJSON(),
+      "Đã ghi nhận chi lương và tạo phiếu lương",
+      201,
+    );
   } catch (error) {
     if (
       error instanceof mongoose.mongo.MongoServerError &&

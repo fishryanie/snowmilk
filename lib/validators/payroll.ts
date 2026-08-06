@@ -29,3 +29,12 @@ export const payrollWithdrawalSchema = z
     message: "Số tiền rút không được vượt quá phần được lãnh",
     path: ["amount"],
   });
+
+export const payrollPayslipPreviewSchema = z
+  .object({
+    employeeId: z.string().regex(/^[a-f\d]{24}$/i, "Nhân sự không hợp lệ"),
+    period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Tháng không hợp lệ"),
+    withdrawalDate: z.coerce.date(),
+    note: optionalText,
+  })
+  .strict();

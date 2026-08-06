@@ -3,6 +3,8 @@
 import {
   BankOutlined,
   CalendarOutlined,
+  EyeOutlined,
+  FilePdfOutlined,
   HistoryOutlined,
   PlusOutlined,
   SafetyCertificateOutlined,
@@ -31,7 +33,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import dayjs, { type Dayjs } from "dayjs";
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/common/page-header";
 import {
   PayrollPeriodHistory,
@@ -124,6 +126,8 @@ type PendingWithdrawal = {
   allocation: PayrollPeriodAllocation;
 };
 
+type PayslipDownloadTarget = Pick<Withdrawal, "id" | "period">;
+
 type ApiEnvelope<T> = {
   success: boolean;
   message: string;
@@ -192,8 +196,22 @@ export default function PayrollPage() {
   const [helpTopic, setHelpTopic] = useState<PayrollHelpTopic | null>(null);
   const [helpPeriod, setHelpPeriod] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [previewingPayslip, setPreviewingPayslip] = useState(false);
+  const [payslipPreviewUrl, setPayslipPreviewUrl] = useState<string | null>(
+    null,
+  );
+  const [downloadingPayslipId, setDownloadingPayslipId] = useState<
+    string | null
+  >(null);
   const [employeeForm] = Form.useForm<EmployeeFormValues>();
   const [withdrawalForm] = Form.useForm<WithdrawalFormValues>();
+
+  useEffect(
+    () => () => {
+      if (payslipPreviewUrl) URL.revokeObjectURL(payslipPreviewUrl);
+    },
+    [payslipPreviewUrl],
+  );
 
   const period = month.format("YYYY-MM");
   const rangeEnd = month.isSame(dayjs(), "month")
@@ -409,6 +427,7 @@ export default function PayrollPage() {
     selectedPeriod: PayrollPeriodSummary,
     allocation: PayrollPeriodAllocation,
   ) => {
+    setPayslipPreviewUrl(null);
     setPendingWithdrawal({
       employee,
       period: selectedPeriod,
@@ -420,6 +439,81 @@ export default function PayrollPage() {
       note: `Chi phần được lãnh tháng ${dayjs(`${selectedPeriod.period}-01`).format("MM/YYYY")}`,
     });
     setWithdrawalModalOpen(true);
+  };
+
+  const previewPayslip = async () => {
+    if (!pendingWithdrawal) return;
+
+    let values: WithdrawalFormValues;
+    try {
+      values = await withdrawalForm.validateFields();
+    } catch {
+      return;
+    }
+
+    setPreviewingPayslip(true);
+    try {
+      const response = await fetch("/api/payroll/payslips/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId: pendingWithdrawal.employee.id,
+          period: pendingWithdrawal.period.period,
+          withdrawalDate: values.withdrawalDate.toISOString(),
+          note: values.note,
+        }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as
+          | { message?: string }
+          | null;
+        throw new Error(body?.message ?? "Không thể xem trước phiếu lương");
+      }
+
+      const blob = await response.blob();
+      setPayslipPreviewUrl(URL.createObjectURL(blob));
+    } catch (error) {
+      message.error(
+        error instanceof Error
+          ? error.message
+          : "Không thể xem trước phiếu lương",
+      );
+    } finally {
+      setPreviewingPayslip(false);
+    }
+  };
+
+  const downloadPayslip = async (withdrawal: PayslipDownloadTarget) => {
+    setDownloadingPayslipId(withdrawal.id);
+    try {
+      const response = await fetch(
+        `/api/payroll/withdrawals/${withdrawal.id}/payslip`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as
+          | { message?: string }
+          | null;
+        throw new Error(body?.message ?? "Không thể tạo phiếu lương");
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `phieu-luong-${withdrawal.period}-${withdrawal.id.slice(-8)}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      message.success("Đã tải phiếu lương PDF");
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : "Không thể tạo phiếu lương",
+      );
+    } finally {
+      setDownloadingPayslipId(null);
+    }
   };
 
   const saveWithdrawal = async (values: WithdrawalFormValues) => {
@@ -438,10 +532,12 @@ export default function PayrollPage() {
           note: values.note,
         },
       );
-      setWithdrawals((current) => [body.data!, ...current]);
+      const savedWithdrawal = body.data!;
+      setWithdrawals((current) => [savedWithdrawal, ...current]);
       message.success(body.message);
       setWithdrawalModalOpen(false);
       setPendingWithdrawal(null);
+      await downloadPayslip(savedWithdrawal);
     } catch (error) {
       message.error(
         error instanceof Error ? error.message : "Không thể ghi nhận phiếu rút",
@@ -493,6 +589,22 @@ export default function PayrollPage() {
       key: "note",
       ellipsis: true,
       render: (value: string) => value || "—",
+    },
+    {
+      title: "Phiếu lương",
+      key: "payslip",
+      fixed: "right",
+      width: 132,
+      render: (_value, withdrawal) => (
+        <Button
+          type="link"
+          icon={<FilePdfOutlined />}
+          loading={downloadingPayslipId === withdrawal.id}
+          onClick={() => downloadPayslip(withdrawal)}
+        >
+          Tải PDF
+        </Button>
+      ),
     },
   ];
 
@@ -713,6 +825,8 @@ export default function PayrollPage() {
             setHelpPeriod(selectedPeriod.period);
             setHelpTopic("distributable-pool");
           }}
+          onDownloadPayslip={downloadPayslip}
+          downloadingPayslipId={downloadingPayslipId}
         />
       </section>
 
@@ -737,7 +851,7 @@ export default function PayrollPage() {
           loading={withdrawalsLoading}
           pagination={{ pageSize: 8, hideOnSinglePage: true }}
           locale={{ emptyText: "Chưa có phiếu rút" }}
-          scroll={{ x: 760 }}
+          scroll={{ x: 900 }}
         />
       </Card>
 
@@ -851,6 +965,7 @@ export default function PayrollPage() {
         okButtonProps={{ icon: <WalletOutlined /> }}
         onCancel={() => {
           setWithdrawalModalOpen(false);
+          setPayslipPreviewUrl(null);
           setPendingWithdrawal(null);
         }}
         onOk={() => withdrawalForm.submit()}
@@ -897,10 +1012,43 @@ export default function PayrollPage() {
             <Input.TextArea rows={3} placeholder="Nội dung chi lương" />
           </Form.Item>
         </Form>
+        <Button
+          block
+          className="payroll-preview-button"
+          icon={<EyeOutlined />}
+          loading={previewingPayslip}
+          onClick={previewPayslip}
+        >
+          Xem trước phiếu lương
+        </Button>
         <Text type="secondary" className="payroll-withdrawal-footnote">
-          Mỗi người chỉ rút một lần cho mỗi tháng. Sau khi xác nhận, dòng tháng
-          này sẽ chuyển sang trạng thái Đã rút.
+          Hãy xem trước để đối chiếu số tiền và công thức. Chỉ khi bấm Xác nhận
+          rút, hệ thống mới ghi nhận chi lương và tải phiếu PDF chính thức.
         </Text>
+      </Modal>
+
+      <Modal
+        centered
+        width={920}
+        className="payroll-payslip-preview-modal"
+        open={Boolean(payslipPreviewUrl)}
+        title="Xem trước phiếu lương"
+        footer={null}
+        onCancel={() => setPayslipPreviewUrl(null)}
+      >
+        <Alert
+          type="warning"
+          showIcon
+          title="Bản xem trước - chưa ghi nhận chi lương"
+          description="Nếu số liệu chưa đúng, hãy đóng cửa sổ này và kiểm tra lại trước khi bấm Xác nhận rút."
+        />
+        {payslipPreviewUrl ? (
+          <iframe
+            className="payroll-payslip-preview-frame"
+            src={payslipPreviewUrl}
+            title="Bản xem trước phiếu lương"
+          />
+        ) : null}
       </Modal>
     </main>
   );

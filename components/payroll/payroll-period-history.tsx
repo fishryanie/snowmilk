@@ -1,6 +1,6 @@
 import {
-  CheckCircleFilled,
   EditOutlined,
+  FilePdfOutlined,
   LockOutlined,
   WalletOutlined,
 } from "@ant-design/icons";
@@ -87,6 +87,8 @@ export function PayrollPeriodHistory({
   onWithdraw,
   onExplain,
   onExplainPeriod,
+  onDownloadPayslip,
+  downloadingPayslipId,
 }: {
   employees: PayrollHistoryEmployee[];
   periods: PayrollPeriodSummary[];
@@ -101,6 +103,8 @@ export function PayrollPeriodHistory({
   ) => void;
   onExplain: () => void;
   onExplainPeriod: (period: PayrollPeriodSummary) => void;
+  onDownloadPayslip: (withdrawal: PayrollHistoryWithdrawal) => void;
+  downloadingPayslipId: string | null;
 }) {
   const withdrawalByPeriodEmployee = new Map(
     withdrawals.map((withdrawal) => [
@@ -264,11 +268,13 @@ export function PayrollPeriodHistory({
                           {withdrawal ? (
                             <Button
                               block
-                              disabled
-                              icon={<CheckCircleFilled />}
+                              icon={<FilePdfOutlined />}
+                              loading={downloadingPayslipId === withdrawal.id}
                               className="payroll-withdrawn-button"
+                              onClick={() => onDownloadPayslip(withdrawal)}
                             >
-                              Đã rút · {formatDate(withdrawal.withdrawalDate)}
+                              Tải phiếu lương ·{" "}
+                              {formatDate(withdrawal.withdrawalDate)}
                             </Button>
                           ) : (
                             <Button
