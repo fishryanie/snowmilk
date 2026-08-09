@@ -1,0 +1,213 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "snowmilk",
+    "languages": ["TypeScript", "TSX"],
+    "frameworks": ["Next.js", "React", "MongoDB", "Mongoose"],
+    "description": "A café-management application for Sữa Tuyết that records products, ingredients, milk batches, purchasing, daily sales, and inventory.",
+    "analyzedAt": "2026-08-08T00:00:00.000Z",
+    "gitCommitHash": "835f2b4f272d5380e4e97fd1b8c502c7d324bbf5"
+  },
+  "nodes": [
+    {
+      "id": "domain:product-catalog",
+      "type": "domain",
+      "name": "Product Catalog",
+      "summary": "Maintains the café's sellable products and the ingredient records used to describe them. Products can reference a topping ingredient, a size, and a milk batch.",
+      "tags": ["products", "ingredients", "catalog"],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entities": ["Product", "Ingredient", "Size"],
+        "businessRules": ["Product and ingredient codes are required and unique.", "Ingredient category is restricted to supported inventory categories."],
+        "crossDomainInteractions": ["Products reference milk batches for their milk cost basis and ingredients for toppings.", "Purchases and inventory use ingredient records."]
+      }
+    },
+    {
+      "id": "domain:recipes-and-milk-batches",
+      "type": "domain",
+      "name": "Recipes, Milk Batches, and Costing",
+      "summary": "Records milk-batch recipes with ingredient quantities and costs, then uses those batches in product costing. This creates the cost basis that products and sales estimates consume.",
+      "tags": ["milk-batches", "recipes", "costing"],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": ["MilkBatch", "BatchIngredient", "Product"],
+        "businessRules": ["Batch ingredient quantity is required and cannot be negative.", "Batch ingredient unit cost and amount cannot be negative."],
+        "crossDomainInteractions": ["Uses catalog ingredients in recipes.", "Provides referenced milk batches to products, sales, and inventory."]
+      }
+    },
+    {
+      "id": "domain:procurement-and-ingredients",
+      "type": "domain",
+      "name": "Procurement and Ingredients",
+      "summary": "Records purchases of ingredients and other items with a purchase date and funding information. Purchase quantities are summarized for inventory calculations.",
+      "tags": ["purchases", "procurement", "ingredients"],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entities": ["Purchase", "Ingredient"],
+        "businessRules": ["A purchase date and item name are required.", "Purchase funding source uses configured supported values."],
+        "crossDomainInteractions": ["References ingredients from the catalog.", "Feeds purchase quantities into inventory." ]
+      }
+    },
+    {
+      "id": "domain:sales",
+      "type": "domain",
+      "name": "Sales",
+      "summary": "Captures and reviews daily-summary sales records, including product quantities, prices, and variable costs. Daily estimates use products, milk batches, equipment, settings, and sizes as context.",
+      "tags": ["sales", "daily-summary", "revenue"],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": ["Sale", "SaleItem", "Product"],
+        "businessRules": ["Sale-item quantity and unit price cannot be negative.", "Daily-sale input is validated before it is saved."],
+        "crossDomainInteractions": ["Reads product and milk-batch context to estimate daily sales.", "Sales affect inventory calculations for milk batches."]
+      }
+    },
+    {
+      "id": "domain:inventory",
+      "type": "domain",
+      "name": "Inventory",
+      "summary": "Calculates ingredient and milk-batch stock for a selected date and stores inventory snapshots. The calculation combines purchase summaries with recipe, batch, and sales information.",
+      "tags": ["inventory", "stock", "snapshots"],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": ["InventorySnapshot", "InventoryItem", "Ingredient", "MilkBatch", "Purchase"],
+        "businessRules": ["Inventory input is schema-validated.", "Quantities are converted using supported units before inventory is calculated."],
+        "crossDomainInteractions": ["Consumes purchases for received quantities.", "Consumes milk-batch and sales data to calculate on-hand stock."]
+      }
+    },
+    {
+      "id": "flow:manage-product-records",
+      "type": "flow",
+      "name": "Manage Product Records",
+      "summary": "Lists and creates product records through the generic resource API used by the product screen.",
+      "tags": ["products", "crud"],
+      "complexity": "moderate",
+      "domainMeta": {"entryPoint": "GET/POST /api/products", "entryType": "http"}
+    },
+    {
+      "id": "flow:manage-ingredient-records",
+      "type": "flow",
+      "name": "Manage Ingredient Records",
+      "summary": "Lists and creates ingredient records through the generic resource API used by the ingredient screen.",
+      "tags": ["ingredients", "crud"],
+      "complexity": "moderate",
+      "domainMeta": {"entryPoint": "GET/POST /api/ingredients", "entryType": "http"}
+    },
+    {
+      "id": "flow:record-milk-batch-recipe",
+      "type": "flow",
+      "name": "Record Milk Batch Recipe",
+      "summary": "Creates and maintains milk-batch records that embed ingredient quantities, units, unit costs, and amounts.",
+      "tags": ["milk-batches", "recipes"],
+      "complexity": "complex",
+      "domainMeta": {"entryPoint": "GET/POST/PUT /api/batches", "entryType": "http"}
+    },
+    {
+      "id": "flow:calculate-product-costs",
+      "type": "flow",
+      "name": "Calculate Product Costs",
+      "summary": "Calculates product costs from the established product, ingredient, and milk-batch information.",
+      "tags": ["costing", "products"],
+      "complexity": "complex",
+      "domainMeta": {"entryPoint": "Costing screen", "entryType": "manual"}
+    },
+    {
+      "id": "flow:record-purchase",
+      "type": "flow",
+      "name": "Record Purchase",
+      "summary": "Creates and manages dated purchase records that identify the purchased item and funding source.",
+      "tags": ["purchases", "procurement"],
+      "complexity": "moderate",
+      "domainMeta": {"entryPoint": "GET/POST/PUT /api/purchases", "entryType": "http"}
+    },
+    {
+      "id": "flow:record-daily-sales",
+      "type": "flow",
+      "name": "Record Daily Sales",
+      "summary": "Validates a daily sales submission, derives its context and estimates, and persists it as a sales record.",
+      "tags": ["sales", "daily-summary"],
+      "complexity": "complex",
+      "domainMeta": {"entryPoint": "POST /api/sales", "entryType": "http"}
+    },
+    {
+      "id": "flow:review-inventory",
+      "type": "flow",
+      "name": "Review Inventory",
+      "summary": "Returns computed ingredient and milk-batch inventory for a requested date.",
+      "tags": ["inventory", "stock"],
+      "complexity": "complex",
+      "domainMeta": {"entryPoint": "GET /api/inventory?date=YYYY-MM-DD", "entryType": "http"}
+    },
+    {
+      "id": "flow:save-inventory-snapshot",
+      "type": "flow",
+      "name": "Save Inventory Snapshot",
+      "summary": "Validates submitted inventory data and stores an inventory snapshot.",
+      "tags": ["inventory", "snapshots"],
+      "complexity": "moderate",
+      "domainMeta": {"entryPoint": "POST /api/inventory", "entryType": "http"}
+    },
+    {"id":"step:manage-product-records:request-product-collection","type":"step","name":"Request Product Collection","summary":"Receives a collection request for a registered resource.","tags":["products","api"],"complexity":"simple","filePath":"app/api/[resource]/route.ts","lineRange":[11,11]},
+    {"id":"step:manage-product-records:validate-product-resource","type":"step","name":"Validate Product Resource","summary":"Verifies that the requested resource name is registered before continuing.","tags":["products","validation"],"complexity":"simple","filePath":"app/api/[resource]/route.ts","lineRange":[15,15]},
+    {"id":"step:manage-product-records:create-product-record","type":"step","name":"Create Product Record","summary":"Accepts a POST request for the registered product resource.","tags":["products","create"],"complexity":"moderate","filePath":"app/api/[resource]/route.ts","lineRange":[30,30]},
+    {"id":"step:manage-ingredient-records:request-ingredient-collection","type":"step","name":"Request Ingredient Collection","summary":"Receives a collection request for a registered resource.","tags":["ingredients","api"],"complexity":"simple","filePath":"app/api/[resource]/route.ts","lineRange":[11,11]},
+    {"id":"step:manage-ingredient-records:validate-ingredient-resource","type":"step","name":"Validate Ingredient Resource","summary":"Verifies that the requested resource name is registered before continuing.","tags":["ingredients","validation"],"complexity":"simple","filePath":"app/api/[resource]/route.ts","lineRange":[15,15]},
+    {"id":"step:manage-ingredient-records:create-ingredient-record","type":"step","name":"Create Ingredient Record","summary":"Accepts a POST request for the registered ingredient resource.","tags":["ingredients","create"],"complexity":"moderate","filePath":"app/api/[resource]/route.ts","lineRange":[30,30]},
+    {"id":"step:record-milk-batch-recipe:define-batch-ingredients","type":"step","name":"Define Batch Ingredients","summary":"Stores each recipe line with an ingredient reference, quantity, unit, unit cost, and amount.","tags":["milk-batches","ingredients"],"complexity":"moderate","filePath":"models/MilkBatch.ts","lineRange":[4,13]},
+    {"id":"step:record-milk-batch-recipe:validate-recipe-amounts","type":"step","name":"Validate Recipe Amounts","summary":"Constrains recipe quantities and costs to non-negative values.","tags":["milk-batches","validation"],"complexity":"simple","filePath":"models/MilkBatch.ts","lineRange":[4,13]},
+    {"id":"step:record-milk-batch-recipe:persist-milk-batch","type":"step","name":"Persist Milk Batch","summary":"Uses the milk-batch model to persist the recipe record.","tags":["milk-batches","persistence"],"complexity":"moderate","filePath":"models/MilkBatch.ts","lineRange":[1,41]},
+    {"id":"step:calculate-product-costs:load-costing-data","type":"step","name":"Load Costing Data","summary":"Uses product, ingredient, and milk-batch data as inputs to costing.","tags":["costing","products"],"complexity":"moderate","filePath":"lib/calculations/costing.ts","lineRange":[1,1]},
+    {"id":"step:calculate-product-costs:calculate-costs","type":"step","name":"Calculate Costs","summary":"Runs the project's product-cost calculation logic.","tags":["costing","calculation"],"complexity":"complex","filePath":"lib/calculations/costing.ts","lineRange":[1,1]},
+    {"id":"step:calculate-product-costs:present-costing-workspace","type":"step","name":"Present Costing Workspace","summary":"Exposes calculated costing in the dedicated costing screen.","tags":["costing","ui"],"complexity":"simple","filePath":"app/costing/page.tsx","lineRange":[1,1]},
+    {"id":"step:record-purchase:enter-purchase-details","type":"step","name":"Enter Purchase Details","summary":"Captures a purchase date, item identity, category, and related purchase data.","tags":["purchases","procurement"],"complexity":"moderate","filePath":"models/Purchase.ts","lineRange":[7,47]},
+    {"id":"step:record-purchase:assign-funding-source","type":"step","name":"Assign Funding Source","summary":"Associates the purchase with a supported funding source.","tags":["purchases","funding"],"complexity":"simple","filePath":"models/Purchase.ts","lineRange":[2,5]},
+    {"id":"step:record-purchase:persist-purchase","type":"step","name":"Persist Purchase","summary":"Stores the purchase record for later reporting and inventory use.","tags":["purchases","persistence"],"complexity":"moderate","filePath":"models/Purchase.ts","lineRange":[1,47]},
+    {"id":"step:record-daily-sales:validate-daily-sale-input","type":"step","name":"Validate Daily Sale Input","summary":"Validates the request body against the daily-sale schema.","tags":["sales","validation"],"complexity":"moderate","filePath":"app/api/sales/route.ts","lineRange":[168,168]},
+    {"id":"step:record-daily-sales:build-sales-assumptions","type":"step","name":"Build Sales Assumptions","summary":"Builds daily-sale assumptions from the available sales context.","tags":["sales","estimation"],"complexity":"complex","filePath":"app/api/sales/route.ts","lineRange":[1,15]},
+    {"id":"step:record-daily-sales:persist-sales-record","type":"step","name":"Persist Sales Record","summary":"Uses the Sale model to record daily-summary sales.","tags":["sales","persistence"],"complexity":"moderate","filePath":"app/api/sales/route.ts","lineRange":[168,168]},
+    {"id":"step:review-inventory:resolve-inventory-date","type":"step","name":"Resolve Inventory Date","summary":"Uses the requested date or the current Vietnam date as the inventory date.","tags":["inventory","date"],"complexity":"simple","filePath":"app/api/inventory/route.ts","lineRange":[285,291]},
+    {"id":"step:review-inventory:summarize-purchases","type":"step","name":"Summarize Purchases","summary":"Summarizes purchase quantities as an input to inventory.","tags":["inventory","purchases"],"complexity":"moderate","filePath":"app/api/inventory/route.ts","lineRange":[1,20]},
+    {"id":"step:review-inventory:calculate-on-hand-stock","type":"step","name":"Calculate On-Hand Stock","summary":"Calculates ingredient and milk-batch inventory from the assembled records.","tags":["inventory","calculation"],"complexity":"complex","filePath":"app/api/inventory/route.ts","lineRange":[1,20]},
+    {"id":"step:save-inventory-snapshot:validate-snapshot-input","type":"step","name":"Validate Snapshot Input","summary":"Validates submitted inventory input before it is accepted.","tags":["inventory","validation"],"complexity":"moderate","filePath":"app/api/inventory/route.ts","lineRange":[300,300]},
+    {"id":"step:save-inventory-snapshot:store-snapshot","type":"step","name":"Store Snapshot","summary":"Persists an inventory snapshot with item quantities and on-hand values.","tags":["inventory","persistence"],"complexity":"moderate","filePath":"models/InventorySnapshot.ts","lineRange":[1,61]}
+  ],
+  "edges": [
+    {"source":"domain:product-catalog","target":"flow:manage-product-records","type":"contains_flow","direction":"forward","weight":1.0},
+    {"source":"domain:product-catalog","target":"flow:manage-ingredient-records","type":"contains_flow","direction":"forward","weight":1.0},
+    {"source":"domain:recipes-and-milk-batches","target":"flow:record-milk-batch-recipe","type":"contains_flow","direction":"forward","weight":1.0},
+    {"source":"domain:recipes-and-milk-batches","target":"flow:calculate-product-costs","type":"contains_flow","direction":"forward","weight":1.0},
+    {"source":"domain:procurement-and-ingredients","target":"flow:record-purchase","type":"contains_flow","direction":"forward","weight":1.0},
+    {"source":"domain:sales","target":"flow:record-daily-sales","type":"contains_flow","direction":"forward","weight":1.0},
+    {"source":"domain:inventory","target":"flow:review-inventory","type":"contains_flow","direction":"forward","weight":1.0},
+    {"source":"domain:inventory","target":"flow:save-inventory-snapshot","type":"contains_flow","direction":"forward","weight":1.0},
+    {"source":"flow:manage-product-records","target":"step:manage-product-records:request-product-collection","type":"flow_step","direction":"forward","weight":0.3},
+    {"source":"flow:manage-product-records","target":"step:manage-product-records:validate-product-resource","type":"flow_step","direction":"forward","weight":0.6},
+    {"source":"flow:manage-product-records","target":"step:manage-product-records:create-product-record","type":"flow_step","direction":"forward","weight":0.9},
+    {"source":"flow:manage-ingredient-records","target":"step:manage-ingredient-records:request-ingredient-collection","type":"flow_step","direction":"forward","weight":0.3},
+    {"source":"flow:manage-ingredient-records","target":"step:manage-ingredient-records:validate-ingredient-resource","type":"flow_step","direction":"forward","weight":0.6},
+    {"source":"flow:manage-ingredient-records","target":"step:manage-ingredient-records:create-ingredient-record","type":"flow_step","direction":"forward","weight":0.9},
+    {"source":"flow:record-milk-batch-recipe","target":"step:record-milk-batch-recipe:define-batch-ingredients","type":"flow_step","direction":"forward","weight":0.3},
+    {"source":"flow:record-milk-batch-recipe","target":"step:record-milk-batch-recipe:validate-recipe-amounts","type":"flow_step","direction":"forward","weight":0.6},
+    {"source":"flow:record-milk-batch-recipe","target":"step:record-milk-batch-recipe:persist-milk-batch","type":"flow_step","direction":"forward","weight":0.9},
+    {"source":"flow:calculate-product-costs","target":"step:calculate-product-costs:load-costing-data","type":"flow_step","direction":"forward","weight":0.3},
+    {"source":"flow:calculate-product-costs","target":"step:calculate-product-costs:calculate-costs","type":"flow_step","direction":"forward","weight":0.6},
+    {"source":"flow:calculate-product-costs","target":"step:calculate-product-costs:present-costing-workspace","type":"flow_step","direction":"forward","weight":0.9},
+    {"source":"flow:record-purchase","target":"step:record-purchase:enter-purchase-details","type":"flow_step","direction":"forward","weight":0.3},
+    {"source":"flow:record-purchase","target":"step:record-purchase:assign-funding-source","type":"flow_step","direction":"forward","weight":0.6},
+    {"source":"flow:record-purchase","target":"step:record-purchase:persist-purchase","type":"flow_step","direction":"forward","weight":0.9},
+    {"source":"flow:record-daily-sales","target":"step:record-daily-sales:validate-daily-sale-input","type":"flow_step","direction":"forward","weight":0.3},
+    {"source":"flow:record-daily-sales","target":"step:record-daily-sales:build-sales-assumptions","type":"flow_step","direction":"forward","weight":0.6},
+    {"source":"flow:record-daily-sales","target":"step:record-daily-sales:persist-sales-record","type":"flow_step","direction":"forward","weight":0.9},
+    {"source":"flow:review-inventory","target":"step:review-inventory:resolve-inventory-date","type":"flow_step","direction":"forward","weight":0.3},
+    {"source":"flow:review-inventory","target":"step:review-inventory:summarize-purchases","type":"flow_step","direction":"forward","weight":0.6},
+    {"source":"flow:review-inventory","target":"step:review-inventory:calculate-on-hand-stock","type":"flow_step","direction":"forward","weight":0.9},
+    {"source":"flow:save-inventory-snapshot","target":"step:save-inventory-snapshot:validate-snapshot-input","type":"flow_step","direction":"forward","weight":0.5},
+    {"source":"flow:save-inventory-snapshot","target":"step:save-inventory-snapshot:store-snapshot","type":"flow_step","direction":"forward","weight":1.0},
+    {"source":"domain:product-catalog","target":"domain:recipes-and-milk-batches","type":"cross_domain","direction":"forward","description":"Milk-batch recipes use catalog ingredients, and products reference milk batches.","weight":0.6},
+    {"source":"domain:product-catalog","target":"domain:procurement-and-ingredients","type":"cross_domain","direction":"forward","description":"Purchases identify ingredients maintained in the catalog.","weight":0.6},
+    {"source":"domain:recipes-and-milk-batches","target":"domain:sales","type":"cross_domain","direction":"forward","description":"Daily sales context includes milk batches and products.","weight":0.6},
+    {"source":"domain:procurement-and-ingredients","target":"domain:inventory","type":"cross_domain","direction":"forward","description":"Inventory uses summarized purchase quantities.","weight":0.6},
+    {"source":"domain:sales","target":"domain:inventory","type":"cross_domain","direction":"forward","description":"Inventory calculation includes milk-batch and sales data.","weight":0.6}
+  ],
+  "layers": [],
+  "tour": []
+}

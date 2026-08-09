@@ -9,6 +9,17 @@ const baseExpense = {
   amount: 500_000,
 };
 
+describe("ingredient validation", () => {
+  it("allows the server to generate a missing item code", () => {
+    const result = resourceSchemas.ingredients.parse({
+      name: "Sữa đặc",
+      category: "Nguyên liệu",
+    });
+
+    expect(result.code).toBeUndefined();
+  });
+});
+
 describe("expense payment status validation", () => {
   it("treats legacy expenses without a status as paid", () => {
     const result = resourceSchemas.expenses.parse(baseExpense);
@@ -78,5 +89,35 @@ describe("milk sterilization expense validation", () => {
 
     expect("milkLiters" in result).toBe(false);
     expect("milkUnitPrice" in result).toBe(false);
+  });
+});
+
+describe("milk purchase sterilization validation", () => {
+  it("accepts a partial outsourced volume and provider", () => {
+    const result = resourceSchemas.purchases.parse({
+      purchaseDate: "2026-08-08",
+      ingredientId: "507f1f77bcf86cd799439011",
+      packageCount: 60,
+      totalAmount: 1_500_000,
+      sterilizationOutsourcedLiters: 30,
+      sterilizationUnitPrice: 5_000,
+      sterilizationProvider: "Cơ sở A",
+    });
+
+    expect(result.sterilizationOutsourcedLiters).toBe(30);
+    expect(result.sterilizationUnitPrice).toBe(5_000);
+    expect(result.sterilizationProvider).toBe("Cơ sở A");
+  });
+
+  it("defaults legacy purchases to no outsourced sterilization", () => {
+    const result = resourceSchemas.purchases.parse({
+      purchaseDate: "2026-08-08",
+      ingredientId: "507f1f77bcf86cd799439011",
+      packageCount: 60,
+      totalAmount: 1_500_000,
+    });
+
+    expect(result.sterilizationOutsourcedLiters).toBe(0);
+    expect(result.sterilizationUnitPrice).toBe(5_000);
   });
 });

@@ -87,7 +87,7 @@ async function inventoryContext(date: string) {
     Ingredient.find({ isActive: true }).sort({ category: 1, name: 1 }).lean(),
     Purchase.find({ purchaseDate: { $lte: endOfDay } })
       .select(
-        "ingredientId itemCode packageCount costUnit convertedQuantity totalAmount",
+        "ingredientId itemCode packageCount costUnit convertedQuantity totalAmount inventoryCostAmount",
       )
       .lean(),
     MilkBatch.find()

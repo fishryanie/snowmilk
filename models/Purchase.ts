@@ -19,6 +19,18 @@ const PurchaseSchema = new Schema(
     actualPackagePrice: { type: Number, min: 0, required: true },
     convertedQuantity: { type: Number, min: 0, default: 0 },
     totalAmount: { type: Number, min: 0, required: true },
+    sterilizationOutsourcedLiters: { type: Number, min: 0, default: 0 },
+    sterilizationSelfLiters: { type: Number, min: 0, default: 0 },
+    sterilizationUnitPrice: { type: Number, min: 0, default: 0 },
+    sterilizationCost: { type: Number, min: 0, default: 0 },
+    sterilizationProvider: { type: String, trim: true },
+    sterilizationExpenseId: {
+      type: Schema.Types.ObjectId,
+      ref: "Expense",
+      index: true,
+    },
+    inventoryCostAmount: { type: Number, min: 0, default: 0 },
+    landedUnitCost: { type: Number, min: 0, default: 0 },
     fundingSource: {
       type: String,
       enum: PURCHASE_FUNDING_SOURCES,
@@ -38,7 +50,8 @@ const cachedPurchaseModel = mongoose.models.Purchase;
 if (
   process.env.NODE_ENV !== "production" &&
   cachedPurchaseModel &&
-  !cachedPurchaseModel.schema.path("fundingSource")
+  (!cachedPurchaseModel.schema.path("fundingSource") ||
+    !cachedPurchaseModel.schema.path("inventoryCostAmount"))
 ) {
   mongoose.deleteModel("Purchase");
 }

@@ -29,6 +29,7 @@ import {
   InputNumber,
   Pagination,
   Popconfirm,
+  Radio,
   Select,
   Space,
   Statistic,
@@ -50,6 +51,13 @@ import {
   type PurchaseFundingSource,
 } from '@/lib/purchase-funding';
 import { workbookIngredients, workbookPurchases } from '@/lib/workbook-snapshot';
+import {
+  calculateMilkPurchaseCost,
+  DEFAULT_STERILIZATION_UNIT_PRICE,
+  isFreshMilkIngredient,
+  resolveOutsourcedSterilizationLiters,
+  type SterilizationChoice,
+} from '@/lib/milk-sterilization';
 
 const { RangePicker } = DatePicker;
 const { Text } = Typography;
@@ -81,6 +89,14 @@ type Purchase = {
   actualPackagePrice: number;
   convertedQuantity: number;
   totalAmount: number;
+  sterilizationOutsourcedLiters?: number;
+  sterilizationSelfLiters?: number;
+  sterilizationUnitPrice?: number;
+  sterilizationCost?: number;
+  sterilizationProvider?: string;
+  sterilizationPaymentStatus?: 'paid' | 'unpaid';
+  inventoryCostAmount?: number;
+  landedUnitCost?: number;
   fundingSource?: PurchaseFundingSource;
   supplier?: string;
   note?: string;
@@ -91,6 +107,9 @@ type PurchaseForm = {
   ingredientId: string;
   packageCount: number;
   totalAmount?: number;
+  sterilizationOutsourcedLiters?: number;
+  sterilizationUnitPrice?: number;
+  sterilizationProvider?: string;
   fundingSource: PurchaseFundingSource;
   supplier?: string;
   note?: string;
@@ -143,6 +162,9 @@ export default function PurchasesPage() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [selectedPurchaseKeys, setSelectedPurchaseKeys] = useState<Key[]>([]);
   const [mobilePage, setMobilePage] = useState(1);
+  const [sterilizationChoice, setSterilizationChoice] = useState<
+    SterilizationChoice
+  >('self');
   const {
     data: purchases,
     loading: purchasesLoading,
@@ -158,9 +180,23 @@ export default function PurchasesPage() {
   const selectedIngredientId = Form.useWatch('ingredientId', form);
   const packageCount = Form.useWatch('packageCount', form) ?? 0;
   const enteredTotalAmount = Form.useWatch('totalAmount', form);
+  const outsourcedLiters = Form.useWatch('sterilizationOutsourcedLiters', form) ?? 0;
+  const sterilizationUnitPrice =
+    Form.useWatch('sterilizationUnitPrice', form) ?? DEFAULT_STERILIZATION_UNIT_PRICE;
   const ingredientById = useMemo(() => new Map(ingredients.map(ingredient => [recordId(ingredient), ingredient])), [ingredients]);
   const selectedIngredient = selectedIngredientId ? ingredientById.get(selectedIngredientId) : undefined;
   const convertedQuantity = packageCount * (selectedIngredient?.packageQuantity ?? 0);
+  const isFreshMilk = Boolean(selectedIngredient && isFreshMilkIngredient(selectedIngredient));
+  const safeOutsourcedLiters = Math.min(
+    Math.max(0, Number(outsourcedLiters)),
+    Math.max(0, convertedQuantity),
+  );
+  const sterilizationPreview = calculateMilkPurchaseCost({
+    goodsAmount: enteredTotalAmount ?? 0,
+    totalLiters: convertedQuantity,
+    outsourcedLiters: isFreshMilk ? safeOutsourcedLiters : 0,
+    sterilizationUnitPrice,
+  });
   const effectivePrice =
     packageCount > 0 && enteredTotalAmount !== undefined ? enteredTotalAmount / packageCount : (selectedIngredient?.referencePackagePrice ?? 0);
   const normalizedQuery = query.trim().toLocaleLowerCase('vi');
@@ -286,6 +322,22 @@ export default function PurchasesPage() {
       render: value => <Text strong>{formatVnd(Number(value))}</Text>,
     },
     {
+      title: 'Tiệt trùng',
+      key: 'sterilization',
+      render: (_value, record) => {
+        const liters = Number(record.sterilizationOutsourcedLiters ?? 0);
+        if (liters <= 0) return <Tag>Tự làm</Tag>;
+        return (
+          <Space size={4} wrap>
+            <Tag color='blue'>Thuê {formatNumber(liters)} lít</Tag>
+            <Tag color={record.sterilizationPaymentStatus === 'paid' ? 'green' : 'orange'}>
+              {record.sterilizationPaymentStatus === 'paid' ? 'Đã trả' : 'Chưa trả'}
+            </Tag>
+          </Space>
+        );
+      },
+    },
+    {
       title: 'Nguồn tiền',
       dataIndex: 'fundingSource',
       render: (value: PurchaseFundingSource | undefined) =>
@@ -339,6 +391,26 @@ export default function PurchasesPage() {
     setDrawerOpen(false);
     setEditing(null);
     form.resetFields();
+    setSterilizationChoice('self');
+  }
+
+  function setSterilizationMode(
+    choice: SterilizationChoice,
+    totalLiters = convertedQuantity,
+  ) {
+    setSterilizationChoice(choice);
+    if (choice === 'self') {
+      form.setFieldValue('sterilizationOutsourcedLiters', 0);
+      return;
+    }
+    if (choice === 'full') {
+      form.setFieldValue('sterilizationOutsourcedLiters', totalLiters);
+      return;
+    }
+    const current = Number(form.getFieldValue('sterilizationOutsourcedLiters') ?? 0);
+    if (current <= 0 || current >= totalLiters) {
+      form.setFieldValue('sterilizationOutsourcedLiters', totalLiters / 2);
+    }
   }
 
   function clearFilters() {
@@ -371,6 +443,17 @@ export default function PurchasesPage() {
   function openEditor(record?: Purchase) {
     const ingredient = record ? ingredients.find(item => recordId(item) === String(record.ingredientId ?? '') || item.code === record.itemCode) : undefined;
     setEditing(record ?? null);
+    const recordTotalLiters = Number(record?.convertedQuantity ?? 0);
+    const recordOutsourcedLiters = Number(
+      record?.sterilizationOutsourcedLiters ?? 0,
+    );
+    const nextChoice =
+      recordOutsourcedLiters <= 0
+        ? 'self'
+        : recordTotalLiters > 0 && recordOutsourcedLiters >= recordTotalLiters
+          ? 'full'
+          : 'partial';
+    setSterilizationChoice(nextChoice);
     form.setFieldsValue(
       record
         ? {
@@ -378,6 +461,10 @@ export default function PurchasesPage() {
             ingredientId: ingredient ? recordId(ingredient) : undefined,
             packageCount: record.packageCount,
             totalAmount: record.totalAmount,
+            sterilizationOutsourcedLiters: recordOutsourcedLiters,
+            sterilizationUnitPrice:
+              record.sterilizationUnitPrice ?? DEFAULT_STERILIZATION_UNIT_PRICE,
+            sterilizationProvider: record.sterilizationProvider,
             fundingSource: record.fundingSource ?? DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
             supplier: record.supplier,
             note: record.note,
@@ -386,6 +473,8 @@ export default function PurchasesPage() {
             purchaseDate: dayjs(),
             packageCount: 1,
             fundingSource: 'sales_revenue',
+            sterilizationOutsourcedLiters: 0,
+            sterilizationUnitPrice: DEFAULT_STERILIZATION_UNIT_PRICE,
           },
     );
     setDrawerOpen(true);
@@ -395,6 +484,13 @@ export default function PurchasesPage() {
     setSaving(true);
     try {
       const id = editing ? recordId(editing) : '';
+      const sterilizationOutsourcedLiters = isFreshMilk
+        ? resolveOutsourcedSterilizationLiters(
+            sterilizationChoice,
+            convertedQuantity,
+            values.sterilizationOutsourcedLiters,
+          )
+        : 0;
       const response = await fetch(id ? `/api/purchases/${id}` : '/api/purchases', {
         method: id ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -403,6 +499,13 @@ export default function PurchasesPage() {
           ingredientId: values.ingredientId,
           packageCount: values.packageCount,
           totalAmount: values.totalAmount,
+          sterilizationOutsourcedLiters,
+          sterilizationUnitPrice: isFreshMilk
+            ? values.sterilizationUnitPrice ?? DEFAULT_STERILIZATION_UNIT_PRICE
+            : 0,
+          sterilizationProvider: isFreshMilk
+            ? values.sterilizationProvider ?? ''
+            : '',
           fundingSource: values.fundingSource,
           supplier: values.supplier ?? '',
           note: values.note ?? '',
@@ -663,6 +766,12 @@ export default function PurchasesPage() {
                         <Text>
                           {formatNumber(record.convertedQuantity)} {record.costUnit}
                         </Text>
+                        {Number(record.sterilizationOutsourcedLiters ?? 0) > 0 ? (
+                          <Tag color={record.sterilizationPaymentStatus === 'paid' ? 'green' : 'orange'}>
+                            Thuê {formatNumber(Number(record.sterilizationOutsourcedLiters))}L ·{' '}
+                            {record.sterilizationPaymentStatus === 'paid' ? 'Đã trả' : 'Chưa trả'}
+                          </Tag>
+                        ) : null}
                         <Tag color={fundingSourceTagColor(record.fundingSource)}>{purchaseFundingSourceLabel(record.fundingSource)}</Tag>
                         <RightOutlined aria-hidden />
                       </span>
@@ -746,6 +855,13 @@ export default function PurchasesPage() {
                 onChange={ingredientId => {
                   const ingredient = ingredientById.get(ingredientId);
                   form.setFieldValue('totalAmount', packageCount * (ingredient?.referencePackagePrice ?? 0));
+                  form.setFieldValue('sterilizationOutsourcedLiters', 0);
+                  form.setFieldValue(
+                    'sterilizationUnitPrice',
+                    DEFAULT_STERILIZATION_UNIT_PRICE,
+                  );
+                  form.setFieldValue('sterilizationProvider', '');
+                  setSterilizationChoice('self');
                 }}
               />
             </Form.Item>
@@ -765,10 +881,17 @@ export default function PurchasesPage() {
                 inputMode='decimal'
                 style={{ width: '100%' }}
                 onChange={value => {
+                  const nextPackageCount = Number(value ?? 0);
                   const referencePackagePrice = selectedIngredient?.referencePackagePrice ?? 0;
                   const referenceTotal = packageCount * referencePackagePrice;
                   if (enteredTotalAmount === undefined || enteredTotalAmount === referenceTotal) {
-                    form.setFieldValue('totalAmount', Number(value ?? 0) * referencePackagePrice);
+                    form.setFieldValue('totalAmount', nextPackageCount * referencePackagePrice);
+                  }
+                  if (sterilizationChoice === 'full') {
+                    form.setFieldValue(
+                      'sterilizationOutsourcedLiters',
+                      nextPackageCount * (selectedIngredient?.packageQuantity ?? 0),
+                    );
                   }
                 }}
               />
@@ -808,6 +931,91 @@ export default function PurchasesPage() {
             <Form.Item name='note' label='Ghi chú'>
               <Input.TextArea rows={3} placeholder='Không bắt buộc' />
             </Form.Item>
+            {isFreshMilk ? (
+              <Card
+                size='small'
+                title='Tiệt trùng lô sữa'
+                style={{ gridColumn: '1 / -1' }}>
+                <Space orientation='vertical' size={16} style={{ width: '100%' }}>
+                  <Radio.Group
+                    block
+                    optionType='button'
+                    buttonStyle='solid'
+                    value={sterilizationChoice}
+                    onChange={event =>
+                      setSterilizationMode(
+                        event.target.value as SterilizationChoice,
+                      )
+                    }
+                    options={[
+                      { value: 'self', label: 'Tự làm toàn bộ' },
+                      { value: 'partial', label: 'Thuê một phần' },
+                      { value: 'full', label: 'Thuê toàn bộ' },
+                    ]}
+                  />
+                  {sterilizationChoice === 'partial' ? (
+                    <Form.Item
+                      name='sterilizationOutsourcedLiters'
+                      label='Số lít thuê tiệt trùng'
+                      rules={[
+                        { required: true, message: 'Vui lòng nhập số lít thuê' },
+                        {
+                          validator: async (_rule, value) => {
+                            const liters = Number(value ?? 0);
+                            if (liters <= 0 || liters >= convertedQuantity) {
+                              throw new Error(
+                                'Thuê một phần phải lớn hơn 0 và nhỏ hơn tổng lượng nhập',
+                              );
+                            }
+                          },
+                        },
+                      ]}>
+                      <InputNumber
+                        min={0.01}
+                        max={convertedQuantity}
+                        precision={2}
+                        addonAfter='lít'
+                        style={{ width: '100%' }}
+                      />
+                    </Form.Item>
+                  ) : null}
+                  {sterilizationChoice !== 'self' ? (
+                    <div className='purchase-form-grid'>
+                      <Form.Item
+                        name='sterilizationUnitPrice'
+                        label='Đơn giá tiệt trùng mỗi lít'
+                        rules={[{ required: true, message: 'Vui lòng nhập đơn giá' }]}>
+                        <InputNumber
+                          min={0}
+                          precision={0}
+                          inputMode='numeric'
+                          style={{ width: '100%' }}
+                          formatter={formatVndInput}
+                          parser={parseVndInput}
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        name='sterilizationProvider'
+                        label='Bên nhận tiệt trùng'
+                        rules={[{ required: true, message: 'Vui lòng nhập bên tiệt trùng' }]}>
+                        <Input placeholder='Ví dụ: Cơ sở tiệt trùng A' />
+                      </Form.Item>
+                    </div>
+                  ) : null}
+                  <Descriptions bordered size='small' column={1}>
+                    <Descriptions.Item label='Tự tiệt trùng'>
+                      {formatNumber(sterilizationPreview.selfProcessedLiters)} lít
+                    </Descriptions.Item>
+                    <Descriptions.Item label='Thuê tiệt trùng'>
+                      {formatNumber(sterilizationPreview.outsourcedLiters)} lít
+                    </Descriptions.Item>
+                    <Descriptions.Item label='Công nợ phát sinh'>
+                      <Text strong>{formatVnd(sterilizationPreview.sterilizationCost)}</Text>
+                    </Descriptions.Item>
+                  </Descriptions>
+                </Space>
+              </Card>
+            ) : null}
           </div>
         </Form>
 
@@ -826,6 +1034,16 @@ export default function PurchasesPage() {
             <Descriptions.Item label='Tổng tiền'>
               <Text strong>{formatVnd(enteredTotalAmount ?? 0)}</Text>
             </Descriptions.Item>
+            {isFreshMilk ? (
+              <>
+                <Descriptions.Item label='Giá trị lô sau tiệt trùng'>
+                  <Text strong>{formatVnd(sterilizationPreview.inventoryCostAmount)}</Text>
+                </Descriptions.Item>
+                <Descriptions.Item label='Landed cost/lít'>
+                  <Text strong>{formatVnd(sterilizationPreview.landedUnitCost)}</Text>
+                </Descriptions.Item>
+              </>
+            ) : null}
           </Descriptions>
         </Card>
       </Drawer>

@@ -6,6 +6,7 @@ import {
   CheckCircleFilled,
   DollarOutlined,
   EditOutlined,
+  ShoppingOutlined,
   RightOutlined,
   SaveOutlined,
   WalletOutlined,
@@ -31,6 +32,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { RouteSkeleton } from "@/components/common/route-skeleton";
 import {
   calculateDailySaleEstimateFromRevenue,
+  deriveDailyRevenueSplit,
   type DailySaleAssumption,
 } from "@/lib/calculations/daily-sales";
 import {
@@ -52,6 +54,10 @@ type SaleHistory = {
   batchCode?: string;
   batchName?: string;
   netRevenue: number;
+  snowMilkRevenue?: number;
+  freshMilkRevenue?: number;
+  freshMilkBottleCount?: number;
+  freshMilkBottleUnitPrice?: number;
   cashReceived?: number | null;
   bankTransferReceived?: number | null;
   totalVariableCost: number;
@@ -77,6 +83,12 @@ type SalesData = {
   history: SaleHistory[];
   assumptions: DailySaleAssumption[];
   batches: MilkBatchOption[];
+  freshMilkProduct: {
+    id: string;
+    code: string;
+    name: string;
+    sellingPrice: number;
+  } | null;
 };
 
 const fallbackAssumptions: DailySaleAssumption[] = [
@@ -118,6 +130,17 @@ function batchRecordId(record: { id?: string; _id?: string }) {
   return record.id ?? record._id ?? "";
 }
 
+function freshMilkRevenueFor(record: SaleHistory) {
+  return record.freshMilkRevenue ?? 0;
+}
+
+function snowMilkRevenueFor(record: SaleHistory) {
+  return (
+    record.snowMilkRevenue ??
+    Math.max(0, record.netRevenue - freshMilkRevenueFor(record))
+  );
+}
+
 export default function SalesPage() {
   const { message, modal } = App.useApp();
   const {
@@ -132,19 +155,36 @@ export default function SalesPage() {
       ...batch,
       id: batchRecordId(batch),
     })),
+    freshMilkProduct: null,
   });
   const [saleDate, setSaleDate] = useState(() => dayjs());
   const [selectedBatchId, setSelectedBatchId] = useState("");
-  const [netRevenue, setNetRevenue] = useState<number | null>(null);
+  const [totalRevenue, setTotalRevenue] = useState<number | null>(null);
+  const [freshMilkBottleCount, setFreshMilkBottleCount] = useState<
+    number | null
+  >(null);
   const [cashReceived, setCashReceived] = useState<number | null>(null);
   const [bankTransferReceived, setBankTransferReceived] = useState<
     number | null
   >(null);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
-  const netRevenueValue = netRevenue ?? 0;
+  const freshMilkBottleUnitPrice =
+    data.freshMilkProduct?.sellingPrice ?? 0;
+  const revenueSplit = deriveDailyRevenueSplit(
+    totalRevenue ?? 0,
+    freshMilkBottleCount ?? 0,
+    freshMilkBottleUnitPrice,
+  );
+  const { snowMilkRevenue: snowMilkRevenueValue } = revenueSplit;
+  const { freshMilkRevenue: freshMilkRevenueValue } = revenueSplit;
+  const netRevenueValue = totalRevenue ?? 0;
+  const revenueSplitIsValid = snowMilkRevenueValue >= 0;
+  const paymentTotal = (cashReceived ?? 0) + (bankTransferReceived ?? 0);
   const hasPaymentBreakdown =
     cashReceived !== null || bankTransferReceived !== null;
+  const hasRevenueTotal = totalRevenue !== null;
+  const paymentsMatch = hasPaymentBreakdown && paymentTotal === netRevenueValue;
   const defaultBatchId = useMemo(() => {
     const latestSale = data.history[0];
     const previousBatch = latestSale
@@ -181,34 +221,52 @@ export default function SalesPage() {
   const estimate = useMemo(
     () =>
       calculateDailySaleEstimateFromRevenue(
-        netRevenueValue,
+        snowMilkRevenueValue,
         selectedAssumptions,
       ),
-    [netRevenueValue, selectedAssumptions],
+    [snowMilkRevenueValue, selectedAssumptions],
   );
 
   const canSubmit =
-    Boolean(selectedBatch) &&
-    (selectedBatch?.costPerMl ?? 0) > 0 &&
+    (snowMilkRevenueValue === 0 ||
+      (Boolean(selectedBatch) && (selectedBatch?.costPerMl ?? 0) > 0)) &&
+    ((freshMilkBottleCount ?? 0) === 0 ||
+      freshMilkBottleUnitPrice > 0) &&
+    revenueSplitIsValid &&
+    hasRevenueTotal &&
     hasPaymentBreakdown &&
+    paymentsMatch &&
     netRevenueValue > 0;
 
   function clearForm() {
     setSaleDate(dayjs());
-    setNetRevenue(null);
+    setTotalRevenue(null);
+    setFreshMilkBottleCount(null);
     setCashReceived(null);
     setBankTransferReceived(null);
     setNote("");
   }
 
   async function submit(overwrite = false) {
-    if (!selectedBatch) {
-      message.warning("Hãy chọn mẻ sữa đã bán.");
+    if (snowMilkRevenueValue > 0 && !selectedBatch) {
+      message.warning("Hãy chọn mẻ sữa tuyết đã bán.");
       return;
     }
-    if (selectedBatch.costPerMl <= 0) {
+    if (snowMilkRevenueValue > 0 && (selectedBatch?.costPerMl ?? 0) <= 0) {
       message.warning(
         "Mẻ sữa này chưa có giá vốn hợp lệ. Hãy cập nhật lại mẻ sữa.",
+      );
+      return;
+    }
+    if ((freshMilkBottleCount ?? 0) > 0 && freshMilkBottleUnitPrice <= 0) {
+      message.warning(
+        "Chưa tìm thấy sản phẩm sữa tươi đóng chai có giá bán hợp lệ.",
+      );
+      return;
+    }
+    if (!revenueSplitIsValid) {
+      message.warning(
+        "Tiền bán sữa tươi đang lớn hơn tổng tiền cuối ngày.",
       );
       return;
     }
@@ -220,6 +278,12 @@ export default function SalesPage() {
       message.warning("Tổng doanh thu cuối ngày phải lớn hơn 0.");
       return;
     }
+    if (!paymentsMatch) {
+      message.warning(
+        "Tiền mặt cộng chuyển khoản phải bằng tổng doanh thu.",
+      );
+      return;
+    }
     setSaving(true);
     try {
       const response = await fetch("/api/sales", {
@@ -227,8 +291,9 @@ export default function SalesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           saleDate: saleDate.format("YYYY-MM-DD"),
-          batchId: activeBatchId,
-          netRevenue: netRevenueValue,
+          ...(snowMilkRevenueValue > 0 ? { batchId: activeBatchId } : {}),
+          totalRevenue: netRevenueValue,
+          freshMilkBottleCount: freshMilkBottleCount ?? 0,
           cashReceived: cashReceived ?? 0,
           bankTransferReceived: bankTransferReceived ?? 0,
           note,
@@ -287,7 +352,8 @@ export default function SalesPage() {
         batch.code === record.batchCode,
     );
     setSelectedBatchId(matchingBatch ? batchRecordId(matchingBatch) : "");
-    setNetRevenue(record.netRevenue);
+    setTotalRevenue(record.netRevenue);
+    setFreshMilkBottleCount(record.freshMilkBottleCount ?? 0);
     setCashReceived(record.cashReceived ?? null);
     setBankTransferReceived(record.bankTransferReceived ?? null);
     setNote(record.note ?? "");
@@ -300,7 +366,7 @@ export default function SalesPage() {
     <div className="page-wrap sales-page">
       <PageHeader
         title="Chốt doanh thu"
-        description="Chọn ngày và mẻ sữa, nhập hai khoản tiền đã nhận, rồi kiểm tra tổng trước khi lưu."
+        description="Chỉ nhập tổng tiền cuối ngày và số chai sữa tươi đã bán; hệ thống tự tách doanh thu theo giá bán đã cấu hình."
         actions={
           <Button
             className="sales-header-submit"
@@ -347,9 +413,9 @@ export default function SalesPage() {
                 />
               </label>
               <label className="sales-field daily-sales-batch">
-                <Text type="secondary">Mẻ sữa đã bán</Text>
+                <Text type="secondary">Mẻ sữa tuyết (nếu có bán)</Text>
                 <Select
-                  aria-label="Mẻ sữa đã bán"
+                  aria-label="Mẻ sữa tuyết đã bán"
                   showSearch
                   optionFilterProp="label"
                   value={activeBatchId || undefined}
@@ -373,9 +439,93 @@ export default function SalesPage() {
             <div className="sales-section-heading">
               <span className="workflow-step">2</span>
               <div>
+                <Text strong>Nhập số liệu đếm cuối ngày</Text>
+                <Text type="secondary">
+                  Bạn chỉ cần nhập tổng tiền và số chai đã bán.
+                </Text>
+              </div>
+            </div>
+            <div className="sales-revenue-grid">
+              <label className="sales-field">
+                <span className="sales-payment-label">
+                  <DollarOutlined /> Tổng tiền cuối ngày
+                </span>
+                <InputNumber
+                  aria-label="Tổng tiền cuối ngày"
+                  min={0}
+                  precision={0}
+                  step={1_000}
+                  value={totalRevenue}
+                  onChange={(value) =>
+                    setTotalRevenue(value === null ? null : Number(value))
+                  }
+                  formatter={formatVndInput}
+                  parser={parseVndInput}
+                  placeholder="0"
+                  inputMode="numeric"
+                  style={{ width: "100%" }}
+                />
+              </label>
+              <label className="sales-field">
+                <span className="sales-payment-label">
+                  <ShoppingOutlined /> Số chai sữa tươi đã bán
+                </span>
+                <InputNumber
+                  aria-label="Số chai sữa tươi đã bán"
+                  min={0}
+                  precision={0}
+                  step={1}
+                  value={freshMilkBottleCount}
+                  onChange={(value) =>
+                    setFreshMilkBottleCount(
+                      value === null ? null : Number(value),
+                    )
+                  }
+                  placeholder="0 chai"
+                  inputMode="numeric"
+                  addonAfter="chai"
+                  style={{ width: "100%" }}
+                />
+              </label>
+            </div>
+
+            <div className="sales-total-banner">
+              <div>
+                <Text type="secondary">Doanh thu sữa tuyết</Text>
+                <Text strong>
+                  {revenueSplitIsValid
+                    ? formatVnd(snowMilkRevenueValue)
+                    : "Không hợp lệ"}
+                </Text>
+              </div>
+              <div>
+                <Text type="secondary">
+                  Sữa tươi · {freshMilkBottleCount ?? 0} ×{" "}
+                  {formatVnd(freshMilkBottleUnitPrice)}
+                </Text>
+                <Text strong>{formatVnd(freshMilkRevenueValue)}</Text>
+              </div>
+              {hasRevenueTotal && revenueSplitIsValid ? (
+                <Tag color="green" icon={<CheckCircleFilled />}>
+                  Đã tự động tách
+                </Tag>
+              ) : (
+                <Tag color={hasRevenueTotal ? "red" : undefined}>
+                  {hasRevenueTotal
+                    ? "Số tiền không khớp"
+                    : "Chưa nhập tổng tiền"}
+                </Tag>
+              )}
+            </div>
+          </section>
+
+          <section className="sales-form-section">
+            <div className="sales-section-heading">
+              <span className="workflow-step">3</span>
+              <div>
                 <Text strong>Nhập tiền thực nhận</Text>
                 <Text type="secondary">
-                  Có thể nhập một hoặc cả hai hình thức thanh toán.
+                  Tiền mặt và chuyển khoản phải khớp tổng doanh thu.
                 </Text>
               </div>
             </div>
@@ -390,15 +540,9 @@ export default function SalesPage() {
                   precision={0}
                   step={1_000}
                   value={cashReceived}
-                  onChange={(value) => {
-                    const nextValue = value === null ? null : Number(value);
-                    setCashReceived(nextValue);
-                    setNetRevenue(
-                      nextValue === null && bankTransferReceived === null
-                        ? null
-                        : (nextValue ?? 0) + (bankTransferReceived ?? 0),
-                    );
-                  }}
+                  onChange={(value) =>
+                    setCashReceived(value === null ? null : Number(value))
+                  }
                   formatter={formatVndInput}
                   parser={parseVndInput}
                   placeholder="0"
@@ -416,15 +560,11 @@ export default function SalesPage() {
                   precision={0}
                   step={1_000}
                   value={bankTransferReceived}
-                  onChange={(value) => {
-                    const nextValue = value === null ? null : Number(value);
-                    setBankTransferReceived(nextValue);
-                    setNetRevenue(
-                      nextValue === null && cashReceived === null
-                        ? null
-                        : (cashReceived ?? 0) + (nextValue ?? 0),
-                    );
-                  }}
+                  onChange={(value) =>
+                    setBankTransferReceived(
+                      value === null ? null : Number(value),
+                    )
+                  }
                   formatter={formatVndInput}
                   parser={parseVndInput}
                   placeholder="0"
@@ -433,31 +573,22 @@ export default function SalesPage() {
                 />
               </label>
             </div>
-
-            <div className="sales-total-banner">
-              <div>
-                <Text type="secondary">Tổng doanh thu</Text>
-                <Text strong>{formatVnd(netRevenueValue)}</Text>
-              </div>
-              {hasPaymentBreakdown ? (
-                <Tag color="green" icon={<CheckCircleFilled />}>
-                  Đã tự động cộng
-                </Tag>
-              ) : (
-                <Tag>Chưa nhập tiền</Tag>
-              )}
-              <InputNumber
-                className="sales-total-accessible-input"
-                aria-label="Tổng doanh thu cuối ngày"
-                min={0}
-                precision={0}
-                step={1_000}
-                value={netRevenue}
-                readOnly
-                formatter={formatVndInput}
-                parser={parseVndInput}
+            {hasPaymentBreakdown ? (
+              <Alert
+                type={paymentsMatch ? "success" : "warning"}
+                showIcon
+                title={
+                  paymentsMatch
+                    ? `Đã khớp ${formatVnd(paymentTotal)}`
+                    : `Còn lệch ${formatVnd(Math.abs(netRevenueValue - paymentTotal))}`
+                }
+                description={
+                  paymentsMatch
+                    ? "Tiền thực nhận bằng tổng doanh thu."
+                    : `Tiền thực nhận hiện là ${formatVnd(paymentTotal)}.`
+                }
               />
-            </div>
+            ) : null}
           </section>
 
           <details className="sales-optional-note">
@@ -477,14 +608,14 @@ export default function SalesPage() {
             type="info"
             showIcon
             title={
-              !selectedBatch
-                ? "Hãy chọn mẻ sữa đã bán"
+              snowMilkRevenueValue > 0 && !selectedBatch
+                ? "Hãy chọn mẻ sữa tuyết đã bán"
                 : "Giá vốn và lợi nhuận chỉ là ước tính"
             }
             description={
-              !selectedBatch
-                ? "Mẻ sữa là bắt buộc để hệ thống lưu đúng mẻ đã bán và dùng đúng giá vốn khi tính lãi/lỗ."
-                : "Hệ thống dùng doanh thu, giá bán tham chiếu và định mức hiện có để ước tính giá vốn. Không lưu các con số này như số ly hay số lít thực tế."
+              snowMilkRevenueValue > 0 && !selectedBatch
+                ? "Mẻ sữa là bắt buộc khi có doanh thu sữa tuyết để hệ thống dùng đúng giá vốn."
+                : `Doanh thu sữa tươi được tính bằng số chai × ${formatVnd(freshMilkBottleUnitPrice)}. Phần còn lại của tổng tiền là doanh thu sữa tuyết dùng để ước tính số ly và giá vốn.`
             }
             style={{ marginTop: 20 }}
           />
@@ -494,7 +625,7 @@ export default function SalesPage() {
           <div className="sales-profit-hero">
             <DollarOutlined />
             <div>
-              <Text type="secondary">Lợi nhuận ước tính</Text>
+              <Text type="secondary">Lợi nhuận sữa tuyết ước tính</Text>
               <Title
                 level={3}
                 type={estimate.estimatedProfit < 0 ? "danger" : "success"}
@@ -515,8 +646,23 @@ export default function SalesPage() {
             </Text>
           </div>
           <div className="summary-row">
-            <Text type="secondary">Doanh thu thực nhận</Text>
-            <Text>{formatVnd(estimate.netRevenue)}</Text>
+            <Text type="secondary">Doanh thu sữa tuyết</Text>
+            <Text>{formatVnd(snowMilkRevenueValue)}</Text>
+          </div>
+          <div className="summary-row">
+            <Text type="secondary">Doanh thu sữa tươi</Text>
+            <Text>
+              {formatVnd(freshMilkRevenueValue)} ({freshMilkBottleCount ?? 0} ×{" "}
+              {formatVnd(freshMilkBottleUnitPrice)})
+            </Text>
+          </div>
+          <div className="summary-row">
+            <Text type="secondary">Số chai sữa tươi</Text>
+            <Text>{freshMilkBottleCount ?? 0} chai</Text>
+          </div>
+          <div className="summary-row summary-total">
+            <Text strong>Tổng doanh thu</Text>
+            <Text strong>{formatVnd(netRevenueValue)}</Text>
           </div>
           {hasPaymentBreakdown ? (
             <>
@@ -594,10 +740,26 @@ export default function SalesPage() {
               },
             },
             {
-              title: "Doanh thu",
+              title: "Sữa tuyết",
+              align: "right",
+              render: (_, record) => formatVnd(snowMilkRevenueFor(record)),
+            },
+            {
+              title: "Sữa tươi",
+              align: "right",
+              render: (_, record) => formatVnd(freshMilkRevenueFor(record)),
+            },
+            {
+              title: "Số chai",
+              dataIndex: "freshMilkBottleCount",
+              align: "right",
+              render: (value) => `${Number(value ?? 0)} chai`,
+            },
+            {
+              title: "Tổng doanh thu",
               dataIndex: "netRevenue",
               align: "right",
-              render: (value) => formatVnd(Number(value)),
+              render: (value) => <Text strong>{formatVnd(Number(value))}</Text>,
             },
             {
               title: "Tiền mặt",
@@ -661,6 +823,18 @@ export default function SalesPage() {
                   </div>
                 </div>
                 <div className="sales-history-breakdown">
+                  <span>
+                    Sữa tuyết{" "}
+                    <strong>{formatVnd(snowMilkRevenueFor(record))}</strong>
+                  </span>
+                  <span>
+                    Sữa tươi{" "}
+                    <strong>{formatVnd(freshMilkRevenueFor(record))}</strong>
+                  </span>
+                  <span>
+                    Số chai{" "}
+                    <strong>{record.freshMilkBottleCount ?? 0} chai</strong>
+                  </span>
                   <span>
                     Tiền mặt <strong>{formatVnd(record.cashReceived ?? 0)}</strong>
                   </span>

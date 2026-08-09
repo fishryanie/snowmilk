@@ -11,6 +11,8 @@ import {
   MILK_STERILIZATION_EXPENSE_CATEGORY,
   milkSterilizationDescription,
 } from "@/lib/expense-categories";
+import { INGREDIENT_CATEGORIES } from "@/lib/ingredient-code";
+import { DEFAULT_STERILIZATION_UNIT_PRICE } from "@/lib/milk-sterilization";
 
 const nonNegative = z.coerce.number().min(0);
 const requiredText = z.string().trim().min(1);
@@ -39,9 +41,9 @@ export const resourceSchemas = {
     .strict(),
   ingredients: z
     .object({
-      code: requiredText,
+      code: z.string().trim().optional(),
       name: requiredText,
-      category: z.enum(["Nguyên liệu", "Topping", "Bao bì", "Khác"]),
+      category: z.enum(INGREDIENT_CATEGORIES),
       purchaseUnit: optionalText,
       packageQuantity: nonNegative.optional().default(1),
       costUnit: optionalText,
@@ -63,6 +65,11 @@ export const resourceSchemas = {
         .enum(PURCHASE_FUNDING_SOURCES)
         .optional()
         .default(DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE),
+      sterilizationOutsourcedLiters: nonNegative.optional().default(0),
+      sterilizationUnitPrice: nonNegative
+        .optional()
+        .default(DEFAULT_STERILIZATION_UNIT_PRICE),
+      sterilizationProvider: optionalText,
       supplier: optionalText,
       note: optionalText,
     })
@@ -84,6 +91,10 @@ export const resourceSchemas = {
       amount: nonNegative,
       milkLiters: z.coerce.number().positive().optional(),
       milkUnitPrice: z.coerce.number().positive().optional(),
+      provider: optionalText,
+      accountingTreatment: z
+        .enum(["operating_expense", "inventory_cost"])
+        .optional(),
       paymentStatus: z
         .enum(EXPENSE_PAYMENT_STATUSES)
         .optional()

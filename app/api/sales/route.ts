@@ -1,9 +1,10 @@
-import { z } from "zod";
 import { apiError, apiSuccess, errorMessage } from "@/lib/api-response";
 import {
   buildDailySaleAssumptions,
   calculateDailySaleEstimateFromRevenue,
+  deriveDailyRevenueSplit,
 } from "@/lib/calculations/daily-sales";
+import { findFreshMilkBottleProduct } from "@/lib/fresh-milk-product";
 import { connectMongo } from "@/lib/mongodb";
 import { Equipment } from "@/models/Equipment";
 import { MilkBatch } from "@/models/MilkBatch";
@@ -11,40 +12,10 @@ import { Product } from "@/models/Product";
 import { Sale } from "@/models/Sale";
 import { Setting } from "@/models/Setting";
 import { ProductSize } from "@/models/Size";
-import {
-  isVietnamDateKey,
-  vietnamDayBoundary,
-} from "@/lib/vietnam-date";
+import { vietnamDayBoundary } from "@/lib/vietnam-date";
+import { dailySaleSchema } from "@/lib/validators/sales";
 
 const DAILY_PAYMENT_METHOD = "Khác";
-
-const dailySaleSchema = z
-  .object({
-    saleDate: z
-      .string()
-      .refine(isVietnamDateKey, "Ngày bán không hợp lệ"),
-    batchId: z
-      .string()
-      .regex(/^[a-f\d]{24}$/i, "Mẻ sữa không hợp lệ"),
-    netRevenue: z.coerce.number().int().positive(),
-    cashReceived: z.coerce.number().int().min(0),
-    bankTransferReceived: z.coerce.number().int().min(0),
-    note: z.string().trim().optional().default(""),
-    overwrite: z.boolean().optional().default(false),
-  })
-  .superRefine(
-    ({ cashReceived, bankTransferReceived, netRevenue }, context) => {
-      if (cashReceived + bankTransferReceived !== netRevenue) {
-        context.addIssue({
-          code: "custom",
-          path: ["netRevenue"],
-          message:
-            "Tổng doanh thu phải bằng tiền mặt đã nhận cộng tiền chuyển khoản",
-        });
-      }
-    },
-  )
-  .strict();
 
 async function dailySaleContext(selectedBatchId?: string) {
   const [sizes, products, settings, depreciation, batches] = await Promise.all([
@@ -56,7 +27,7 @@ async function dailySaleContext(selectedBatchId?: string) {
       .lean(),
     Product.find({ isActive: true })
       .select(
-        "sizeName milkCost toppingCost packagingCost hasCostWarning",
+        "code name productMode sizeName sellingPrice milkCost toppingCost packagingCost hasCostWarning",
       )
       .lean(),
     Setting.find({
@@ -115,6 +86,7 @@ async function dailySaleContext(selectedBatchId?: string) {
     settingsByKey.get("overhead_bien_doi") ?? 0.05,
     fixedCostPerCup,
   );
+  const freshMilkBottleProduct = findFreshMilkBottleProduct(products);
   const selectedBatch = selectedBatchId
     ? batches.find((batch) => String(batch._id) === selectedBatchId)
     : undefined;
@@ -130,6 +102,14 @@ async function dailySaleContext(selectedBatchId?: string) {
   }));
   return {
     batches: availableBatches,
+    freshMilkProduct: freshMilkBottleProduct
+      ? {
+          id: String(freshMilkBottleProduct._id),
+          code: freshMilkBottleProduct.code,
+          name: freshMilkBottleProduct.name,
+          sellingPrice: Number(freshMilkBottleProduct.sellingPrice ?? 0),
+        }
+      : null,
     assumptions:
       selectedBatch
         ? assumptions.map((assumption) => ({
@@ -179,32 +159,62 @@ export async function POST(request: Request) {
     const {
       overwrite,
       batchId,
-      netRevenue,
+      totalRevenue,
+      freshMilkBottleCount,
       cashReceived,
       bankTransferReceived,
       ...input
     } = parsed.data;
-    const { assumptions, costBasis } = await dailySaleContext(batchId);
-    if (!costBasis) {
+    const context = await dailySaleContext(batchId);
+    const freshMilkBottleUnitPrice = Number(
+      context.freshMilkProduct?.sellingPrice ?? 0,
+    );
+    if (freshMilkBottleCount > 0 && freshMilkBottleUnitPrice <= 0) {
+      return apiError(
+        "Chưa tìm thấy sản phẩm sữa tươi đóng chai đang hoạt động có giá bán hợp lệ.",
+        422,
+      );
+    }
+    const {
+      snowMilkRevenue,
+      freshMilkRevenue,
+    } = deriveDailyRevenueSplit(
+      totalRevenue,
+      freshMilkBottleCount,
+      freshMilkBottleUnitPrice,
+    );
+    if (snowMilkRevenue < 0) {
+      return apiError(
+        `Tiền bán ${freshMilkBottleCount} chai (${freshMilkBottleCount} × ${freshMilkBottleUnitPrice.toLocaleString("vi-VN")}đ) đang lớn hơn tổng tiền cuối ngày.`,
+        422,
+      );
+    }
+    if (snowMilkRevenue > 0 && !batchId) {
+      return apiError("Hãy chọn mẻ sữa tuyết đã bán.", 422);
+    }
+    const costBasis = snowMilkRevenue > 0 ? context.costBasis : null;
+    const { assumptions } = context;
+    const netRevenue = totalRevenue;
+    if (snowMilkRevenue > 0 && !costBasis) {
       return apiError(
         "Mẻ sữa đã chọn không còn tồn tại. Hãy tải lại và chọn mẻ khác.",
         422,
       );
     }
-    if (costBasis.costPerMl <= 0) {
+    if (snowMilkRevenue > 0 && (costBasis?.costPerMl ?? 0) <= 0) {
       return apiError(
         "Mẻ sữa đã chọn chưa có giá vốn hợp lệ. Hãy cập nhật lại mẻ sữa.",
         422,
       );
     }
-    if (assumptions.length !== 2) {
+    if (snowMilkRevenue > 0 && assumptions.length !== 2) {
       return apiError(
         "Chưa có đủ Size M và Size L đang hoạt động trong danh mục Size.",
         422,
       );
     }
     const totals = calculateDailySaleEstimateFromRevenue(
-      netRevenue,
+      snowMilkRevenue,
       assumptions,
     );
     const missingCost = totals.sizeSummaries.find(
@@ -216,7 +226,7 @@ export async function POST(request: Request) {
         422,
       );
     }
-    if (totals.totalCups <= 0) {
+    if (snowMilkRevenue > 0 && totals.totalCups <= 0) {
       return apiError(
         "Không thể quy đổi doanh thu thành số ly ước tính.",
         422,
@@ -239,7 +249,7 @@ export async function POST(request: Request) {
       ? { _id: existing._id }
       : {
           saleDate,
-          batchName: costBasis.name,
+          batchName: costBasis?.name ?? "Chỉ bán sữa tươi",
           paymentMethod: DAILY_PAYMENT_METHOD,
         };
 
@@ -249,18 +259,34 @@ export async function POST(request: Request) {
         $set: {
           saleDate,
           entryMode: "daily-summary",
-          batchId: costBasis.id,
-          batchCode: costBasis.code,
-          batchName: costBasis.name,
+          ...(costBasis
+            ? {
+                batchId: costBasis.id,
+                batchCode: costBasis.code,
+                batchName: costBasis.name,
+              }
+            : { batchName: "Chỉ bán sữa tươi" }),
           paymentMethod: DAILY_PAYMENT_METHOD,
           items: [],
           ...totals,
+          grossRevenue: netRevenue,
+          netRevenue,
+          snowMilkRevenue,
+          freshMilkRevenue,
+          freshMilkBottleCount,
+          freshMilkBottleUnitPrice,
           cashReceived,
           bankTransferReceived,
           cupCountSource: "estimated",
-          estimationMethod: `Số ly Size M/L và lượng sữa nền đều được ước tính chỉ từ doanh thu thực nhận, giá tham chiếu và giả định M/L cân bằng; giá vốn dùng mẻ ${costBasis.code} - ${costBasis.name}; topping dùng trung vị và khoảng thấp nhất–cao nhất.`,
+          estimationMethod:
+            snowMilkRevenue > 0 && costBasis
+              ? `Doanh thu sữa tươi được tính tự động: ${freshMilkBottleCount} chai × ${freshMilkBottleUnitPrice.toLocaleString("vi-VN")}đ. Phần còn lại là doanh thu sữa tuyết; số ly Size M/L và lượng sữa nền được ước tính theo mẻ ${costBasis.code} - ${costBasis.name}.`
+              : `Ngày chỉ bán sữa tươi; doanh thu được tính tự động từ ${freshMilkBottleCount} chai × ${freshMilkBottleUnitPrice.toLocaleString("vi-VN")}đ.`,
           note: input.note,
         },
+        ...(costBasis
+          ? {}
+          : { $unset: { batchId: 1, batchCode: 1 } }),
       },
       { upsert: true, returnDocument: "after", runValidators: true },
     );

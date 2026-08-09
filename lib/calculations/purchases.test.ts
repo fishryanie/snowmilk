@@ -48,4 +48,21 @@ describe("purchase unit normalization", () => {
       convertedQuantity: 1.6,
     });
   });
+
+  test("uses landed inventory cost when a purchase has processing fees", () => {
+    expect(
+      summarizePurchases(
+        [
+          {
+            packageCount: 60,
+            convertedQuantity: 60,
+            costUnit: "lít",
+            totalAmount: 1_500_000,
+            inventoryCostAmount: 1_650_000,
+          },
+        ],
+        "lít",
+      ).averageUnitCost,
+    ).toBe(27_500);
+  });
 });

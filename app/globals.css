@@ -1320,10 +1320,15 @@ body::before {
 }
 
 .sales-context-grid,
+.sales-revenue-grid,
 .sales-payment-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.sales-bottle-count-field {
+  grid-column: 1 / -1;
 }
 
 .sales-field {
@@ -1349,6 +1354,7 @@ body::before {
   font-size: 15px;
 }
 
+.sales-revenue-grid .ant-input-number-input,
 .sales-payment-grid .ant-input-number-input {
   font-size: 18px;
   font-weight: 720;
@@ -1370,6 +1376,7 @@ body::before {
 
 .sales-total-banner > div {
   display: grid;
+  flex: 1 1 190px;
   gap: 2px;
 }
 
@@ -1916,6 +1923,14 @@ body::before {
     display: grid;
     grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
     gap: 8px !important;
+  }
+
+  .table-toolbar > .product-toolbar-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .product-toolbar-actions > .ant-space-item:first-child {
+    grid-column: 1 / -1;
   }
 
   .table-toolbar > .ant-space > .ant-space-item,
@@ -2682,6 +2697,7 @@ body::before {
   }
 
   .sales-context-grid,
+  .sales-revenue-grid,
   .sales-payment-grid {
     grid-template-columns: 1fr;
     gap: 12px;
@@ -2700,11 +2716,13 @@ body::before {
     line-height: 1.4;
   }
 
+  .sales-revenue-grid .ant-input-number,
   .sales-payment-grid .ant-input-number,
   .sales-context-grid :is(.ant-picker, .ant-select-selector) {
     min-height: 50px !important;
   }
 
+  .sales-revenue-grid .ant-input-number-input,
   .sales-payment-grid .ant-input-number-input {
     min-height: 48px !important;
     font-size: 18px !important;
@@ -2712,6 +2730,7 @@ body::before {
 
   .sales-total-banner {
     min-height: 72px;
+    flex-wrap: wrap;
     padding: 12px 13px;
   }
 
@@ -4935,5 +4954,215 @@ body::before {
 
   .payroll-employee-footer .ant-btn {
     width: 100%;
+  }
+}
+
+.product-mobile-list {
+  display: none;
+}
+
+.product-onboarding-section {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.product-onboarding-section + .product-onboarding-section {
+  margin-top: 14px;
+}
+
+.product-onboarding-section-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+.product-onboarding-section-title > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--brand);
+  color: #fff;
+  font-weight: 750;
+}
+
+.product-onboarding-section-title > div {
+  display: grid;
+  gap: 2px;
+}
+
+.product-onboarding-grid,
+.product-packaging-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+
+.product-recipe-row {
+  display: grid;
+  grid-template-columns: minmax(230px, 1fr) 150px 120px 32px;
+  gap: 10px;
+  align-items: start;
+}
+
+.product-recipe-row .ant-form-item {
+  margin-bottom: 0;
+}
+
+.product-packaging-card {
+  border-color: rgb(205 226 232 / 88%);
+  background: #f9fcfb;
+}
+
+.product-onboarding-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.product-onboarding-footer > .ant-typography strong {
+  color: var(--brand-strong);
+}
+
+@media (max-width: 768px) {
+  .product-desktop-table {
+    display: none;
+  }
+
+  .product-mobile-list {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0 0 12px;
+    list-style: none;
+  }
+
+  .product-mobile-card {
+    display: grid;
+    gap: 10px;
+    padding: 13px 13px 8px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: #fff;
+  }
+
+  .product-mobile-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .product-mobile-heading > div {
+    display: grid;
+    gap: 3px;
+  }
+
+  .product-mobile-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 14px;
+    margin: 0;
+    padding: 9px 0;
+    border-block: 1px solid var(--line);
+  }
+
+  .product-mobile-metrics dt {
+    margin-bottom: 2px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .product-mobile-metrics dd {
+    margin: 0;
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 680;
+  }
+
+  .product-mobile-edit.ant-btn {
+    width: 100%;
+    min-height: 38px;
+    justify-content: space-between;
+    padding-inline: 4px;
+    color: var(--brand-strong);
+    font-weight: 650;
+  }
+
+  .product-mobile-edit.ant-btn > .anticon:last-child {
+    margin-inline-start: auto;
+  }
+
+  .product-onboarding-drawer .ant-drawer-content-wrapper {
+    width: 100% !important;
+    max-width: 100vw;
+  }
+
+  .product-onboarding-drawer .ant-drawer-header {
+    padding: 14px 16px;
+  }
+
+  .product-onboarding-drawer .ant-drawer-body {
+    padding: 14px 12px 24px;
+    background: #f7faf9;
+  }
+
+  .product-onboarding-drawer .ant-drawer-footer {
+    padding: 10px 12px max(10px, env(safe-area-inset-bottom));
+    background: rgb(255 255 255 / 97%);
+    box-shadow: 0 -8px 24px rgb(23 50 58 / 8%);
+  }
+
+  .product-onboarding-section {
+    padding: 14px 12px;
+  }
+
+  .product-onboarding-grid,
+  .product-packaging-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .product-recipe-row {
+    grid-template-columns: minmax(0, 1fr) 110px 92px 32px;
+    gap: 7px;
+  }
+
+  .product-onboarding-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .product-onboarding-footer > .ant-space,
+  .product-onboarding-footer > .ant-space .ant-btn {
+    width: 100%;
+  }
+
+  .product-onboarding-footer > .ant-space {
+    display: grid;
+    grid-template-columns: 0.8fr 1.2fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .product-recipe-row {
+    grid-template-columns: minmax(0, 1fr) 32px;
+  }
+
+  .product-recipe-row .ant-form-item:nth-child(2),
+  .product-recipe-row .ant-form-item:nth-child(3) {
+    grid-column: 1;
+  }
+
+  .product-recipe-row > .ant-btn {
+    grid-column: 2;
+    grid-row: 1;
   }
 }

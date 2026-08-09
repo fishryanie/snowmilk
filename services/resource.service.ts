@@ -18,6 +18,19 @@ import {
   DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
   type PurchaseFundingSource,
 } from "@/lib/purchase-funding";
+import {
+  DEFAULT_NEW_EXPENSE_PAYMENT_STATUS,
+  isExpensePaid,
+} from "@/lib/expense-payment-status";
+import {
+  MILK_STERILIZATION_EXPENSE_CATEGORY,
+  milkSterilizationDescription,
+} from "@/lib/expense-categories";
+import {
+  calculateMilkPurchaseCost,
+  isFreshMilkIngredient,
+} from "@/lib/milk-sterilization";
+import { vietnamDateKey, vietnamDayBoundary } from "@/lib/vietnam-date";
 import type { ResourceName } from "@/lib/validators/resources";
 import { Ingredient } from "@/models/Ingredient";
 import { Equipment } from "@/models/Equipment";
@@ -28,6 +41,11 @@ import { Purchase } from "@/models/Purchase";
 import { Sale } from "@/models/Sale";
 import { Setting } from "@/models/Setting";
 import { ProductSize } from "@/models/Size";
+import {
+  ingredientCodePrefix,
+  nextIngredientCode,
+  type IngredientCategory,
+} from "@/lib/ingredient-code";
 
 type PurchaseInput = {
   purchaseDate: Date;
@@ -36,6 +54,9 @@ type PurchaseInput = {
   totalAmount?: number;
   actualPackagePrice?: number;
   fundingSource?: PurchaseFundingSource;
+  sterilizationOutsourcedLiters?: number;
+  sterilizationUnitPrice?: number;
+  sterilizationProvider?: string;
   supplier?: string;
   note?: string;
 };
@@ -59,6 +80,36 @@ type ProductInput = {
   toppingGrams: number;
   isActive?: boolean;
 };
+
+async function createIngredient(payload: Record<string, unknown>) {
+  const category = payload.category as IngredientCategory;
+  const prefix = ingredientCodePrefix(category);
+  const matchingCode = new RegExp(`^${prefix}-?\\d+$`, "i");
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const records = await Ingredient.find({ code: matchingCode })
+      .select("code")
+      .lean();
+    const code = nextIngredientCode(
+      category,
+      records.map((record) => record.code),
+    );
+
+    try {
+      return await Ingredient.create({ ...payload, code });
+    } catch (error) {
+      const mongoError = error as {
+        code?: number;
+        keyPattern?: Record<string, number>;
+      };
+      const isCodeCollision =
+        mongoError.code === 11000 && Boolean(mongoError.keyPattern?.code);
+      if (!isCodeCollision || attempt === 4) throw error;
+    }
+  }
+
+  throw new Error("Không thể tạo mã hàng hóa. Vui lòng thử lại.");
+}
 
 type BatchInput = {
   name: string;
@@ -368,6 +419,22 @@ async function purchasePayload(payload: PurchaseInput) {
     actualPackagePrice: payload.actualPackagePrice,
     totalAmount: payload.totalAmount,
   });
+  const convertedQuantity = payload.packageCount * packageQuantity;
+  const isFreshMilk = isFreshMilkIngredient(ingredient);
+  const milkCost = calculateMilkPurchaseCost({
+    goodsAmount: totalAmount,
+    totalLiters: convertedQuantity,
+    outsourcedLiters: isFreshMilk
+      ? payload.sterilizationOutsourcedLiters
+      : 0,
+    sterilizationUnitPrice: payload.sterilizationUnitPrice,
+  });
+  const sterilizationProvider = isFreshMilk
+    ? String(payload.sterilizationProvider ?? "").trim()
+    : "";
+  if (milkCost.outsourcedLiters > 0 && !sterilizationProvider) {
+    throw new Error("Vui lòng nhập bên nhận tiệt trùng sữa.");
+  }
 
   return {
     purchaseDate: payload.purchaseDate,
@@ -380,13 +447,183 @@ async function purchasePayload(payload: PurchaseInput) {
     costUnit: ingredient.costUnit,
     referencePackagePrice,
     actualPackagePrice,
-    convertedQuantity: payload.packageCount * packageQuantity,
+    convertedQuantity,
     totalAmount,
+    sterilizationOutsourcedLiters: milkCost.outsourcedLiters,
+    sterilizationSelfLiters: isFreshMilk
+      ? milkCost.selfProcessedLiters
+      : 0,
+    sterilizationUnitPrice: isFreshMilk
+      ? milkCost.sterilizationUnitPrice
+      : 0,
+    sterilizationCost: isFreshMilk ? milkCost.sterilizationCost : 0,
+    sterilizationProvider,
+    inventoryCostAmount: isFreshMilk
+      ? milkCost.inventoryCostAmount
+      : totalAmount,
+    landedUnitCost: isFreshMilk
+      ? milkCost.landedUnitCost
+      : convertedQuantity > 0
+        ? totalAmount / convertedQuantity
+        : 0,
     fundingSource:
       payload.fundingSource ?? DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
     supplier: payload.supplier ?? "",
     note: payload.note ?? "",
   };
+}
+
+type ResolvedPurchase = Awaited<ReturnType<typeof purchasePayload>>;
+
+async function linkedSterilizationExpense(purchase: {
+  _id: unknown;
+  sterilizationExpenseId?: unknown;
+}) {
+  return Expense.findOne({
+    $or: [
+      ...(purchase.sterilizationExpenseId
+        ? [{ _id: purchase.sterilizationExpenseId }]
+        : []),
+      { sourcePurchaseId: purchase._id },
+    ],
+  });
+}
+
+function paidSterilizationChanged(
+  expense: {
+    expenseDate?: Date;
+    milkLiters?: number;
+    milkUnitPrice?: number;
+    amount?: number;
+    provider?: string;
+    fundingSource?: string;
+  },
+  purchase: ResolvedPurchase,
+) {
+  return (
+    new Date(expense.expenseDate ?? 0).getTime() !==
+      new Date(purchase.purchaseDate).getTime() ||
+    Number(expense.milkLiters ?? 0) !==
+      Number(purchase.sterilizationOutsourcedLiters) ||
+    Number(expense.milkUnitPrice ?? 0) !==
+      Number(purchase.sterilizationUnitPrice) ||
+    Number(expense.amount ?? 0) !== Number(purchase.sterilizationCost) ||
+    String(expense.provider ?? "") !== purchase.sterilizationProvider ||
+    String(expense.fundingSource ?? "") !== String(purchase.fundingSource)
+  );
+}
+
+async function assertSterilizationExpenseCanChange(
+  existingPurchase: { _id: unknown; sterilizationExpenseId?: unknown },
+  nextPurchase: ResolvedPurchase,
+) {
+  const expense = await linkedSterilizationExpense(existingPurchase);
+  if (
+    expense &&
+    isExpensePaid(expense) &&
+    paidSterilizationChanged(expense, nextPurchase)
+  ) {
+    throw new Error(
+      "Chi phí tiệt trùng của lần nhập này đã thanh toán nên không thể thay đổi số lít, đơn giá, nhà cung cấp hoặc nguồn tiền.",
+    );
+  }
+}
+
+async function syncSterilizationExpense(purchase: {
+  _id: unknown;
+  purchaseDate: Date;
+  itemCode?: string;
+  itemName?: string;
+  sterilizationExpenseId?: unknown;
+  sterilizationOutsourcedLiters?: number;
+  sterilizationUnitPrice?: number;
+  sterilizationCost?: number;
+  sterilizationProvider?: string;
+  fundingSource?: PurchaseFundingSource;
+}) {
+  let expense = await linkedSterilizationExpense(purchase);
+  const amount = Number(purchase.sterilizationCost ?? 0);
+
+  if (amount <= 0) {
+    if (expense && isExpensePaid(expense)) {
+      throw new Error(
+        "Không thể xóa chi phí tiệt trùng đã thanh toán khỏi lần nhập.",
+      );
+    }
+    if (expense) await expense.deleteOne();
+    await Purchase.findByIdAndUpdate(purchase._id, {
+      $unset: { sterilizationExpenseId: 1 },
+    });
+    return null;
+  }
+
+  if (!expense) {
+    const purchaseDateKey = vietnamDateKey(new Date(purchase.purchaseDate));
+    const matchingLegacyExpenses = await Expense.find({
+      category: MILK_STERILIZATION_EXPENSE_CATEGORY,
+      sourcePurchaseId: { $exists: false },
+      expenseDate: {
+        $gte: vietnamDayBoundary(purchaseDateKey),
+        $lte: vietnamDayBoundary(purchaseDateKey, true),
+      },
+      milkLiters: Number(purchase.sterilizationOutsourcedLiters ?? 0),
+      milkUnitPrice: Number(purchase.sterilizationUnitPrice ?? 0),
+      amount,
+    }).limit(2);
+    if (matchingLegacyExpenses.length === 1) {
+      expense = matchingLegacyExpenses[0];
+    }
+  }
+
+  if (expense && isExpensePaid(expense)) {
+    await Expense.findByIdAndUpdate(expense._id, {
+      $set: {
+        accountingTreatment: "inventory_cost",
+        sourceType: "purchase_sterilization",
+        sourcePurchaseId: purchase._id,
+        provider: purchase.sterilizationProvider ?? expense.provider ?? "",
+      },
+    });
+    await Purchase.findByIdAndUpdate(purchase._id, {
+      $set: { sterilizationExpenseId: expense._id },
+    });
+    return expense;
+  }
+
+  const milkLiters = Number(purchase.sterilizationOutsourcedLiters ?? 0);
+  const milkUnitPrice = Number(purchase.sterilizationUnitPrice ?? 0);
+  const expensePayload = {
+    expenseDate: purchase.purchaseDate,
+    category: MILK_STERILIZATION_EXPENSE_CATEGORY,
+    description: `${purchase.itemName ?? "Sữa"} · ${milkSterilizationDescription(
+      milkLiters,
+      milkUnitPrice,
+    )}`,
+    milkLiters,
+    milkUnitPrice,
+    provider: purchase.sterilizationProvider ?? "",
+    amount,
+    accountingTreatment: "inventory_cost",
+    sourceType: "purchase_sterilization",
+    sourcePurchaseId: purchase._id,
+    paymentStatus: DEFAULT_NEW_EXPENSE_PAYMENT_STATUS,
+    fundingSource:
+      purchase.fundingSource ?? DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
+    isRecurring: false,
+    note: `Tự động tạo từ phiếu nhập ${purchase.itemCode ?? "sữa"}`,
+  } as const;
+  const savedExpense = expense
+    ? await Expense.findByIdAndUpdate(expense._id, expensePayload, {
+        returnDocument: "after",
+        runValidators: true,
+      })
+    : await Expense.create(expensePayload);
+  if (savedExpense) {
+    await Purchase.findByIdAndUpdate(purchase._id, {
+      $set: { sterilizationExpenseId: savedExpense._id },
+    });
+  }
+  return savedExpense;
 }
 
 type IngredientForPurchaseSummary = {
@@ -458,7 +695,7 @@ export async function recalculateIngredientAverages(
     ],
   })
     .select(
-      "_id ingredientId itemCode packageCount packageQuantity costUnit convertedQuantity totalAmount",
+      "_id ingredientId itemCode packageCount packageQuantity costUnit convertedQuantity totalAmount inventoryCostAmount",
     )
     .lean()) as PurchaseForSummary[];
   const purchasesByIngredient = groupPurchasesByIngredient(
@@ -618,6 +855,39 @@ export async function listResources(
     .sort(sort)
     .limit(Math.min(options.limit ?? 250, 500))
     .lean();
+  if (resource === "purchases" && records.length > 0) {
+    const purchases = records as Array<
+      Record<string, unknown> & { _id: unknown; sterilizationExpenseId?: unknown }
+    >;
+    const purchaseIds = purchases.map((purchase) => purchase._id);
+    const expenseIds = purchases
+      .map((purchase) => purchase.sterilizationExpenseId)
+      .filter(Boolean);
+    const expenses = await Expense.find({
+      $or: [
+        { _id: { $in: expenseIds } },
+        { sourcePurchaseId: { $in: purchaseIds } },
+      ],
+    })
+      .select("_id sourcePurchaseId paymentStatus paidAt")
+      .lean();
+    const expensesByPurchase = new Map(
+      expenses.map((expense) => [String(expense.sourcePurchaseId), expense]),
+    );
+    const expensesById = new Map(
+      expenses.map((expense) => [String(expense._id), expense]),
+    );
+    return purchases.map((purchase) => {
+      const expense =
+        expensesById.get(String(purchase.sterilizationExpenseId ?? "")) ??
+        expensesByPurchase.get(String(purchase._id));
+      return {
+        ...purchase,
+        sterilizationPaymentStatus: expense?.paymentStatus,
+        sterilizationPaidAt: expense?.paidAt,
+      };
+    });
+  }
   if (resource !== "ingredients" || records.length === 0) return records;
 
   const ingredients = records as Array<
@@ -634,7 +904,7 @@ export async function listResources(
     ],
   })
     .select(
-      "ingredientId itemCode packageCount costUnit convertedQuantity totalAmount",
+      "ingredientId itemCode packageCount costUnit convertedQuantity totalAmount inventoryCostAmount",
     )
     .lean()) as PurchaseForSummary[];
   const purchasesByIngredient = groupPurchasesByIngredient(
@@ -670,8 +940,34 @@ export async function createResource(
   if (resource === "purchases") {
     const resolved = await purchasePayload(payload as PurchaseInput);
     const purchase = await Purchase.create(resolved);
-    await refreshIngredientAverage(resolved.ingredientId, resolved.itemCode);
-    return purchase;
+    try {
+      await syncSterilizationExpense(purchase);
+      await refreshIngredientAverage(resolved.ingredientId, resolved.itemCode);
+      return Purchase.findById(purchase._id);
+    } catch (error) {
+      const linkedExpense = await Expense.findOne({
+        sourcePurchaseId: purchase._id,
+      });
+      const purchaseCreatedAt = new Date(
+        purchase.get("createdAt") ?? purchase.purchaseDate,
+      ).getTime();
+      const expenseCreatedAt = linkedExpense
+        ? new Date(linkedExpense.get("createdAt") ?? 0).getTime()
+        : 0;
+      if (linkedExpense && expenseCreatedAt >= purchaseCreatedAt) {
+        await linkedExpense.deleteOne();
+      } else if (linkedExpense) {
+        await Expense.findByIdAndUpdate(linkedExpense._id, {
+          $set: {
+            sourceType: "manual",
+            accountingTreatment: "operating_expense",
+          },
+          $unset: { sourcePurchaseId: 1 },
+        });
+      }
+      await Purchase.findByIdAndDelete(purchase._id);
+      throw error;
+    }
   }
   if (resource === "products") {
     const code = await nextProductCode();
@@ -693,6 +989,16 @@ export async function createResource(
       equipmentPayload(payload as EquipmentInput, code),
     );
   }
+  if (resource === "ingredients") {
+    return createIngredient(payload);
+  }
+  if (resource === "expenses") {
+    const paid = payload.paymentStatus === "paid";
+    return Expense.create({
+      ...payload,
+      ...(paid ? { paidAt: new Date() } : {}),
+    });
+  }
   return resourceModels[resource].create(payload);
 }
 
@@ -706,17 +1012,19 @@ export async function updateResource(
     const existing = await Purchase.findById(id).lean();
     if (!existing) return null;
     const resolved = await purchasePayload(payload as PurchaseInput);
+    await assertSterilizationExpenseCanChange(existing, resolved);
     const purchase = await Purchase.findByIdAndUpdate(id, resolved, {
       returnDocument: "after",
       runValidators: true,
     });
+    if (purchase) await syncSterilizationExpense(purchase);
     await Promise.all([
       refreshIngredientAverage(resolved.ingredientId, resolved.itemCode),
       String(existing.ingredientId ?? "") !== String(resolved.ingredientId)
         ? refreshIngredientAverage(existing.ingredientId, existing.itemCode)
         : null,
     ]);
-    return purchase;
+    return Purchase.findById(id);
   }
   if (resource === "products") {
     const existing = await Product.findById(id).select("code").lean();
@@ -765,7 +1073,9 @@ export async function updateResource(
       .select("_id code")
       .lean();
     if (!existing) return null;
-    const targetUnit = String(payload.costUnit ?? "").trim();
+    const ingredientPayload = { ...payload };
+    delete ingredientPayload.code;
+    const targetUnit = String(ingredientPayload.costUnit ?? "").trim();
     const purchaseHistory = (await Purchase.find({
       $or: [
         { ingredientId: existing._id },
@@ -781,10 +1091,14 @@ export async function updateResource(
     }
     summarizePurchases(purchaseHistory, targetUnit);
 
-    const ingredient = await Ingredient.findByIdAndUpdate(id, payload, {
-      returnDocument: "after",
-      runValidators: true,
-    });
+    const ingredient = await Ingredient.findByIdAndUpdate(
+      id,
+      ingredientPayload,
+      {
+        returnDocument: "after",
+        runValidators: true,
+      },
+    );
     if (ingredient) {
       await recalculateIngredientAverages(
         { _id: ingredient._id },
@@ -803,15 +1117,70 @@ export async function updateResource(
     return size;
   }
   if (resource === "expenses") {
+    const existing = await Expense.findById(id).lean();
+    if (!existing) return null;
+    const isPurchaseSterilization =
+      existing.sourceType === "purchase_sterilization" &&
+      Boolean(existing.sourcePurchaseId);
+    if (
+      isPurchaseSterilization &&
+      existing.paymentId &&
+      payload.paymentStatus === "unpaid"
+    ) {
+      throw new Error(
+        "Khoản này đã nằm trong một lần thanh toán cuối tuần nên không thể chuyển lại thành Chưa thanh toán.",
+      );
+    }
+    const editablePayload = isPurchaseSterilization
+      ? {
+          ...payload,
+          category: existing.category,
+          description: existing.description,
+          milkLiters: existing.milkLiters,
+          milkUnitPrice: existing.milkUnitPrice,
+          provider: existing.provider,
+          amount: existing.amount,
+          accountingTreatment: existing.accountingTreatment,
+          sourceType: existing.sourceType,
+          sourcePurchaseId: existing.sourcePurchaseId,
+          isRecurring: false,
+        }
+      : payload;
     const keepsMilkDetails =
-      payload.milkLiters !== undefined && payload.milkUnitPrice !== undefined;
+      editablePayload.milkLiters !== undefined &&
+      editablePayload.milkUnitPrice !== undefined;
+    const paymentStatus = (editablePayload as Record<string, unknown>)
+      .paymentStatus;
+    const paymentUpdate =
+      paymentStatus === "paid"
+        ? { paidAt: existing.paidAt ?? new Date() }
+        : paymentStatus === "unpaid"
+          ? null
+          : undefined;
     return Expense.findByIdAndUpdate(
       id,
       keepsMilkDetails
-        ? { $set: payload }
+        ? {
+            $set: {
+              ...editablePayload,
+              ...(paymentUpdate ? paymentUpdate : {}),
+            },
+            ...(!paymentUpdate && paymentStatus === "unpaid"
+              ? { $unset: { paidAt: 1, paymentId: 1 } }
+              : {}),
+          }
         : {
-            $set: payload,
-            $unset: { milkLiters: 1, milkUnitPrice: 1 },
+            $set: {
+              ...editablePayload,
+              ...(paymentUpdate ? paymentUpdate : {}),
+            },
+            $unset: {
+              milkLiters: 1,
+              milkUnitPrice: 1,
+              ...(!paymentUpdate && paymentStatus === "unpaid"
+                ? { paidAt: 1, paymentId: 1 }
+                : {}),
+            },
           },
       { returnDocument: "after", runValidators: true },
     );
@@ -825,6 +1194,15 @@ export async function updateResource(
 export async function deleteResource(resource: ResourceName, id: string) {
   await connectMongo();
   if (resource === "purchases") {
+    const existing = await Purchase.findById(id);
+    if (!existing) return null;
+    const expense = await linkedSterilizationExpense(existing);
+    if (expense && isExpensePaid(expense)) {
+      throw new Error(
+        "Không thể xóa lần nhập vì chi phí tiệt trùng đã được thanh toán.",
+      );
+    }
+    if (expense) await expense.deleteOne();
     const purchase = await Purchase.findByIdAndDelete(id);
     if (purchase?.ingredientId) {
       await refreshIngredientAverage(
@@ -833,6 +1211,16 @@ export async function deleteResource(resource: ResourceName, id: string) {
       );
     }
     return purchase;
+  }
+  if (resource === "expenses") {
+    const expense = await Expense.findById(id).lean();
+    if (!expense) return null;
+    if (expense.sourceType === "purchase_sterilization") {
+      throw new Error(
+        "Chi phí này được tạo từ phiếu nhập sữa. Hãy sửa hoặc xóa tại trang Nhập hàng.",
+      );
+    }
+    return Expense.findByIdAndDelete(id);
   }
   if (resource === "batches") {
     const deleted = await MilkBatch.findByIdAndDelete(id);

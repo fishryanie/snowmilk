@@ -64,6 +64,23 @@ export type DailySaleEstimate = {
   estimatedMargin: number;
 };
 
+export function deriveDailyRevenueSplit(
+  totalRevenue: number,
+  freshMilkBottleCount: number,
+  freshMilkBottleUnitPrice: number,
+) {
+  const freshMilkRevenue =
+    freshMilkBottleCount * freshMilkBottleUnitPrice;
+
+  return {
+    totalRevenue,
+    snowMilkRevenue: totalRevenue - freshMilkRevenue,
+    freshMilkRevenue,
+    freshMilkBottleCount,
+    freshMilkBottleUnitPrice,
+  };
+}
+
 function median(values: number[]) {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);

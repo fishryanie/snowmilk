@@ -163,7 +163,7 @@ const [ingredients, purchases, snapshots] = await Promise.all([
     .lean() as Promise<IngredientRow[]>,
   Purchase.find()
     .select(
-      "_id ingredientId itemCode packageCount packageQuantity costUnit convertedQuantity totalAmount",
+      "_id ingredientId itemCode packageCount packageQuantity costUnit convertedQuantity totalAmount inventoryCostAmount",
     )
     .lean() as Promise<PurchaseRow[]>,
   InventorySnapshot.find()

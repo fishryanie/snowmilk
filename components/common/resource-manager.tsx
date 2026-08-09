@@ -2,6 +2,7 @@
 
 import {
   DeleteOutlined,
+  CheckCircleOutlined,
   DownloadOutlined,
   EditOutlined,
   FilePdfOutlined,
@@ -77,6 +78,7 @@ export type ResourceField = {
   missingWarningLabel?: string;
   visibleWhen?: { field: string; equals: unknown };
   disabledWhen?: { field: string; equals: unknown };
+  disabledWhenPresent?: string;
   hint?: string;
   min?: number;
   precision?: number;
@@ -99,6 +101,18 @@ function matchesFieldCondition(
   values: Record<string, unknown>,
 ) {
   return !condition || values[condition.field] === condition.equals;
+}
+
+function isResourceFieldDisabled(
+  field: ResourceField,
+  values: Record<string, unknown>,
+) {
+  return (
+    (Boolean(field.disabledWhen) &&
+      matchesFieldCondition(field.disabledWhen, values)) ||
+    (Boolean(field.disabledWhenPresent) &&
+      !isMissingValue(values[field.disabledWhenPresent!]))
+  );
 }
 
 function hasResourceWarning(
@@ -214,6 +228,12 @@ export function ResourceManager({
   selectionPdfExportUrl,
   selectionPdfFileName = "du-lieu-da-chon.pdf",
   selectionPdfLabel = "Xuất PDF",
+  selectionQuantityField,
+  selectionQuantityLabel = "Tổng số lượng",
+  selectionQuantitySuffix = "",
+  selectionActionLabel,
+  selectionActionConfirmTitle,
+  onSelectionAction,
   onEditorValuesChange,
 }: {
   resource: string;
@@ -231,6 +251,14 @@ export function ResourceManager({
   selectionPdfExportUrl?: string;
   selectionPdfFileName?: string;
   selectionPdfLabel?: string;
+  selectionQuantityField?: string;
+  selectionQuantityLabel?: string;
+  selectionQuantitySuffix?: string;
+  selectionActionLabel?: string;
+  selectionActionConfirmTitle?: string;
+  onSelectionAction?: (
+    records: ResourceRecord[],
+  ) => Promise<{ records?: ResourceRecord[]; message?: string }>;
   onEditorValuesChange?: (
     changedValues: Record<string, unknown>,
     allValues: Record<string, unknown>,
@@ -244,6 +272,7 @@ export function ResourceManager({
   const [mobilePage, setMobilePage] = useState(1);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [runningSelectionAction, setRunningSelectionAction] = useState(false);
   const [form] = Form.useForm();
   const url = `/api/${resource}${query ? `?q=${encodeURIComponent(query)}` : ""}`;
   const { data, loading, usingFallback, setData } = useApiData<ResourceRecord[]>(
@@ -313,17 +342,28 @@ export function ResourceManager({
     [selectedRowKeys],
   );
   const selectedSummary = useMemo(() => {
-    if (!selectionAmountField) return { count: 0, totalAmount: 0 };
+    if (!selectionAmountField) {
+      return { count: 0, totalAmount: 0, totalQuantity: 0 };
+    }
 
     let count = 0;
     let totalAmount = 0;
+    let totalQuantity = 0;
     for (const record of data) {
       if (!selectedRowKeySet.has(resourceRecordKey(record))) continue;
       count += 1;
       totalAmount += Number(record[selectionAmountField] ?? 0);
+      totalQuantity += Number(
+        selectionQuantityField ? record[selectionQuantityField] ?? 0 : 0,
+      );
     }
-    return { count, totalAmount };
-  }, [data, selectedRowKeySet, selectionAmountField]);
+    return { count, totalAmount, totalQuantity };
+  }, [
+    data,
+    selectedRowKeySet,
+    selectionAmountField,
+    selectionQuantityField,
+  ]);
   const selectedDisplayedRecordCount = useMemo(() => {
     let count = 0;
     for (const key of displayedRecordKeys) {
@@ -461,6 +501,37 @@ export function ResourceManager({
       );
     } finally {
       setExportingPdf(false);
+    }
+  }
+
+  async function runSelectionAction() {
+    if (!onSelectionAction || selectedSummary.count === 0) return;
+    const selectedRecords = data.filter((record) =>
+      selectedRowKeySet.has(resourceRecordKey(record)),
+    );
+    setRunningSelectionAction(true);
+    try {
+      const result = await onSelectionAction(selectedRecords);
+      if (result.records?.length) {
+        const updates = new Map(
+          result.records.map((record) => [resourceRecordKey(record), record]),
+        );
+        setData((current) =>
+          current.map((record) => {
+            const update = updates.get(resourceRecordKey(record));
+            return update ? { ...record, ...update } : record;
+          }),
+        );
+      }
+      setSelectedRowKeys([]);
+      message.success(result.message ?? "Đã cập nhật các khoản đã chọn");
+      onMutation?.();
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : "Không thể cập nhật dữ liệu",
+      );
+    } finally {
+      setRunningSelectionAction(false);
     }
   }
 
@@ -604,6 +675,15 @@ export function ResourceManager({
                   <Text type="secondary">Tổng hóa đơn</Text>
                   <Text strong>{formatVnd(selectedSummary.totalAmount)}</Text>
                 </span>
+                {selectionQuantityField ? (
+                  <span>
+                    <Text type="secondary">{selectionQuantityLabel}</Text>
+                    <Text strong>
+                      {formatNumber(selectedSummary.totalQuantity)}
+                      {selectionQuantitySuffix}
+                    </Text>
+                  </span>
+                ) : null}
               </div>
               {selectionPdfExportUrl ? (
                 <Button
@@ -616,6 +696,26 @@ export function ResourceManager({
                 >
                   {selectionPdfLabel}
                 </Button>
+              ) : null}
+              {onSelectionAction && selectionActionLabel ? (
+                <Popconfirm
+                  title={
+                    selectionActionConfirmTitle ??
+                    "Xác nhận cập nhật các khoản đã chọn?"
+                  }
+                  okText="Xác nhận"
+                  cancelText="Hủy"
+                  onConfirm={runSelectionAction}
+                >
+                  <Button
+                    size="large"
+                    icon={<CheckCircleOutlined />}
+                    disabled={selectedSummary.count === 0}
+                    loading={runningSelectionAction}
+                  >
+                    {selectionActionLabel}
+                  </Button>
+                </Popconfirm>
               ) : null}
             </div>
           </div>
@@ -861,10 +961,10 @@ export function ResourceManager({
                           (field.type === "money" ? 1_000 : undefined)
                         }
                         addonAfter={field.suffix}
-                        disabled={matchesFieldCondition(
-                          field.disabledWhen,
+                        disabled={isResourceFieldDisabled(
+                          field,
                           displayedValues,
-                        ) && Boolean(field.disabledWhen)}
+                        )}
                         formatter={
                           field.type === "money" ? formatVndInput : undefined
                         }
@@ -884,6 +984,10 @@ export function ResourceManager({
                       <DatePicker
                         format="DD/MM/YYYY"
                         style={{ width: "100%" }}
+                        disabled={isResourceFieldDisabled(
+                          field,
+                          displayedValues,
+                        )}
                       />
                     ) : field.type === "select" ? (
                       <Select
@@ -893,6 +997,10 @@ export function ResourceManager({
                           typeof option === "string"
                             ? { value: option, label: option }
                             : option,
+                        )}
+                        disabled={isResourceFieldDisabled(
+                          field,
+                          displayedValues,
                         )}
                       />
                     ) : field.type === "radio" ? (
@@ -904,6 +1012,10 @@ export function ResourceManager({
                           typeof option === "string"
                             ? { value: option, label: option }
                             : { value: option.value, label: option.label },
+                        )}
+                        disabled={isResourceFieldDisabled(
+                          field,
+                          displayedValues,
                         )}
                       />
                     ) : field.type === "boolean" ? (
@@ -918,12 +1030,10 @@ export function ResourceManager({
                       <Input.TextArea rows={3} />
                     ) : (
                       <Input
-                        disabled={
-                          matchesFieldCondition(
-                            field.disabledWhen,
-                            displayedValues,
-                          ) && Boolean(field.disabledWhen)
-                        }
+                        disabled={isResourceFieldDisabled(
+                          field,
+                          displayedValues,
+                        )}
                       />
                     )}
                   </Form.Item>

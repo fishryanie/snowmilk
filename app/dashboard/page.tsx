@@ -6,12 +6,14 @@ import {
   BankOutlined,
   CalendarOutlined,
   CheckCircleOutlined,
+  CloudOutlined,
   ClockCircleOutlined,
   DollarOutlined,
   ExclamationCircleOutlined,
   InfoCircleOutlined,
   RiseOutlined,
   SafetyCertificateOutlined,
+  ShoppingOutlined,
   ShoppingCartOutlined,
   TrophyOutlined,
   WalletOutlined,
@@ -42,6 +44,11 @@ const { RangePicker } = DatePicker;
 const { Text, Title } = Typography;
 
 type DashboardData = Omit<typeof workbookDashboard, "health"> & {
+  kpis: (typeof workbookDashboard)["kpis"] & {
+    operatingExpenseTotal?: number;
+    cashExpenseTotal?: number;
+    outstandingExpenseTotal?: number;
+  };
   health: {
     status: "ready" | "attention" | "setup-required";
     issues: Array<{
@@ -190,14 +197,42 @@ export default function DashboardPage() {
   ];
   const kpis = [
     {
-      label: "Doanh thu",
+      label: "Tổng doanh thu",
       value: data.kpis.revenue,
       icon: <DollarOutlined />,
       money: true,
       description:
         "Tổng doanh thu thuần của các giao dịch hoặc bản chốt ngày trong khoảng thời gian đang chọn.",
-      formula: "Σ Doanh thu thuần trong kỳ",
+      formula: "Doanh thu sữa tuyết + Doanh thu sữa tươi",
       note: "Nếu một ngày đã có bản chốt tổng, hệ thống bỏ qua các dòng bán lẻ cùng ngày để tránh tính hai lần.",
+    },
+    {
+      label: "Doanh thu sữa tuyết",
+      value: data.kpis.snowMilkRevenue,
+      icon: <CloudOutlined />,
+      money: true,
+      description:
+        "Phần doanh thu bán sữa tuyết trong khoảng thời gian đang chọn.",
+      formula: "Σ Doanh thu sữa tuyết trong kỳ",
+      note: "Các bản chốt cũ chưa tách doanh thu được xem là doanh thu sữa tuyết để giữ tương thích.",
+    },
+    {
+      label: "Doanh thu sữa tươi",
+      value: data.kpis.freshMilkRevenue,
+      icon: <ShoppingOutlined />,
+      money: true,
+      description:
+        "Phần doanh thu bán sữa tươi đóng chai trong khoảng thời gian đang chọn.",
+      formula: "Σ Doanh thu sữa tươi trong kỳ",
+    },
+    {
+      label: "Chai sữa tươi đã bán",
+      value: data.kpis.freshMilkBottleCount,
+      icon: <ShoppingOutlined />,
+      money: false,
+      description:
+        "Tổng số chai sữa tươi đã nhập khi chốt bán hàng trong kỳ.",
+      formula: "Σ Số chai sữa tươi đã bán",
     },
     {
       label: "Tiền còn lại trong doanh nghiệp",
@@ -221,16 +256,16 @@ export default function DashboardPage() {
       formula: "Σ Thành tiền của các phiếu nhập hàng trong kỳ",
     },
     {
-      label: "Lợi nhuận tạm tính",
+      label: "Lợi nhuận sữa tuyết tạm tính",
       value: data.kpis.estimatedProfit,
       icon: <RiseOutlined />,
       money: true,
       profit: true,
       description:
-        "Khoản lãi ước tính sau giá vốn biến đổi, phần chi phí cố định được phân bổ trong bản chốt và các chi phí khác đã ghi nhận.",
+        "Khoản lãi sữa tuyết ước tính sau giá vốn biến đổi, phần chi phí cố định được phân bổ trong bản chốt và các chi phí khác đã ghi nhận.",
       formula:
-        "Σ Lãi đóng góp hoặc lợi nhuận ước tính từng bản bán − Chi phí khác trong kỳ",
-      note: "Các ngày chốt nhanh có thể chứa cost topping và cơ cấu size ước tính nên đây chưa phải lợi nhuận kế toán cuối cùng.",
+        "Σ Lãi sữa tuyết ước tính từng bản bán − Chi phí khác trong kỳ",
+      note: "Chưa cộng lợi nhuận sữa tươi vì hiện chưa có giá vốn theo chai; tổng doanh thu vẫn bao gồm đầy đủ cả hai loại.",
     },
     {
       label: "Tổng vốn đã bỏ lũy kế",
@@ -551,8 +586,10 @@ export default function DashboardPage() {
               <Text strong>{formatVnd(data.kpis.purchaseTotal)}</Text>
             </div>
             <div className="summary-row">
-              <Text type="secondary">Chi phí vận hành</Text>
-              <Text strong>{formatVnd(data.kpis.expenseTotal)}</Text>
+              <Text type="secondary">Chi phí đã thanh toán</Text>
+              <Text strong>
+                {formatVnd(data.kpis.cashExpenseTotal ?? data.kpis.expenseTotal)}
+              </Text>
             </div>
             <div className="summary-row">
               <Text type="secondary">Đầu tư thiết bị</Text>
@@ -777,7 +814,15 @@ export default function DashboardPage() {
       <div className="dashboard-grid">
         <Card className="surface-card" title="Hiệu quả kỳ này">
           <div className="summary-row">
-            <Text type="secondary">Doanh thu thuần</Text>
+            <Text type="secondary">Doanh thu sữa tuyết</Text>
+            <Text>{formatVnd(data.kpis.snowMilkRevenue)}</Text>
+          </div>
+          <div className="summary-row">
+            <Text type="secondary">Doanh thu sữa tươi</Text>
+            <Text>{formatVnd(data.kpis.freshMilkRevenue)}</Text>
+          </div>
+          <div className="summary-row summary-total">
+            <Text strong>Tổng doanh thu</Text>
             <Text strong>{formatVnd(data.kpis.revenue)}</Text>
           </div>
           <div className="summary-row">
@@ -790,10 +835,14 @@ export default function DashboardPage() {
           </div>
           <div className="summary-row">
             <Text type="secondary">Chi phí khác</Text>
-            <Text>{formatVnd(data.kpis.expenseTotal)}</Text>
+            <Text>
+              {formatVnd(
+                data.kpis.operatingExpenseTotal ?? data.kpis.expenseTotal,
+              )}
+            </Text>
           </div>
           <div className="summary-row summary-total">
-            <Title level={5}>Lợi nhuận tạm tính</Title>
+            <Title level={5}>Lợi nhuận sữa tuyết tạm tính</Title>
             <Title level={4}>{formatVnd(data.kpis.estimatedProfit)}</Title>
           </div>
           <Alert
@@ -802,8 +851,8 @@ export default function DashboardPage() {
             title="Lợi nhuận có phần ước tính"
             description={
               data.kpis.estimatedSalesDays > 0
-                ? `${data.kpis.estimatedSalesDays} ngày chốt doanh thu đang dùng giá bán tham chiếu và định mức hiện có để ước tính giá vốn.`
-                : "Khi chốt doanh thu, hệ thống dùng giá bán tham chiếu và định mức hiện có để ước tính giá vốn."
+                ? `${data.kpis.estimatedSalesDays} ngày chốt doanh thu đang dùng doanh thu sữa tuyết, giá bán tham chiếu và định mức hiện có để ước tính giá vốn. Lợi nhuận sữa tươi chưa được cộng vì chưa có giá vốn theo chai.`
+                : "Khi chốt doanh thu, hệ thống chỉ dùng phần sữa tuyết để ước tính giá vốn. Doanh thu sữa tươi vẫn nằm trong tổng doanh thu nhưng chưa có lợi nhuận ước tính."
             }
             style={{ marginTop: 16 }}
           />

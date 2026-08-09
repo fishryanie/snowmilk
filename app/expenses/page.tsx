@@ -39,9 +39,59 @@ function calculateSterilizationValues(
   };
 }
 
+type ExpenseSelectionRecord = Record<string, unknown> & {
+  id?: string;
+  _id?: string;
+};
+
+async function settleSterilizationExpenses(records: ExpenseSelectionRecord[]) {
+  const invalidRecord = records.find(
+    (record) =>
+      record.category !== MILK_STERILIZATION_EXPENSE_CATEGORY ||
+      record.paymentStatus !== "unpaid",
+  );
+  if (invalidRecord) {
+    throw new Error(
+      "Chỉ chọn các khoản Tiệt trùng sữa đang ở trạng thái Chưa thanh toán.",
+    );
+  }
+  const ids = records.flatMap((record) => {
+    const id = record.id ?? record._id;
+    return id ? [String(id)] : [];
+  });
+  const response = await fetch("/api/expenses/settle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+  const body = (await response.json()) as {
+    success: boolean;
+    message: string;
+    data?: { expenses?: ExpenseSelectionRecord[] };
+  };
+  if (!response.ok || !body.success) throw new Error(body.message);
+  return {
+    records: body.data?.expenses ?? [],
+    message: body.message,
+  };
+}
+
 const fields = [
-  { key: "expenseDate", label: "Ngày", type: "date" as const, required: true },
-  { key: "category", label: "Nhóm chi phí", type: "select" as const, options: [...EXPENSE_CATEGORY_OPTIONS], required: true },
+  {
+    key: "expenseDate",
+    label: "Ngày",
+    type: "date" as const,
+    disabledWhenPresent: "sourcePurchaseId",
+    required: true,
+  },
+  {
+    key: "category",
+    label: "Nhóm chi phí",
+    type: "select" as const,
+    options: [...EXPENSE_CATEGORY_OPTIONS],
+    disabledWhenPresent: "sourcePurchaseId",
+    required: true,
+  },
   {
     key: "description",
     label: "Nội dung",
@@ -50,7 +100,17 @@ const fields = [
       equals: MILK_STERILIZATION_EXPENSE_CATEGORY,
     },
     hint: "Tự động gán khi chọn Tiệt trùng sữa",
+    disabledWhenPresent: "sourcePurchaseId",
     required: true,
+  },
+  {
+    key: "provider",
+    label: "Bên tiệt trùng",
+    visibleWhen: {
+      field: "category",
+      equals: MILK_STERILIZATION_EXPENSE_CATEGORY,
+    },
+    disabledWhenPresent: "sourcePurchaseId",
   },
   {
     key: "milkLiters",
@@ -65,6 +125,7 @@ const fields = [
       equals: MILK_STERILIZATION_EXPENSE_CATEGORY,
     },
     hiddenInTable: true,
+    disabledWhenPresent: "sourcePurchaseId",
     required: true,
   },
   {
@@ -77,6 +138,7 @@ const fields = [
       equals: MILK_STERILIZATION_EXPENSE_CATEGORY,
     },
     hiddenInTable: true,
+    disabledWhenPresent: "sourcePurchaseId",
     required: true,
   },
   {
@@ -88,7 +150,14 @@ const fields = [
       equals: MILK_STERILIZATION_EXPENSE_CATEGORY,
     },
     hint: "Tự động tính khi chọn Tiệt trùng sữa",
+    disabledWhenPresent: "sourcePurchaseId",
     required: true,
+  },
+  {
+    key: "paidAt",
+    label: "Ngày thanh toán",
+    type: "date" as const,
+    hiddenInEditor: true,
   },
   {
     key: "paymentStatus",
@@ -144,6 +213,12 @@ export default function ExpensesPage() {
         selectionPdfExportUrl="/api/export/expenses/pdf"
         selectionPdfFileName="hoa-don-chi-phi.pdf"
         selectionPdfLabel="Tạo hóa đơn PDF"
+        selectionQuantityField="milkLiters"
+        selectionQuantityLabel="Tổng sữa"
+        selectionQuantitySuffix=" lít"
+        selectionActionLabel="Đánh dấu đã thanh toán"
+        selectionActionConfirmTitle="Xác nhận đã thanh toán toàn bộ các khoản tiệt trùng được chọn?"
+        onSelectionAction={settleSterilizationExpenses}
         onEditorValuesChange={(changedValues, allValues) =>
           calculateSterilizationValues(changedValues, allValues)
         }

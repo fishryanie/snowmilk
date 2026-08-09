@@ -16,6 +16,26 @@ const ExpenseSchema = new Schema(
     description: { type: String, required: true, trim: true },
     milkLiters: { type: Number, min: 0 },
     milkUnitPrice: { type: Number, min: 0 },
+    provider: { type: String, trim: true },
+    accountingTreatment: {
+      type: String,
+      enum: ["operating_expense", "inventory_cost"],
+      default: "operating_expense",
+      required: true,
+      index: true,
+    },
+    sourceType: {
+      type: String,
+      enum: ["manual", "purchase_sterilization"],
+      default: "manual",
+      required: true,
+      index: true,
+    },
+    sourcePurchaseId: {
+      type: Schema.Types.ObjectId,
+      ref: "Purchase",
+      index: { unique: true, sparse: true },
+    },
     amount: { type: Number, min: 0, required: true },
     paymentStatus: {
       type: String,
@@ -24,6 +44,8 @@ const ExpenseSchema = new Schema(
       required: true,
       index: true,
     },
+    paidAt: Date,
+    paymentId: { type: Schema.Types.ObjectId, ref: "ExpensePayment" },
     fundingSource: {
       type: String,
       enum: PURCHASE_FUNDING_SOURCES,
@@ -47,6 +69,7 @@ if (
     !cachedExpenseModel.schema.path("paymentStatus") ||
     !cachedExpenseModel.schema.path("milkLiters") ||
     !cachedExpenseModel.schema.path("milkUnitPrice") ||
+    !cachedExpenseModel.schema.path("accountingTreatment") ||
     Boolean(cachedExpenseModel.schema.path("paymentMethod")))
 ) {
   mongoose.deleteModel("Expense");

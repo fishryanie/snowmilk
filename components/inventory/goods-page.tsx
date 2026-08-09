@@ -7,7 +7,7 @@ import { InventoryWorkspace } from "@/components/inventory/inventory-workspace";
 import { workbookIngredients } from "@/lib/workbook-snapshot";
 
 const fields = [
-  { key: "code", label: "Mã", required: true },
+  { key: "code", label: "Mã hàng hóa", editable: false },
   { key: "name", label: "Tên hàng", required: true },
   {
     key: "category",
@@ -90,6 +90,7 @@ export function GoodsPage({
                 fields={fields}
                 initialData={workbookIngredients}
                 addLabel="Thêm hàng hóa"
+                editorColumns={2}
               />
             ),
           },

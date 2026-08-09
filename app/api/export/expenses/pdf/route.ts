@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     const objectIds = parsed.data.ids.map((id) => new mongoose.Types.ObjectId(id));
     const records = (await Expense.find({ _id: { $in: objectIds } })
       .select(
-        "expenseDate category description milkLiters milkUnitPrice amount",
+        "expenseDate category description milkLiters milkUnitPrice provider amount",
       )
       .lean()) as Array<{
       _id: mongoose.Types.ObjectId;
@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       description: string;
       milkLiters?: number;
       milkUnitPrice?: number;
+      provider?: string;
       amount: number;
     }>;
     const recordById = new Map(records.map((record) => [String(record._id), record]));
@@ -45,6 +46,7 @@ export async function POST(request: Request) {
               description: record.description,
               milkLiters: record.milkLiters,
               milkUnitPrice: record.milkUnitPrice,
+              provider: record.provider,
               amount: Number(record.amount ?? 0),
             } satisfies ExpensePdfRecord,
           ]

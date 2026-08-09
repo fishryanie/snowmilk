@@ -11,6 +11,7 @@ export type ExpensePdfRecord = {
   description: string;
   milkLiters?: number;
   milkUnitPrice?: number;
+  provider?: string;
   amount: number;
 };
 
@@ -114,7 +115,9 @@ function rowValues(record: ExpensePdfRecord, index: number) {
   return {
     index: String(index + 1),
     date: formatDate(record.expenseDate),
-    description: `${record.description || "-"}${milkDetail}`.replaceAll(
+    description: `${record.description || "-"}${
+      record.provider ? `\nBên nhận: ${record.provider}` : ""
+    }${milkDetail}`.replaceAll(
       "₫",
       "đ",
     ),
@@ -171,9 +174,18 @@ function addSummary(
   y: number,
 ) {
   const total = records.reduce((sum, record) => sum + Number(record.amount ?? 0), 0);
+  const totalMilkLiters = records.reduce(
+    (sum, record) => sum + Number(record.milkLiters ?? 0),
+    0,
+  );
   const boxX = 310;
   const boxWidth = doc.page.width - PAGE_MARGIN - boxX;
-  const rows = [["Số khoản chi", formatNumber(records.length)]];
+  const rows = [
+    ["Số khoản chi", formatNumber(records.length)],
+    ...(totalMilkLiters > 0
+      ? [["Tổng sữa", `${formatNumber(totalMilkLiters)} lít`]]
+      : []),
+  ];
   for (const [label, value] of rows) {
     doc
       .fillColor(MUTED_COLOR)

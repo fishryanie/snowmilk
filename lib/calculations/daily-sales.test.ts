@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   calculateDailySaleEstimate,
   calculateDailySaleEstimateFromRevenue,
+  deriveDailyRevenueSplit,
   estimateSizeQuantitiesFromRevenue,
   type DailySaleAssumption,
 } from "./daily-sales";
@@ -38,6 +39,16 @@ const assumptions: DailySaleAssumption[] = [
 ];
 
 describe("daily sales estimated only from revenue", () => {
+  test("derives product revenue from total cash and fresh-milk bottles", () => {
+    expect(deriveDailyRevenueSplit(6_230_000, 23, 20_000)).toEqual({
+      totalRevenue: 6_230_000,
+      snowMilkRevenue: 5_770_000,
+      freshMilkRevenue: 460_000,
+      freshMilkBottleCount: 23,
+      freshMilkBottleUnitPrice: 20_000,
+    });
+  });
+
   test("finds the closest neutral M/L mix for the entered revenue", () => {
     expect(
       estimateSizeQuantitiesFromRevenue(6_205_000, assumptions),

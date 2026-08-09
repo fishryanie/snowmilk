@@ -8,6 +8,7 @@ import { vietnamDateKey, vietnamDayBoundary } from "@/lib/vietnam-date";
 import { Divestment } from "@/models/Divestment";
 import { Equipment } from "@/models/Equipment";
 import { Expense } from "@/models/Expense";
+import { paidExpenseFilter } from "@/lib/expense-payment-status";
 import { PayrollEmployee } from "@/models/PayrollEmployee";
 import { PayrollPeriodSettlement } from "@/models/PayrollPeriodSettlement";
 import { PayrollWithdrawal } from "@/models/PayrollWithdrawal";
@@ -187,7 +188,7 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
     Purchase.find({})
       .select("purchaseDate totalAmount fundingSource")
       .lean<CostRecord[]>(),
-    Expense.find({})
+    Expense.find(paidExpenseFilter)
       .select("expenseDate amount fundingSource")
       .lean<CostRecord[]>(),
     Equipment.find({})

@@ -13,6 +13,7 @@ import { Product } from "@/models/Product";
 import { Purchase } from "@/models/Purchase";
 import { Sale } from "@/models/Sale";
 import { ProductSize } from "@/models/Size";
+import { isExpensePaid } from "@/lib/expense-payment-status";
 import {
   isVietnamDateKey,
   vietnamDateKey,
@@ -28,9 +29,13 @@ type DashboardSizeSummary = {
 type DashboardDailySummary = {
   date: string;
   revenue: number;
+  snowMilkRevenue: number;
+  freshMilkRevenue: number;
+  freshMilkBottleCount: number;
   cups: number;
   purchaseTotal: number;
   expenseTotal: number;
+  cashExpenseTotal: number;
   equipmentTotal: number;
 };
 
@@ -46,9 +51,13 @@ function emptyDailySummary(date: string): DashboardDailySummary {
   return {
     date,
     revenue: 0,
+    snowMilkRevenue: 0,
+    freshMilkRevenue: 0,
+    freshMilkBottleCount: 0,
     cups: 0,
     purchaseTotal: 0,
     expenseTotal: 0,
+    cashExpenseTotal: 0,
     equipmentTotal: 0,
   };
 }
@@ -105,6 +114,15 @@ export async function GET(request: Request) {
           { $group: { _id: null, total: { $sum: "$totalAmount" } } },
         ]),
         Expense.aggregate([
+          {
+            $match: {
+              $or: [
+                { paymentStatus: "paid" },
+                { paymentStatus: { $exists: false } },
+                { paymentStatus: null },
+              ],
+            },
+          },
           { $group: { _id: null, total: { $sum: "$amount" } } },
         ]),
         Purchase.aggregate([
@@ -112,7 +130,16 @@ export async function GET(request: Request) {
           { $group: { _id: null, total: { $sum: "$totalAmount" } } },
         ]),
         Expense.aggregate([
-          { $match: { fundingSource: "sales_revenue" } },
+          {
+            $match: {
+              fundingSource: "sales_revenue",
+              $or: [
+                { paymentStatus: "paid" },
+                { paymentStatus: { $exists: false } },
+                { paymentStatus: null },
+              ],
+            },
+          },
           { $group: { _id: null, total: { $sum: "$amount" } } },
         ]),
         Equipment.aggregate([
@@ -121,7 +148,7 @@ export async function GET(request: Request) {
         ]),
         Sale.find({})
           .select(
-            "saleDate entryMode netRevenue cashReceived bankTransferReceived",
+            "saleDate entryMode netRevenue snowMilkRevenue freshMilkRevenue freshMilkBottleCount cashReceived bankTransferReceived",
           )
           .lean(),
         Purchase.find({})
@@ -178,8 +205,29 @@ export async function GET(request: Request) {
     });
     const totals = effectiveSales.reduce(
       (acc, sale) => {
+        const saleFreshMilkRevenue =
+          sale.entryMode === "daily-summary"
+            ? Number(sale.freshMilkRevenue ?? 0)
+            : 0;
+        const saleSnowMilkRevenue =
+          sale.entryMode === "daily-summary"
+            ? Number(
+                sale.snowMilkRevenue ??
+                  Math.max(
+                    0,
+                    Number(sale.netRevenue ?? 0) - saleFreshMilkRevenue,
+                  ),
+              )
+            : Number(sale.netRevenue ?? 0);
+        const saleFreshMilkBottleCount =
+          sale.entryMode === "daily-summary"
+            ? Number(sale.freshMilkBottleCount ?? 0)
+            : 0;
         acc.totalCups += sale.totalCups ?? 0;
         acc.revenue += sale.netRevenue ?? 0;
+        acc.snowMilkRevenue += saleSnowMilkRevenue;
+        acc.freshMilkRevenue += saleFreshMilkRevenue;
+        acc.freshMilkBottleCount += saleFreshMilkBottleCount;
         acc.variableCost += sale.totalVariableCost ?? 0;
         acc.allocatedFixedCost += sale.allocatedFixedCost ?? 0;
         acc.profit +=
@@ -187,7 +235,7 @@ export async function GET(request: Request) {
             ? (sale.estimatedProfit ?? sale.contributionProfit ?? 0)
             : (sale.contributionProfit ?? 0);
         if (sale.entryMode === "daily-summary") {
-          acc.estimatedSalesDays += 1;
+          acc.estimatedSalesDays += saleSnowMilkRevenue > 0 ? 1 : 0;
           const sizeWeights = (
             (sale.sizeSummaries ?? []) as DashboardSizeSummary[]
           ).map((summary) => ({
@@ -209,9 +257,19 @@ export async function GET(request: Request) {
             current.cups += summary.quantity;
             current.revenue +=
               totalWeight > 0
-                ? (Number(sale.netRevenue ?? 0) * summary.weight) / totalWeight
+                ? (saleSnowMilkRevenue * summary.weight) / totalWeight
                 : 0;
             acc.products.set(summary.sizeName, current);
+          }
+          if (saleFreshMilkRevenue > 0 || saleFreshMilkBottleCount > 0) {
+            const current = acc.products.get("Sữa tươi") ?? {
+              product: "Sữa tươi",
+              cups: 0,
+              revenue: 0,
+            };
+            current.cups += saleFreshMilkBottleCount;
+            current.revenue += saleFreshMilkRevenue;
+            acc.products.set("Sữa tươi", current);
           }
         } else {
           for (const item of sale.items ?? []) {
@@ -228,6 +286,9 @@ export async function GET(request: Request) {
         const day = vietnamDateKey(new Date(sale.saleDate));
         const daily = acc.daily.get(day) ?? emptyDailySummary(day);
         daily.revenue += sale.netRevenue ?? 0;
+        daily.snowMilkRevenue += saleSnowMilkRevenue;
+        daily.freshMilkRevenue += saleFreshMilkRevenue;
+        daily.freshMilkBottleCount += saleFreshMilkBottleCount;
         daily.cups += sale.totalCups ?? 0;
         acc.daily.set(day, daily);
         return acc;
@@ -235,6 +296,9 @@ export async function GET(request: Request) {
       {
         totalCups: 0,
         revenue: 0,
+        snowMilkRevenue: 0,
+        freshMilkRevenue: 0,
+        freshMilkBottleCount: 0,
         variableCost: 0,
         allocatedFixedCost: 0,
         profit: 0,
@@ -253,16 +317,25 @@ export async function GET(request: Request) {
       },
       0,
     );
-    const expenseTotal = expenses.reduce(
-      (sum, expense) => {
+    const expenseTotals = expenses.reduce(
+      (summary, expense) => {
+        const amount = Number(expense.amount ?? 0);
         const day = vietnamDateKey(new Date(expense.expenseDate));
         const daily = totals.daily.get(day) ?? emptyDailySummary(day);
-        daily.expenseTotal += expense.amount ?? 0;
+        daily.expenseTotal += amount;
+        if (isExpensePaid(expense)) daily.cashExpenseTotal += amount;
         totals.daily.set(day, daily);
-        return sum + (expense.amount ?? 0);
+        summary.total += amount;
+        if (isExpensePaid(expense)) summary.paid += amount;
+        if (expense.accountingTreatment !== "inventory_cost") {
+          summary.operating += amount;
+        }
+        return summary;
       },
-      0,
+      { total: 0, paid: 0, operating: 0 },
     );
+    const expenseTotal = expenseTotals.total;
+    const cashExpenseTotal = expenseTotals.paid;
     const equipmentTotal = equipment.reduce(
       (sum, item) => {
         const day = vietnamDateKey(new Date(item.purchaseDate));
@@ -308,8 +381,8 @@ export async function GET(request: Request) {
       withdrawnTotal,
     );
     const remainingCapital = capitalRecovery.remainingCapital;
-    const estimatedProfit = totals.profit - expenseTotal;
-    const cashOut = purchaseTotal + expenseTotal + equipmentTotal;
+    const estimatedProfit = totals.profit - expenseTotals.operating;
+    const cashOut = purchaseTotal + cashExpenseTotal + equipmentTotal;
     const netCashFlow = totals.revenue - cashOut;
     const periodDays = Math.max(
       1,
@@ -319,7 +392,7 @@ export async function GET(request: Request) {
       .sort((a, b) => a.date.localeCompare(b.date))
       .map((item) => {
         const dailyCashOut =
-          item.purchaseTotal + item.expenseTotal + item.equipmentTotal;
+          item.purchaseTotal + item.cashExpenseTotal + item.equipmentTotal;
         return {
           ...item,
           cashIn: item.revenue,
@@ -365,7 +438,7 @@ export async function GET(request: Request) {
       recordedCashBalance: businessCash.remainingBalance,
       remainingCapital,
       periodRevenue: totals.revenue,
-      periodOperatingCashOut: purchaseTotal + expenseTotal,
+      periodOperatingCashOut: purchaseTotal + cashExpenseTotal,
       periodDays,
       salesDays,
     });
@@ -529,10 +602,16 @@ export async function GET(request: Request) {
       },
       kpis: {
         revenue: totals.revenue,
+        snowMilkRevenue: totals.snowMilkRevenue,
+        freshMilkRevenue: totals.freshMilkRevenue,
+        freshMilkBottleCount: totals.freshMilkBottleCount,
         totalCups: totals.totalCups,
         businessCashBalance: businessCash.remainingBalance,
         purchaseTotal,
         expenseTotal,
+        operatingExpenseTotal: expenseTotals.operating,
+        cashExpenseTotal,
+        outstandingExpenseTotal: Math.max(0, expenseTotal - cashExpenseTotal),
         variableCost: totals.variableCost,
         allocatedFixedCost: totals.allocatedFixedCost,
         estimatedProfit,

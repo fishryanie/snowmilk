@@ -6,6 +6,7 @@ export type PurchaseQuantityRecord = {
   convertedQuantity?: number | null;
   costUnit?: string | null;
   totalAmount?: number | null;
+  inventoryCostAmount?: number | null;
 };
 
 export type PurchaseSummary = {
@@ -43,7 +44,9 @@ export function summarizePurchases(
         purchaseQuantityInUnit(purchase, targetUnit),
       totalPurchasedAmount:
         summary.totalPurchasedAmount +
-        finiteNumber(purchase.totalAmount),
+        finiteNumber(
+          purchase.inventoryCostAmount ?? purchase.totalAmount,
+        ),
     }),
     {
       totalPurchasedPackages: 0,

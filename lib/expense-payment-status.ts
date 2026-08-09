@@ -17,3 +17,19 @@ export const EXPENSE_PAYMENT_STATUS_OPTIONS = [
   label: string;
   color: string;
 }>;
+
+export function isExpensePaid(record: { paymentStatus?: unknown }) {
+  return (
+    record.paymentStatus === undefined ||
+    record.paymentStatus === null ||
+    record.paymentStatus === "paid"
+  );
+}
+
+export const paidExpenseFilter = {
+  $or: [
+    { paymentStatus: "paid" },
+    { paymentStatus: { $exists: false } },
+    { paymentStatus: null },
+  ],
+};

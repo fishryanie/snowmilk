@@ -16,6 +16,7 @@ import { vietnamDateKey } from "@/lib/vietnam-date";
 import { Divestment } from "@/models/Divestment";
 import { Equipment } from "@/models/Equipment";
 import { Expense } from "@/models/Expense";
+import { paidExpenseFilter } from "@/lib/expense-payment-status";
 import { Purchase } from "@/models/Purchase";
 import { Sale } from "@/models/Sale";
 
@@ -107,7 +108,7 @@ async function buildClaimContext() {
       Equipment.find({})
         .select("purchaseDate code name category totalAmount fundingSource")
         .lean<EquipmentRecord[]>(),
-      Expense.find({})
+      Expense.find(paidExpenseFilter)
         .select("amount fundingSource")
         .lean<ExpenseRecord[]>(),
       Divestment.find({})

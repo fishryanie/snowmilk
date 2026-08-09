@@ -18,7 +18,7 @@ Trường chính: `code`, `name`, `toppingIngredientId`, `sizeId`, `toppingName`
 
 ### `purchases`
 
-Ánh xạ sheet `Nhập hàng`: client gửi ngày, `ingredientId`, số gói, tổng tiền thực trả, `fundingSource`, nhà cung cấp và ghi chú. `fundingSource` nhận `sales_revenue`, `owner_capital`, `loan` hoặc `other`; dữ liệu cũ và dữ liệu nhập từ Excel mặc định là `owner_capital`. API chụp tên/mã/nhóm/quy cách từ `ingredients`, tự tính lượng quy đổi và giá thực tế mỗi gói, rồi tính lại `ingredients.averageUnitCost`.
+Ánh xạ sheet `Nhập hàng`: client gửi ngày, `ingredientId`, số gói, tổng tiền thực trả, `fundingSource`, nhà cung cấp và ghi chú. Với hàng hóa sữa tươi tính theo lít, phiếu nhập còn lưu số lít thuê/tự tiệt trùng, đơn giá, bên nhận, chi phí dịch vụ, `inventoryCostAmount`, `landedUnitCost` và liên kết `sterilizationExpenseId`. `fundingSource` nhận `sales_revenue`, `owner_capital`, `loan` hoặc `other`; dữ liệu cũ và dữ liệu nhập từ Excel mặc định là `owner_capital`. API chụp tên/mã/nhóm/quy cách từ `ingredients`, tự tính lượng quy đổi và giá thực tế mỗi gói, rồi tính lại `ingredients.averageUnitCost` từ giá trị tồn kho đã gồm chi phí tiệt trùng.
 
 ### `milkbatches`
 
@@ -34,7 +34,11 @@ Một document cho mỗi tổ hợp ngày + mẻ + phương thức thanh toán. 
 
 ### `expenses`
 
-Chi phí ngoài nhập hàng/tài sản: điện, nước, mặt bằng, vận chuyển, marketing, sửa chữa hoặc khác. Mỗi chi phí ghi `paymentStatus` (`paid` hoặc `unpaid`) và `fundingSource`; bản ghi cũ không có trạng thái được coi là `paid`, không có nguồn tiền được coi là `owner_capital`. Workbook chưa có sheet riêng nên collection khởi tạo rỗng.
+Chi phí ngoài nhập hàng/tài sản: điện, nước, mặt bằng, vận chuyển, marketing, sửa chữa hoặc khác. Mỗi chi phí ghi `paymentStatus` (`paid` hoặc `unpaid`) và `fundingSource`; bản ghi cũ không có trạng thái được coi là `paid`, không có nguồn tiền được coi là `owner_capital`. Chi phí tiệt trùng tự sinh từ phiếu nhập có `sourceType=purchase_sterilization`, `sourcePurchaseId`, `provider` và `accountingTreatment=inventory_cost`; nó là công nợ nhưng không được trừ thêm khỏi lợi nhuận sau khi đã vốn hóa vào hàng tồn kho.
+
+### `expensepayments`
+
+Chứng từ gom các khoản tiệt trùng được thanh toán cùng lúc. Lưu ngày trả, bên nhận, nguồn tiền, tổng số lít, tổng tiền và `lines[]` tham chiếu từng expense/phiếu nhập. Một lần thanh toán có thể chốt nhiều khoản cuối tuần; các expense tương ứng được chuyển sang `paid` và lưu `paymentId`, `paidAt`.
 
 ### `payrollperiodsettlements`
 

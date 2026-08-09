@@ -76,6 +76,10 @@ const SaleSchema = new Schema(
     grossRevenue: { type: Number, min: 0, default: 0 },
     discountAmount: { type: Number, min: 0, default: 0 },
     netRevenue: { type: Number, default: 0 },
+    snowMilkRevenue: { type: Number, min: 0, default: 0 },
+    freshMilkRevenue: { type: Number, min: 0, default: 0 },
+    freshMilkBottleCount: { type: Number, min: 0, default: 0 },
+    freshMilkBottleUnitPrice: { type: Number, min: 0, default: 0 },
     cashReceived: { type: Number, min: 0, default: null },
     bankTransferReceived: { type: Number, min: 0, default: null },
     averageRevenuePerCup: { type: Number, min: 0, default: 0 },
@@ -112,6 +116,10 @@ if (
   cachedSaleModel &&
   (!cachedSaleModel.schema.path("cashReceived") ||
     !cachedSaleModel.schema.path("bankTransferReceived") ||
+    !cachedSaleModel.schema.path("snowMilkRevenue") ||
+    !cachedSaleModel.schema.path("freshMilkRevenue") ||
+    !cachedSaleModel.schema.path("freshMilkBottleCount") ||
+    !cachedSaleModel.schema.path("freshMilkBottleUnitPrice") ||
     !cachedCupCountSourcePath?.enumValues?.includes("actual-total"))
 ) {
   mongoose.deleteModel("Sale");

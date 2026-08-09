@@ -59,7 +59,7 @@ export const workbookDashboard = {
     lastSaleDate: null as string | null,
     lastInventoryDate: null as string | null,
   },
-  kpis: { revenue: 0, totalCups: 0, businessCashBalance: 0, purchaseTotal: 2_677_500, expenseTotal: 0, variableCost: 0, allocatedFixedCost: 0, estimatedProfit: 0, averageCostPerCup: 0, investmentTotal: 5_314_700, withdrawnTotal: 0, remainingCapital: 5_314_700, capitalRecoveryRate: 0, capitalRecoveryBalance: -5_314_700, activeProducts: 10, estimatedSalesDays: 0, cashIn: 0, cashOut: 5_314_700, netCashFlow: -5_314_700, equipmentTotal: 2_637_200, averageDailyCashOut: 253_080.9524, positiveCashFlowDays: 0, activeCashFlowDays: 1 },
+  kpis: { revenue: 0, snowMilkRevenue: 0, freshMilkRevenue: 0, freshMilkBottleCount: 0, totalCups: 0, businessCashBalance: 0, purchaseTotal: 2_677_500, expenseTotal: 0, variableCost: 0, allocatedFixedCost: 0, estimatedProfit: 0, averageCostPerCup: 0, investmentTotal: 5_314_700, withdrawnTotal: 0, remainingCapital: 5_314_700, capitalRecoveryRate: 0, capitalRecoveryBalance: -5_314_700, activeProducts: 10, estimatedSalesDays: 0, cashIn: 0, cashOut: 5_314_700, netCashFlow: -5_314_700, equipmentTotal: 2_637_200, averageDailyCashOut: 253_080.9524, positiveCashFlowDays: 0, activeCashFlowDays: 1 },
   divestmentSuggestion: calculateDivestmentSuggestion({
     cumulativeCashIn: 0,
     cumulativeCashOut: 5_314_700,
@@ -70,7 +70,7 @@ export const workbookDashboard = {
     periodDays: 21,
     salesDays: 0,
   }),
-  daily: [{ date: "2026-07-21", revenue: 0, cups: 0, purchaseTotal: 2_677_500, expenseTotal: 0, equipmentTotal: 490_000, cashIn: 0, cashOut: 3_167_500, netCashFlow: -3_167_500 }],
+  daily: [{ date: "2026-07-21", revenue: 0, snowMilkRevenue: 0, freshMilkRevenue: 0, freshMilkBottleCount: 0, cups: 0, purchaseTotal: 2_677_500, expenseTotal: 0, equipmentTotal: 490_000, cashIn: 0, cashOut: 3_167_500, netCashFlow: -3_167_500 }],
   products: [] as Array<{ product: string; cups: number; revenue: number }>,
 };
 import { calculateDivestmentSuggestion } from "./calculations/divestment-suggestion";
