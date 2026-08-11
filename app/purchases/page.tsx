@@ -6,6 +6,7 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
+  FilePdfOutlined,
   FilterOutlined,
   InboxOutlined,
   PlusOutlined,
@@ -159,6 +160,7 @@ export default function PurchasesPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Purchase | null>(null);
   const [saving, setSaving] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [selectedPurchaseKeys, setSelectedPurchaseKeys] = useState<Key[]>([]);
   const [mobilePage, setMobilePage] = useState(1);
@@ -440,6 +442,65 @@ export default function PurchasesPage() {
     });
   }
 
+  async function exportFilteredPdf() {
+    if (visiblePurchases.length === 0) {
+      message.warning('Không có lần nhập hàng phù hợp để xuất PDF');
+      return;
+    }
+
+    setExportingPdf(true);
+    try {
+      const response = await fetch('/api/export/purchases/pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filters: {
+            query: query.trim() || undefined,
+            dateFrom: dateRange?.[0],
+            dateTo: dateRange?.[1],
+            category: categoryFilter,
+            fundingSource: fundingSourceFilter,
+          },
+          purchases: visiblePurchases.map(purchase => ({
+            purchaseDate: purchase.purchaseDate,
+            itemCode: purchase.itemCode,
+            itemName: purchase.itemName,
+            category: purchase.category,
+            packageCount: Number(purchase.packageCount ?? 0),
+            packageQuantity: Number(purchase.packageQuantity ?? 0),
+            costUnit: purchase.costUnit,
+            actualPackagePrice: Number(purchase.actualPackagePrice ?? 0),
+            convertedQuantity: Number(purchase.convertedQuantity ?? 0),
+            totalAmount: Number(purchase.totalAmount ?? 0),
+            fundingSource: purchase.fundingSource ?? undefined,
+            supplier: purchase.supplier,
+          })),
+        }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as
+          | { message?: string }
+          | null;
+        throw new Error(body?.message ?? 'Không thể tạo file PDF');
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = 'danh-sach-nhap-hang.pdf';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      message.success(`Đã tải PDF ${formatNumber(visiblePurchases.length)} lần nhập`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Không thể tạo file PDF');
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   function openEditor(record?: Purchase) {
     const ingredient = record ? ingredients.find(item => recordId(item) === String(record.ingredientId ?? '') || item.code === record.itemCode) : undefined;
     setEditing(record ?? null);
@@ -678,6 +739,13 @@ export default function PurchasesPage() {
               <Button icon={<DownloadOutlined />} href='/api/export/purchases' target='_blank'>
                 Xuất Excel
               </Button>
+              <Button
+                icon={<FilePdfOutlined />}
+                disabled={visiblePurchases.length === 0}
+                loading={exportingPdf}
+                onClick={exportFilteredPdf}>
+                Xuất PDF
+              </Button>
             </div>
           </div>
           
@@ -703,6 +771,13 @@ export default function PurchasesPage() {
           <Space>
             <Button icon={<DownloadOutlined />} href='/api/export/purchases' target='_blank'>
               Xuất Excel
+            </Button>
+            <Button
+              icon={<FilePdfOutlined />}
+              disabled={visiblePurchases.length === 0}
+              loading={exportingPdf}
+              onClick={exportFilteredPdf}>
+              Xuất PDF
             </Button>
             <Button type='primary' icon={<PlusOutlined />} onClick={() => openEditor()}>
               Thêm lần nhập

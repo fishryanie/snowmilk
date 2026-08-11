@@ -56,7 +56,7 @@ type DashboardData = Omit<typeof workbookDashboard, "health"> & {
       severity: "error" | "warning" | "info";
       title: string;
       description: string;
-      href: string;
+      href?: string;
     }>;
     lastSaleDate: string | null;
     lastInventoryDate: string | null;
@@ -359,9 +359,11 @@ export default function DashboardPage() {
                   <Text strong>{issue.title}</Text>
                   <Text type="secondary">{issue.description}</Text>
                 </div>
-                <Button href={issue.href} size="small">
-                  Kiểm tra
-                </Button>
+                {issue.href ? (
+                  <Button href={issue.href} size="small">
+                    Kiểm tra
+                  </Button>
+                ) : null}
               </div>
             ))}
           </div>

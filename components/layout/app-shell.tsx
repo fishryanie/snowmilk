@@ -4,7 +4,6 @@ import {
   AppstoreOutlined,
   BarChartOutlined,
   CalculatorOutlined,
-  CloudUploadOutlined,
   DollarOutlined,
   ExperimentOutlined,
   MenuFoldOutlined,
@@ -43,7 +42,6 @@ const menuDefinitions: Array<{ key: string; icon: ReactNode; label: string; page
   { key: '/sizes', icon: <ColumnWidthOutlined />, label: 'Size' },
   { key: '/costing', icon: <CalculatorOutlined />, label: 'Giá vốn', pageTitle: 'Công thức & giá vốn' },
   { key: '/equipment', icon: <ToolOutlined />, label: 'Tài sản', pageTitle: 'Đầu tư & tài sản' },
-  { key: '/import', icon: <CloudUploadOutlined />, label: 'Nhập Excel', pageTitle: 'Nhập dữ liệu Excel' },
   { key: '/settings', icon: <SettingOutlined />, label: 'Cài đặt', pageTitle: 'Cài đặt chi phí' },
 ];
 

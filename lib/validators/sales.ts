@@ -10,9 +10,6 @@ export const dailySaleSchema = z
       .string()
       .regex(/^[a-f\d]{24}$/i, "Mẻ sữa không hợp lệ")
       .optional(),
-    totalRevenue: z.coerce.number().int().positive(
-      "Tổng tiền cuối ngày phải lớn hơn 0",
-    ),
     freshMilkBottleCount: z.coerce.number().int().min(0),
     cashReceived: z.coerce.number().int().min(0),
     bankTransferReceived: z.coerce.number().int().min(0),
@@ -20,15 +17,11 @@ export const dailySaleSchema = z
     overwrite: z.boolean().optional().default(false),
   })
   .superRefine((input, context) => {
-    if (
-      input.cashReceived + input.bankTransferReceived !==
-      input.totalRevenue
-    ) {
+    if (input.cashReceived + input.bankTransferReceived <= 0) {
       context.addIssue({
         code: "custom",
         path: ["cashReceived"],
-        message:
-          "Tiền mặt cộng chuyển khoản phải bằng tổng doanh thu",
+        message: "Tổng tiền mặt và chuyển khoản phải lớn hơn 0",
       });
     }
   })

@@ -159,12 +159,12 @@ export async function POST(request: Request) {
     const {
       overwrite,
       batchId,
-      totalRevenue,
       freshMilkBottleCount,
       cashReceived,
       bankTransferReceived,
       ...input
     } = parsed.data;
+    const totalRevenue = cashReceived + bankTransferReceived;
     const context = await dailySaleContext(batchId);
     const freshMilkBottleUnitPrice = Number(
       context.freshMilkProduct?.sellingPrice ?? 0,

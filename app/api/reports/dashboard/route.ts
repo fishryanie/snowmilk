@@ -44,7 +44,7 @@ type HealthIssue = {
   severity: "error" | "warning" | "info";
   title: string;
   description: string;
-  href: string;
+  href?: string;
 };
 
 function emptyDailySummary(date: string): DashboardDailySummary {

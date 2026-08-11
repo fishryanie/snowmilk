@@ -53,7 +53,6 @@ export const workbookDashboard = {
         title: "Đang dùng snapshot từ workbook",
         description:
           "Kết nối MongoDB chưa sẵn sàng nên không thể xác nhận dữ liệu vận hành mới nhất.",
-        href: "/import",
       },
     ],
     lastSaleDate: null as string | null,
