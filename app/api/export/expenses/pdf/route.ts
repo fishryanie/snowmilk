@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { z } from "zod";
 import { apiError, errorMessage } from "@/lib/api-response";
+import { loadBusinessProfile } from "@/lib/business-profile.server";
 import { connectMongo } from "@/lib/mongodb";
 import { createExpensePdf, type ExpensePdfRecord } from "@/lib/expense-pdf";
 import { Expense } from "@/models/Expense";
@@ -56,7 +57,8 @@ export async function POST(request: Request) {
       return apiError("Không tìm thấy chi phí đã chọn", 404);
     }
 
-    const pdf = await createExpensePdf(orderedRecords);
+    const businessProfile = await loadBusinessProfile();
+    const pdf = await createExpensePdf(orderedRecords, { businessProfile });
     return new Response(new Uint8Array(pdf), {
       headers: {
         "Content-Type": "application/pdf",

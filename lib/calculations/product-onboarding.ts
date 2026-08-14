@@ -50,19 +50,18 @@ export function calculateSterilizationCost(
 }
 
 export function calculateOnboardingProductCost(input: {
-  recipeCostPerMl: number;
-  servingMl: number;
+  milkCost: number;
+  toppingCost: number;
   packagingCost: number;
   overheadRate: number;
   allocatedFixedCost: number;
 }) {
-  const recipeCost = input.recipeCostPerMl * input.servingMl;
   const costs = calculateProductCost({
-    milkCost: recipeCost,
-    toppingCost: 0,
+    milkCost: input.milkCost,
+    toppingCost: input.toppingCost,
     packagingCost: input.packagingCost,
     overheadRate: input.overheadRate,
     allocatedFixedCost: input.allocatedFixedCost,
   });
-  return { recipeCost, ...costs };
+  return { recipeCost: input.milkCost, ...costs };
 }

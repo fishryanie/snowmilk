@@ -2,6 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import PDFDocument from "pdfkit";
 import { formatDate, formatNumber } from "@/lib/formatters";
+import {
+  DEFAULT_BUSINESS_PROFILE,
+  type BusinessProfile,
+} from "@/lib/business-profile";
 import type { PayrollPayslipSnapshot } from "@/lib/payroll-payslip";
 
 export type PayrollPayslipPdfData = {
@@ -16,14 +20,13 @@ export type PayrollPayslipPdfData = {
   isPreview?: boolean;
 };
 
-const BRAND_COLOR = "#16645a";
-const INK_COLOR = "#17343b";
-const MUTED_COLOR = "#60767b";
+const BRAND_COLOR = DEFAULT_BUSINESS_PROFILE.brandColors.terracotta;
+const INK_COLOR = DEFAULT_BUSINESS_PROFILE.brandColors.ink;
+const MUTED_COLOR = DEFAULT_BUSINESS_PROFILE.brandColors.green;
 const LINE_COLOR = "#d9e4e1";
-const LIGHT_COLOR = "#eef6f4";
+const LIGHT_COLOR = DEFAULT_BUSINESS_PROFILE.brandColors.cream;
 const PAGE_MARGIN = 42;
 const CONTENT_WIDTH = 511;
-const BUSINESS_NAME = "SỮA TUYẾT VÂN NAM";
 
 function currency(value: number) {
   return `${formatNumber(value)} đ`;
@@ -126,7 +129,11 @@ function calculationRow(
   return y + (total ? 22 : 19);
 }
 
-function addHeader(doc: PDFKit.PDFDocument, data: PayrollPayslipPdfData) {
+function addHeader(
+  doc: PDFKit.PDFDocument,
+  data: PayrollPayslipPdfData,
+  businessName: string,
+) {
   const reference = data.id.slice(-8).toUpperCase();
   const statusLabel = data.isPreview
     ? "BẢN XEM TRƯỚC - CHƯA CHI"
@@ -135,7 +142,7 @@ function addHeader(doc: PDFKit.PDFDocument, data: PayrollPayslipPdfData) {
   doc
     .fillColor(BRAND_COLOR)
     .fontSize(16)
-    .text(BUSINESS_NAME, PAGE_MARGIN, 38, {
+    .text(businessName, PAGE_MARGIN, 38, {
       width: 300,
       lineBreak: false,
     })
@@ -240,7 +247,7 @@ function addExplanation(
   y: number,
 ) {
   const snapshot = data.snapshot;
-  y = sectionTitle(doc, "1", "Nguồn hình thành tiền doanh nghiệp", y);
+  y = sectionTitle(doc, "1", "Nguồn hình thành tiền tiệm", y);
   y = calculationRow(doc, {
     label: "Doanh thu bán hàng lũy kế",
     value: snapshot.cumulativeRevenue,
@@ -248,13 +255,13 @@ function addExplanation(
     y,
   });
   y = calculationRow(doc, {
-    label: "Các khoản đã chi từ tiền doanh nghiệp",
+    label: "Các khoản đã chi từ tiền tiệm",
     value: snapshot.companyFundedOutflow,
     operator: "-",
     y,
   });
   y = calculationRow(doc, {
-    label: "Số dư tiền doanh nghiệp",
+    label: "Số dư tiền tiệm",
     value: snapshot.businessCashBalance,
     total: true,
     y,
@@ -263,13 +270,13 @@ function addExplanation(
   y += 5;
   y = sectionTitle(doc, "2", `Cách xác định quỹ có thể chia tháng ${periodLabel(data.period)}`, y);
   y = calculationRow(doc, {
-    label: "Số dư tiền doanh nghiệp",
+    label: "Số dư tiền tiệm",
     value: snapshot.businessCashBalance,
     operator: "+",
     y,
   });
   y = calculationRow(doc, {
-    label: "Vốn chủ chưa hoàn lại",
+    label: "Tiền cá nhân chưa hoàn lại",
     value: snapshot.outstandingOwnerCapital,
     operator: "-",
     y,
@@ -281,7 +288,7 @@ function addExplanation(
     y,
   });
   y = calculationRow(doc, {
-    label: "Vốn xoay vòng doanh nghiệp giữ lại",
+    label: "Vốn xoay vòng tiệm giữ lại",
     value: snapshot.workingCapitalReserve,
     operator: "-",
     y,
@@ -369,7 +376,7 @@ function addNotesAndSignatures(
     .fillColor(MUTED_COLOR)
     .fontSize(7.8)
     .text(
-      "Giải thích nguồn tiền: số dư doanh nghiệp chỉ trừ các khoản được ghi nhận chi từ nguồn doanh thu bán hàng và các khoản hoàn vốn chủ; vốn chủ chưa hoàn, quỹ tháng trước và vốn xoay vòng không được chia lại.",
+      "Giải thích nguồn tiền: số dư tiệm chỉ trừ các khoản được ghi nhận chi từ nguồn doanh thu bán hàng và các khoản hoàn tiền cá nhân; tiền cá nhân chưa hoàn, quỹ tháng trước và vốn xoay vòng không được chia lại.",
       PAGE_MARGIN,
       y,
       { width: CONTENT_WIDTH, lineGap: 2 },
@@ -408,7 +415,14 @@ function addNotesAndSignatures(
   });
 }
 
-export async function createPayrollPayslipPdf(data: PayrollPayslipPdfData) {
+export async function createPayrollPayslipPdf(
+  data: PayrollPayslipPdfData,
+  options: {
+    businessProfile?: Pick<BusinessProfile, "displayName" | "wordmark">;
+  } = {},
+) {
+  const businessProfile = options.businessProfile ?? DEFAULT_BUSINESS_PROFILE;
+  const businessName = businessProfile.wordmark.toUpperCase();
   return await new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
@@ -421,7 +435,7 @@ export async function createPayrollPayslipPdf(data: PayrollPayslipPdfData) {
       },
       info: {
         Title: `${data.isPreview ? "Bản xem trước phiếu lương" : "Phiếu lương"} ${periodLabel(data.period)} - ${data.employeeName}`,
-        Author: BUSINESS_NAME,
+        Author: businessProfile.displayName,
         Subject: "Diễn giải nguồn tiền và cách tính lương",
       },
     });
@@ -431,7 +445,7 @@ export async function createPayrollPayslipPdf(data: PayrollPayslipPdfData) {
     doc.on("error", reject);
 
     doc.registerFont("Geist", pdfFontPath()).font("Geist");
-    addHeader(doc, data);
+    addHeader(doc, data, businessName);
     let y = addEmployeeSummary(doc, data, 108);
     y = addNetPay(doc, data, y);
     y = addExplanation(doc, data, y);

@@ -20,26 +20,33 @@ import {
   Form,
   Input,
   InputNumber,
+  Modal,
   Popconfirm,
-  Radio,
   Select,
   Space,
   Switch,
   Table,
   Tag,
+  theme,
   Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/common/page-header";
 import { RouteSkeleton } from "@/components/common/route-skeleton";
+import { useApiData } from "@/hooks/use-api-data";
+import { calculateIngredientCostWithUnits } from "@/lib/calculations/costing";
 import {
   calculateInlinePackagingUnitCost,
   calculateOnboardingProductCost,
-  calculateRecipeCost,
   calculateSterilizationCost,
   DEFAULT_STERILIZATION_COST_PER_LITER,
 } from "@/lib/calculations/product-onboarding";
+import {
+  calculatePreparationUsageCost,
+  normalizedPreparationCostSource,
+  type PreparationBatchType,
+} from "@/lib/calculations/preparation-batch";
 import { compatibleUnitOptions } from "@/lib/calculations/units";
 import {
   formatNumber,
@@ -47,7 +54,6 @@ import {
   formatVndInput,
   parseVndInput,
 } from "@/lib/formatters";
-import { useApiData } from "@/hooks/use-api-data";
 import {
   workbookIngredients,
   workbookProducts,
@@ -68,25 +74,19 @@ type IngredientOption = {
   isActive?: boolean;
 };
 
-type RecipeIngredient = {
-  ingredientId?: string;
-  ingredientName: string;
-  quantity: number;
-  unit: string;
-  costUnit: string;
-  unitCost: number;
-  amount: number;
-};
-
-type RecipeOption = {
+type PreparationBatch = {
   id?: string;
   _id?: string;
   code: string;
   name: string;
-  yieldMl: number;
-  ingredientCost: number;
-  costPerMl: number;
-  ingredients?: RecipeIngredient[];
+  batchType?: PreparationBatchType;
+  outputQuantity?: number;
+  outputUnit?: string;
+  outputBaseQuantity?: number;
+  outputBaseUnit?: string;
+  costPerBaseUnit?: number;
+  actualLiters?: number;
+  costPerMl?: number;
 };
 
 type PackagingSnapshot = {
@@ -99,19 +99,40 @@ type PackagingSnapshot = {
   amount: number;
 };
 
+type ProductIngredientSnapshot = {
+  source: "batch" | "ingredient";
+  batchId?: string;
+  ingredientId?: string;
+  batchCode?: string;
+  ingredientCode?: string;
+  itemName?: string;
+  batchName?: string;
+  quantity: number;
+  unit: string;
+  costUnit?: string;
+  unitCost: number;
+  amount: number;
+};
+
 type ProductRecord = {
   id?: string;
   _id?: string;
   code: string;
   name: string;
-  productMode?: "legacy" | "recipe";
-  recipeId?: string;
+  productMode?: "legacy" | "recipe" | "composed";
   recipeCode?: string;
   recipeName?: string;
+  milkBatchId?: string;
+  milkBatchCode?: string;
+  milkBatchName?: string;
+  toppingName?: string;
+  ingredientItems?: ProductIngredientSnapshot[];
+  toppingItems?: ProductIngredientSnapshot[];
   sizeName?: string;
   milkMl?: number;
   sellingPrice: number;
-  recipeCost?: number;
+  milkCost?: number;
+  toppingCost?: number;
   packagingCost?: number;
   variableCost?: number;
   fullCost?: number;
@@ -123,7 +144,7 @@ type ProductRecord = {
 
 type ProductOnboardingData = {
   products: ProductRecord[];
-  recipes: RecipeOption[];
+  batches: PreparationBatch[];
   ingredients: IngredientOption[];
   costSettings: {
     overheadRate: number;
@@ -131,8 +152,8 @@ type ProductOnboardingData = {
   };
 };
 
-type RecipeLineForm = {
-  ingredientId?: string;
+type ProductIngredientLineForm = {
+  itemKey?: string;
   quantity?: number;
   unit?: string;
 };
@@ -156,57 +177,108 @@ type PackagingLineForm = {
 type ProductForm = {
   name: string;
   sellingPrice: number;
-  servingMl: number;
-  recipeMode: "existing" | "new";
-  recipeId?: string;
-  recipeName?: string;
-  recipeYieldMl?: number;
-  recipeIngredients?: RecipeLineForm[];
+  ingredientItems: ProductIngredientLineForm[];
   packagingItems: PackagingLineForm[];
   isActive: boolean;
   note?: string;
 };
 
+type QuickPreparedIngredientForm = {
+  name: string;
+  outputQuantity: number;
+  outputUnit: "ml" | "lít" | "g" | "kg";
+  cookingHours: number;
+  ingredients: Array<{
+    ingredientId: string;
+    quantity: number;
+    unit: string;
+    note?: string;
+  }>;
+  note?: string;
+};
+
+type QuickRawIngredientForm = {
+  name: string;
+  purchaseUnit: string;
+  packageQuantity: number;
+  costUnit: string;
+  packageCount: number;
+  totalAmount: number;
+  supplier?: string;
+  note?: string;
+};
+
+type IngredientCreatorMode = "raw" | "processed";
+
 function recordId(record: { id?: string; _id?: string }) {
   return record.id ?? String(record._id ?? "");
 }
 
-function preferredRecipeUnit(costUnit?: string) {
+function purchaseUnitName(purchaseUnit?: string) {
+  return String(purchaseUnit ?? "").trim().toLocaleLowerCase("vi") || "đơn vị mua";
+}
+
+function preferredInputUnit(costUnit?: string) {
   const normalized = String(costUnit ?? "").trim().toLocaleLowerCase("vi");
   if (["kg", "kilogram", "g", "gram"].includes(normalized)) return "g";
   if (["l", "lit", "liter", "litre", "lít", "ml"].includes(normalized)) {
     return "ml";
   }
-  return costUnit || "đơn vị";
+  return costUnit || "g";
 }
 
 function sterilizationCost(product: ProductRecord) {
   return calculateSterilizationCost(Number(product.milkMl ?? 0));
 }
 
+function productIngredientSummary(product: ProductRecord) {
+  if (product.ingredientItems?.length) {
+    return product.ingredientItems
+      .flatMap((item) => {
+        const name = item.itemName || item.batchName;
+        return name ? [name] : [];
+      })
+      .join(", ");
+  }
+  return [product.milkBatchName, product.toppingName].filter(Boolean).join(", ");
+}
+
 const fallbackData: ProductOnboardingData = {
   products: workbookProducts as ProductRecord[],
-  recipes: [],
+  batches: [],
   ingredients: workbookIngredients as IngredientOption[],
   costSettings: { overheadRate: 0.05, allocatedFixedCost: 0 },
 };
 
 export function ProductOnboardingWorkspace() {
   const { message } = App.useApp();
+  const { token } = theme.useToken();
   const [form] = Form.useForm<ProductForm>();
+  const [preparedIngredientForm] = Form.useForm<QuickPreparedIngredientForm>();
+  const [rawIngredientForm] = Form.useForm<QuickRawIngredientForm>();
   const [query, setQuery] = useState("");
   const [includeSterilizationCost, setIncludeSterilizationCost] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<ProductRecord | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [saving, setSaving] = useState(false);
-  const {
-    data,
-    loading,
-    usingFallback,
-    setData,
-  } = useApiData<ProductOnboardingData>("/api/product-onboarding", fallbackData);
+  const [preparedIngredientCreatorOpen, setPreparedIngredientCreatorOpen] =
+    useState(false);
+  const [ingredientCreatorMode, setIngredientCreatorMode] =
+    useState<IngredientCreatorMode | null>(null);
+  const [openIngredientSelectIndex, setOpenIngredientSelectIndex] = useState<
+    number | null
+  >(null);
+  const [savingPreparedIngredient, setSavingPreparedIngredient] = useState(false);
+  const preparedIngredientTargetIndexRef = useRef<number | null>(null);
+  const { data, loading, usingFallback, setData } =
+    useApiData<ProductOnboardingData>("/api/product-onboarding", fallbackData);
   const values = Form.useWatch([], form);
+  const preparedIngredientCreatorValues = Form.useWatch(
+    [],
+    preparedIngredientForm,
+  );
+
   const ingredientsById = useMemo(
     () =>
       new Map(
@@ -214,11 +286,20 @@ export function ProductOnboardingWorkspace() {
       ),
     [data.ingredients],
   );
-  const recipesById = useMemo(
-    () => new Map(data.recipes.map((recipe) => [recordId(recipe), recipe])),
-    [data.recipes],
+  const batchesById = useMemo(
+    () => new Map(data.batches.map((batch) => [recordId(batch), batch])),
+    [data.batches],
   );
-  const recipeIngredients = useMemo(
+  const rawIngredientOptions = useMemo(
+    () =>
+      data.ingredients.filter(
+        (ingredient) =>
+          ["Nguyên liệu", "Topping"].includes(ingredient.category ?? "") &&
+          ingredient.isActive,
+      ),
+    [data.ingredients],
+  );
+  const preparationIngredients = useMemo(
     () =>
       data.ingredients.filter(
         (ingredient) => ingredient.category !== "Bao bì" && ingredient.isActive,
@@ -232,41 +313,37 @@ export function ProductOnboardingWorkspace() {
       ),
     [data.ingredients],
   );
+
   const preview = useMemo(() => {
-    let recipeCostPerMl = 0;
-    let recipeIngredientCost = 0;
+    let milkCost = 0;
+    let toppingCost = 0;
     let costError = "";
-    if (values?.recipeMode === "existing") {
-      const recipe = recipesById.get(String(values.recipeId ?? ""));
-      recipeCostPerMl = Number(recipe?.costPerMl ?? 0);
-      recipeIngredientCost = Number(recipe?.ingredientCost ?? 0);
-    } else {
-      try {
-        const recipeCost = calculateRecipeCost(
-          Number(values?.recipeYieldMl ?? 0),
-          (values?.recipeIngredients ?? []).flatMap((line) => {
-            const ingredient = ingredientsById.get(
-              String(line.ingredientId ?? ""),
-            );
-            const costUnit = String(ingredient?.costUnit ?? "").trim();
-            return ingredient && costUnit && line.unit
-              ? [
-                  {
-                    quantity: Number(line.quantity ?? 0),
-                    unit: line.unit,
-                    unitCost: Number(ingredient.averageUnitCost ?? 0),
-                    costUnit,
-                  },
-                ]
-              : [];
-          }),
-        );
-        recipeCostPerMl = recipeCost.costPerMl;
-        recipeIngredientCost = recipeCost.ingredientCost;
-      } catch (error) {
-        costError = error instanceof Error ? error.message : "Không thể tính cost";
+    try {
+      for (const line of values?.ingredientItems ?? []) {
+        const [source, id] = String(line.itemKey ?? "").split(":");
+        if (!id || !line.unit) continue;
+        const quantity = Number(line.quantity ?? 0);
+        if (source === "batch") {
+          const batch = batchesById.get(id);
+          if (!batch) continue;
+          const amount = calculatePreparationUsageCost(batch, quantity, line.unit);
+          if (batch.batchType === "milk_base" || !batch.batchType) milkCost += amount;
+          else toppingCost += amount;
+          continue;
+        }
+        const ingredient = ingredientsById.get(id);
+        if (!ingredient?.costUnit) continue;
+        toppingCost += calculateIngredientCostWithUnits({
+          quantity,
+          quantityUnit: line.unit,
+          unitCost: Number(ingredient.averageUnitCost ?? 0),
+          costUnit: ingredient.costUnit,
+        });
       }
+    } catch (error) {
+      costError = error instanceof Error ? error.message : "Không thể tính giá vốn";
     }
+
     const packagingCost = (values?.packagingItems ?? []).reduce(
       (total, line) => {
         const quantity = Number(line.quantity ?? 0);
@@ -294,34 +371,45 @@ export function ProductOnboardingWorkspace() {
       0,
     );
     return {
-      recipeIngredientCost,
+      milkCost,
+      toppingCost,
       packagingCost,
       costError,
+      allocatedFixedCost: data.costSettings.allocatedFixedCost,
       ...calculateOnboardingProductCost({
-        recipeCostPerMl,
-        servingMl: Number(values?.servingMl ?? 0),
+        milkCost,
+        toppingCost,
         packagingCost,
         ...data.costSettings,
       }),
     };
-  }, [data.costSettings, ingredientsById, recipesById, values]);
+  }, [batchesById, data.costSettings, ingredientsById, values]);
+
   const normalizedQuery = query.trim().toLocaleLowerCase("vi");
   const visibleProducts = useMemo(
     () =>
       normalizedQuery
         ? data.products.filter((product) =>
-            [product.code, product.name, product.recipeName, product.sizeName].some(
-              (value) =>
-                String(value ?? "")
-                  .toLocaleLowerCase("vi")
-                  .includes(normalizedQuery),
+            [
+              product.code,
+              product.name,
+              product.milkBatchName,
+              product.toppingName,
+              product.sizeName,
+              ...(product.ingredientItems ?? []).map(
+                (item) => item.itemName || item.batchName,
+              ),
+            ].some((value) =>
+              String(value ?? "")
+                .toLocaleLowerCase("vi")
+                .includes(normalizedQuery),
             ),
           )
         : data.products,
     [data.products, normalizedQuery],
   );
   const legacyCount = data.products.filter(
-    (product) => product.productMode !== "recipe",
+    (product) => product.productMode !== "composed",
   ).length;
 
   const columns: ColumnsType<ProductRecord> = [
@@ -332,30 +420,30 @@ export function ProductOnboardingWorkspace() {
       render: (value, record) => (
         <Space size={6} wrap>
           <Text strong>{String(value)}</Text>
-          {record.productMode === "recipe" ? (
-            <Tag color="green">Luồng mới</Tag>
-          ) : (
-            <Tag color="warning">Dữ liệu cũ</Tag>
-          )}
+          <Tag color={record.productMode === "composed" ? "green" : "warning"}>
+            {record.productMode === "composed" ? "Đã chuẩn hóa" : "Dữ liệu cũ"}
+          </Tag>
         </Space>
       ),
     },
     {
-      title: "Công thức",
-      dataIndex: "recipeName",
-      render: (value, record) => value || record.recipeCode || "Mẻ sữa mới nhất",
-    },
-    {
-      title: "Dung tích",
-      dataIndex: "milkMl",
-      align: "right",
-      render: (value) => `${formatNumber(Number(value ?? 0))} ml`,
+      title: "Nguyên liệu & topping",
+      key: "ingredientItems",
+      render: (_, record) =>
+        productIngredientSummary(record) ||
+        record.recipeName ||
+        record.recipeCode ||
+        "Chưa chọn",
     },
     {
       title: "Giá bán",
       dataIndex: "sellingPrice",
       align: "right",
-      render: (value) => formatVnd(Number(value)),
+      render: (value) => (
+        <Text style={{ color: token.colorPrimary }}>
+          {formatVnd(Number(value))}
+        </Text>
+      ),
     },
     ...(includeSterilizationCost
       ? [
@@ -372,35 +460,30 @@ export function ProductOnboardingWorkspace() {
       title: "Full cost",
       dataIndex: "fullCost",
       align: "right",
-      render: (value, record) => (
-        <Text
-          type={
-            record.hasCostWarning ||
-            Number(value ?? 0) +
-              (includeSterilizationCost ? sterilizationCost(record) : 0) >=
-              Number(record.sellingPrice ?? 0)
-              ? "danger"
-              : undefined
-          }
-          strong
-        >
-          {formatVnd(
-            Number(value ?? 0) +
-              (includeSterilizationCost ? sterilizationCost(record) : 0),
-          )}
-        </Text>
-      ),
+      render: (value, record) => {
+        const displayedCost =
+          Number(value ?? 0) +
+          (includeSterilizationCost ? sterilizationCost(record) : 0);
+        return (
+          <Text type="warning" strong>
+            {formatVnd(displayedCost)}
+          </Text>
+        );
+      },
     },
     {
       title: "Lãi gộp/SP",
       key: "profit",
       align: "right",
-      render: (_, record) =>
-        formatVnd(
-          Number(record.sellingPrice ?? 0) -
-            Number(record.fullCost ?? 0) -
-            (includeSterilizationCost ? sterilizationCost(record) : 0),
-        ),
+      render: (_, record) => (
+        <Text type="success">
+          {formatVnd(
+            Number(record.sellingPrice ?? 0) -
+              Number(record.fullCost ?? 0) -
+              (includeSterilizationCost ? sterilizationCost(record) : 0),
+          )}
+        </Text>
+      ),
     },
     {
       title: "",
@@ -434,42 +517,65 @@ export function ProductOnboardingWorkspace() {
 
   function openEditor(product?: ProductRecord) {
     setEditing(product ?? null);
-    const recipeId = product?.recipeId ? String(product.recipeId) : "";
-    const hasRecipe = Boolean(recipeId && recipesById.has(recipeId));
+    const savedIngredientItems = product?.ingredientItems?.length
+      ? product.ingredientItems.map((item) => ({
+          itemKey:
+            item.source === "ingredient"
+              ? `ingredient:${String(item.ingredientId ?? "")}`
+              : `batch:${String(item.batchId ?? "")}`,
+          quantity: item.quantity,
+          unit: item.unit,
+        }))
+      : [
+          ...(product?.milkBatchId
+            ? [
+                {
+                  itemKey: `batch:${String(product.milkBatchId)}`,
+                  quantity: Number(product.milkMl ?? 0),
+                  unit: "ml",
+                },
+              ]
+            : []),
+          ...(product?.toppingItems ?? []).flatMap((item) => {
+            const id = item.source === "ingredient" ? item.ingredientId : item.batchId;
+            return id
+              ? [
+                  {
+                    itemKey: `${item.source || "batch"}:${String(id)}`,
+                    quantity: item.quantity,
+                    unit: item.unit || "g",
+                  },
+                ]
+              : [];
+          }),
+        ];
     form.setFieldsValue(
       product
         ? {
             name: product.name,
             sellingPrice: product.sellingPrice,
-            servingMl: Number(product.milkMl ?? 430),
-            recipeMode: hasRecipe ? "existing" : "new",
-            recipeId: hasRecipe ? recipeId : undefined,
-            recipeName: hasRecipe ? undefined : product.name,
-            recipeYieldMl: hasRecipe ? undefined : Number(product.milkMl ?? 430),
-            recipeIngredients: hasRecipe ? undefined : [{ quantity: 1 }],
-            packagingItems:
-              product.packagingItems?.length
-                ? product.packagingItems.map((item) => ({
-                    source: "existing" as const,
-                    ingredientId: String(item.ingredientId ?? ""),
-                    quantity: item.quantity,
+            ingredientItems: savedIngredientItems.length
+              ? savedIngredientItems
+              : [{ quantity: 1, unit: "g" }],
+            packagingItems: product.packagingItems?.length
+              ? product.packagingItems.map((item) => ({
+                  source: "existing" as const,
+                  ingredientId: String(item.ingredientId ?? ""),
+                  quantity: item.quantity,
+                  openingPackageCount: 1,
+                }))
+              : [
+                  {
+                    source: "existing",
+                    quantity: 1,
                     openingPackageCount: 1,
-                  }))
-                : [
-                    {
-                      source: "existing",
-                      quantity: 1,
-                      openingPackageCount: 1,
-                    },
-                  ],
+                  },
+                ],
             isActive: product.isActive,
             note: product.note,
           }
         : {
-            servingMl: 430,
-            recipeMode: "new",
-            recipeYieldMl: 430,
-            recipeIngredients: [{ quantity: 400 }, { quantity: 60 }],
+            ingredientItems: [{ quantity: 1, unit: "g" }],
             packagingItems: [
               { source: "existing", quantity: 1, openingPackageCount: 1 },
             ],
@@ -491,7 +597,9 @@ export function ProductOnboardingWorkspace() {
       const errorBody = (await response.json().catch(() => null)) as {
         message?: string;
       } | null;
-      throw new Error(errorBody?.message || `Không thể tải dữ liệu (${response.status})`);
+      throw new Error(
+        errorBody?.message || `Không thể tải dữ liệu (${response.status})`,
+      );
     }
     const body = (await response.json()) as {
       success: boolean;
@@ -500,6 +608,175 @@ export function ProductOnboardingWorkspace() {
     };
     if (!body.success || !body.data) throw new Error(body.message);
     setData(body.data);
+    return body.data;
+  }
+
+  function openIngredientCreator(targetIndex: number) {
+    rawIngredientForm.resetFields();
+    rawIngredientForm.setFieldsValue({
+      packageQuantity: 1,
+      packageCount: 1,
+    });
+    preparedIngredientForm.resetFields();
+    preparedIngredientForm.setFieldsValue({
+      name: "",
+      outputQuantity: 100,
+      outputUnit: "g",
+      cookingHours: 0,
+      ingredients: [
+        {
+          quantity: 100,
+          unit: "g",
+        },
+      ],
+      note: "Tạo nhanh khi thêm sản phẩm",
+    });
+    setIngredientCreatorMode(null);
+    preparedIngredientTargetIndexRef.current = targetIndex;
+    setPreparedIngredientCreatorOpen(true);
+  }
+
+  function closeIngredientCreator() {
+    setPreparedIngredientCreatorOpen(false);
+    setIngredientCreatorMode(null);
+    preparedIngredientTargetIndexRef.current = null;
+    rawIngredientForm.resetFields();
+    preparedIngredientForm.resetFields();
+  }
+
+  function selectCreatedIngredient(
+    itemKey: string,
+    quantity: number,
+    unit: string,
+  ) {
+    const targetIndex = preparedIngredientTargetIndexRef.current;
+    if (targetIndex === null) return;
+    const currentItems = (form.getFieldValue("ingredientItems") ??
+      []) as ProductIngredientLineForm[];
+    const nextItems = [...currentItems];
+    nextItems[targetIndex] = { itemKey, quantity, unit };
+    form.setFieldValue("ingredientItems", nextItems);
+  }
+
+  async function saveRawIngredient(rawValues: QuickRawIngredientForm) {
+    setSavingPreparedIngredient(true);
+    try {
+      const response = await fetch("/api/purchases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "new",
+          purchaseDate: new Date().toISOString(),
+          itemName: rawValues.name,
+          category: "Nguyên liệu",
+          purchaseUnit: rawValues.purchaseUnit,
+          packageQuantity: rawValues.packageQuantity,
+          costUnit: rawValues.costUnit,
+          packageCount: rawValues.packageCount,
+          totalAmount: rawValues.totalAmount,
+          supplier: rawValues.supplier ?? "",
+          note: rawValues.note ?? "Tạo nhanh khi thêm sản phẩm",
+          saveToCatalog: true,
+        }),
+      });
+      if (!response.ok) {
+        const errorBody = (await response.json().catch(() => null)) as {
+          message?: string;
+        } | null;
+        throw new Error(
+          errorBody?.message || `Không thể tạo nguyên liệu (${response.status})`,
+        );
+      }
+      const body = (await response.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: { ingredientId?: string };
+      };
+      const ingredientId = String(body.data?.ingredientId ?? "");
+      if (!body.success || !ingredientId) {
+        throw new Error(body.message || "Không thể tạo nguyên liệu");
+      }
+      const refreshed = await refreshData();
+      const createdIngredient = refreshed.ingredients.find(
+        (ingredient) => recordId(ingredient) === ingredientId,
+      );
+      selectCreatedIngredient(
+        `ingredient:${ingredientId}`,
+        1,
+        preferredInputUnit(createdIngredient?.costUnit || rawValues.costUnit),
+      );
+      message.success(`Đã tạo và chọn nguyên liệu “${rawValues.name}”`);
+      closeIngredientCreator();
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : "Không thể tạo nguyên liệu",
+      );
+    } finally {
+      setSavingPreparedIngredient(false);
+    }
+  }
+
+  async function savePreparedIngredient(
+    preparedValues: QuickPreparedIngredientForm,
+  ) {
+    setSavingPreparedIngredient(true);
+    try {
+      const batchType: PreparationBatchType = ["ml", "lít"].includes(
+        preparedValues.outputUnit,
+      )
+        ? "milk_base"
+        : "topping";
+      const response = await fetch("/api/batches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...preparedValues,
+          batchType,
+        }),
+      });
+      if (!response.ok) {
+        const errorBody = (await response.json().catch(() => null)) as {
+          message?: string;
+        } | null;
+        throw new Error(
+          errorBody?.message ||
+            `Không thể tạo nguyên liệu đã nấu (${response.status})`,
+        );
+      }
+      const body = (await response.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: PreparationBatch;
+      };
+      if (!body.success || !body.data) {
+        throw new Error(body.message || "Không thể tạo nguyên liệu đã nấu");
+      }
+
+      const createdBatch = body.data;
+      const createdBatchId = recordId(createdBatch);
+      setData((current) => ({
+        ...current,
+        batches: [createdBatch, ...current.batches],
+      }));
+
+      const usageUnit = batchType === "milk_base" ? "ml" : "g";
+      selectCreatedIngredient(
+        `batch:${createdBatchId}`,
+        batchType === "milk_base" ? 350 : 10,
+        usageUnit,
+      );
+
+      message.success(`Đã tạo và chọn nguyên liệu “${createdBatch.name}”`);
+      closeIngredientCreator();
+    } catch (error) {
+      message.error(
+        error instanceof Error
+          ? error.message
+          : "Không thể tạo nguyên liệu đã nấu",
+      );
+    } finally {
+      setSavingPreparedIngredient(false);
+    }
   }
 
   async function exportProductsPdf() {
@@ -507,7 +784,6 @@ export function ProductOnboardingWorkspace() {
       message.warning("Không có sản phẩm để xuất PDF");
       return;
     }
-
     setExportingPdf(true);
     try {
       const response = await fetch("/api/export/products/pdf", {
@@ -519,8 +795,8 @@ export function ProductOnboardingWorkspace() {
             code: product.code,
             name: product.name,
             productMode: product.productMode,
-            recipeCode: product.recipeCode,
-            recipeName: product.recipeName,
+            recipeCode: product.milkBatchCode ?? product.recipeCode,
+            recipeName: product.milkBatchName ?? product.recipeName,
             milkMl: Number(product.milkMl ?? 0),
             sellingPrice: Number(product.sellingPrice ?? 0),
             fullCost: Number(product.fullCost ?? 0),
@@ -533,7 +809,6 @@ export function ProductOnboardingWorkspace() {
           | null;
         throw new Error(body?.message ?? "Không thể tạo file PDF");
       }
-
       const blob = await response.blob();
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -556,19 +831,6 @@ export function ProductOnboardingWorkspace() {
   async function saveProduct(formValues: ProductForm) {
     setSaving(true);
     try {
-      const recipe =
-        formValues.recipeMode === "existing"
-          ? { mode: "existing" as const, recipeId: formValues.recipeId }
-          : {
-              mode: "new" as const,
-              name: formValues.recipeName,
-              yieldMl: formValues.recipeYieldMl,
-              ingredients: (formValues.recipeIngredients ?? []).map((item) => ({
-                ingredientId: item.ingredientId,
-                quantity: item.quantity,
-                unit: item.unit,
-              })),
-            };
       const packagingItems = formValues.packagingItems.map((item) =>
         item.source === "new"
           ? {
@@ -611,8 +873,17 @@ export function ProductOnboardingWorkspace() {
           body: JSON.stringify({
             name: formValues.name,
             sellingPrice: formValues.sellingPrice,
-            servingMl: formValues.servingMl,
-            recipe,
+            ingredientItems: (formValues.ingredientItems ?? []).map((item) => {
+              const [source, id] = String(item.itemKey ?? "").split(":");
+              return {
+                source,
+                ...(source === "batch"
+                  ? { batchId: id }
+                  : { ingredientId: id }),
+                quantity: item.quantity,
+                unit: item.unit,
+              };
+            }),
             packagingItems,
             isActive: formValues.isActive,
             note: formValues.note ?? "",
@@ -623,7 +894,9 @@ export function ProductOnboardingWorkspace() {
         const errorBody = (await response.json().catch(() => null)) as {
           message?: string;
         } | null;
-        throw new Error(errorBody?.message || `Không thể lưu sản phẩm (${response.status})`);
+        throw new Error(
+          errorBody?.message || `Không thể lưu sản phẩm (${response.status})`,
+        );
       }
       const body = (await response.json()) as {
         success: boolean;
@@ -651,7 +924,9 @@ export function ProductOnboardingWorkspace() {
         const errorBody = (await response.json().catch(() => null)) as {
           message?: string;
         } | null;
-        throw new Error(errorBody?.message || `Không thể xóa sản phẩm (${response.status})`);
+        throw new Error(
+          errorBody?.message || `Không thể xóa sản phẩm (${response.status})`,
+        );
       }
       const body = (await response.json()) as { success: boolean; message: string };
       if (!body.success) throw new Error(body.message);
@@ -673,7 +948,7 @@ export function ProductOnboardingWorkspace() {
     <div className="page-wrap product-onboarding-page">
       <PageHeader
         title="Sản phẩm"
-        description="Tạo sản phẩm, công thức, bao bì và giá vốn trong cùng một luồng. Không bắt buộc topping hoặc tạo Size trước."
+        description="Khi thêm sản phẩm, chỉ cần chọn nguyên liệu & topping và bao bì. Nguyên liệu mới có thể được nấu ngay trong biểu mẫu."
       />
       {usingFallback ? (
         <Alert
@@ -689,7 +964,7 @@ export function ProductOnboardingWorkspace() {
           type="warning"
           showIcon
           title={`${legacyCount} sản phẩm đang dùng cấu trúc cũ`}
-          description="Dữ liệu vẫn được giữ nguyên. Bấm Sửa để chuyển từng sản phẩm sang công thức và bao bì mới."
+          description="Dữ liệu cũ vẫn được giữ. Khi bấm Sửa, hãy chọn lại nguyên liệu & topping và bao bì để chuyển sang cấu trúc mới."
           style={{ marginBottom: 16 }}
         />
       ) : null}
@@ -699,28 +974,33 @@ export function ProductOnboardingWorkspace() {
           <Input
             allowClear
             prefix={<SearchOutlined />}
-            placeholder="Tìm mã, tên hoặc công thức…"
+            placeholder="Tìm mã, tên, nguyên liệu hoặc topping…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            style={{ width: 320 }}
+            style={{ width: 340 }}
           />
           <Space size={16} wrap className="product-toolbar-actions">
             <Checkbox
               checked={includeSterilizationCost}
-              onChange={(event) => setIncludeSterilizationCost(event.target.checked)}
+              onChange={(event) =>
+                setIncludeSterilizationCost(event.target.checked)
+              }
             >
               Phí tiệt trùng ({formatVnd(DEFAULT_STERILIZATION_COST_PER_LITER)}/lít)
             </Checkbox>
             <Button
               icon={<FilePdfOutlined />}
               loading={exportingPdf}
-              disabled={visibleProducts.length === 0}
               onClick={exportProductsPdf}
             >
               Xuất PDF
             </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor()}>
-              Thêm sản phẩm mới
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => openEditor()}
+            >
+              Thêm sản phẩm
             </Button>
           </Space>
         </div>
@@ -735,47 +1015,38 @@ export function ProductOnboardingWorkspace() {
         />
         <ul className="product-mobile-list">
           {visibleProducts.map((product) => (
-            <li className="product-mobile-card" key={recordId(product) || product.code}>
+            <li
+              className="product-mobile-card"
+              key={recordId(product) || product.code}
+            >
               <div className="product-mobile-heading">
                 <div>
                   <Text strong>{product.name}</Text>
                   <Text type="secondary">{product.code}</Text>
                 </div>
-                <Tag color={product.productMode === "recipe" ? "green" : "warning"}>
-                  {product.productMode === "recipe" ? "Luồng mới" : "Dữ liệu cũ"}
+                <Tag color={product.productMode === "composed" ? "green" : "warning"}>
+                  {product.productMode === "composed" ? "Đã chuẩn hóa" : "Dữ liệu cũ"}
                 </Tag>
               </div>
+              <div className="product-mobile-formula">
+                <Text>
+                  {productIngredientSummary(product) || "Chưa chọn nguyên liệu"}
+                </Text>
+              </div>
               <dl className="product-mobile-metrics">
-                <div>
-                  <dt>Dung tích</dt>
-                  <dd>{formatNumber(product.milkMl)} ml</dd>
-                </div>
                 <div>
                   <dt>Giá bán</dt>
                   <dd>{formatVnd(product.sellingPrice)}</dd>
                 </div>
                 <div>
                   <dt>Full cost</dt>
-                  <dd>
-                    {formatVnd(
-                      Number(product.fullCost ?? 0) +
-                        (includeSterilizationCost ? sterilizationCost(product) : 0),
-                    )}
-                  </dd>
+                  <dd>{formatVnd(Number(product.fullCost ?? 0))}</dd>
                 </div>
-                {includeSterilizationCost ? (
-                  <div>
-                    <dt>Phí tiệt trùng</dt>
-                    <dd>{formatVnd(sterilizationCost(product))}</dd>
-                  </div>
-                ) : null}
                 <div>
-                  <dt>Lãi gộp/SP</dt>
+                  <dt>Lãi gộp</dt>
                   <dd>
                     {formatVnd(
-                      product.sellingPrice -
-                        Number(product.fullCost ?? 0) -
-                        (includeSterilizationCost ? sterilizationCost(product) : 0),
+                      product.sellingPrice - Number(product.fullCost ?? 0),
                     )}
                   </dd>
                 </div>
@@ -786,7 +1057,7 @@ export function ProductOnboardingWorkspace() {
                 icon={<EditOutlined />}
                 onClick={() => openEditor(product)}
               >
-                {product.productMode === "recipe" ? "Sửa sản phẩm" : "Chuyển sang luồng mới"}
+                {product.productMode === "composed" ? "Sửa sản phẩm" : "Chuẩn hóa"}
                 <RightOutlined />
               </Button>
             </li>
@@ -797,11 +1068,11 @@ export function ProductOnboardingWorkspace() {
       <Drawer
         className="product-onboarding-drawer"
         open={drawerOpen}
-        title={editing ? "Chỉnh sửa sản phẩm" : "Thêm sản phẩm mới"}
+        title={editing ? "Chỉnh sửa sản phẩm" : "Thêm sản phẩm"}
         placement="right"
         size="large"
-        destroyOnHidden
         onClose={closeEditor}
+        destroyOnHidden
         footer={
           <div className="product-onboarding-footer">
             <Text type="secondary">
@@ -816,12 +1087,11 @@ export function ProductOnboardingWorkspace() {
           </div>
         }
       >
-        {editing && editing.productMode !== "recipe" ? (
+        {editing && editing.productMode !== "composed" ? (
           <Alert
-            type="info"
+            type="warning"
             showIcon
-            title="Chuyển sản phẩm cũ sang cấu trúc mới"
-            description="Hãy chọn hoặc khai báo công thức và bao bì. Mã sản phẩm và lịch sử bán hàng vẫn được giữ nguyên."
+            title="Sản phẩm này dùng cấu trúc cũ. Hãy chọn lại nguyên liệu, topping và bao bì để chuẩn hóa."
             style={{ marginBottom: 16 }}
           />
         ) : null}
@@ -829,38 +1099,22 @@ export function ProductOnboardingWorkspace() {
           form={form}
           layout="vertical"
           onFinish={saveProduct}
-          onValuesChange={(changed, allValues) => {
-            if (
-              "name" in changed &&
-              allValues.recipeMode === "new" &&
-              !allValues.recipeName
-            ) {
-              form.setFieldValue("recipeName", changed.name);
-            }
-          }}
         >
           <section className="product-onboarding-section">
             <div className="product-onboarding-section-title">
               <span>1</span>
               <div>
-                <Text strong>Thông tin bán</Text>
-                <Text type="secondary">Mã sản phẩm được tạo tự động khi lưu.</Text>
+                <Text strong>Thông tin sản phẩm</Text>
+                <Text type="secondary">Tên, giá bán và trạng thái của sản phẩm.</Text>
               </div>
             </div>
-            <div className="product-onboarding-grid">
+            <div className="purchase-form-grid product-info-grid">
               <Form.Item
                 name="name"
                 label="Tên sản phẩm"
                 rules={[{ required: true, message: "Nhập tên sản phẩm" }]}
               >
-                <Input placeholder="Ví dụ: Sữa tươi có đường 430ml" />
-              </Form.Item>
-              <Form.Item
-                name="servingMl"
-                label="Dung tích thành phẩm (ml)"
-                rules={[{ required: true, message: "Nhập dung tích" }]}
-              >
-                <InputNumber min={0.001} style={{ width: "100%" }} />
+                <Input placeholder="Ví dụ: Tuyết Trân Châu - M" />
               </Form.Item>
               <Form.Item
                 name="sellingPrice"
@@ -869,7 +1123,6 @@ export function ProductOnboardingWorkspace() {
               >
                 <InputNumber
                   min={0}
-                  precision={0}
                   formatter={formatVndInput}
                   parser={parseVndInput}
                   style={{ width: "100%" }}
@@ -885,116 +1138,142 @@ export function ProductOnboardingWorkspace() {
             <div className="product-onboarding-section-title">
               <span>2</span>
               <div>
-                <Text strong>Công thức</Text>
+                <Text strong>Nguyên liệu &amp; topping</Text>
                 <Text type="secondary">
-                  Thành phẩm là sản lượng thực tế, không cộng cơ học ml sữa và gram đường.
+                  Nguyên liệu thô, topping khô và nguyên liệu chế biến nằm chung một danh sách.
                 </Text>
               </div>
             </div>
-            <Form.Item name="recipeMode" label="Cách nhập công thức">
-              <Radio.Group optionType="button" buttonStyle="solid">
-                <Radio.Button value="new">Tạo tại đây</Radio.Button>
-                <Radio.Button value="existing" disabled={data.recipes.length === 0}>
-                  Chọn có sẵn
-                </Radio.Button>
-              </Radio.Group>
-            </Form.Item>
-            {values?.recipeMode === "existing" ? (
-              <Form.Item
-                name="recipeId"
-                label="Công thức"
-                rules={[{ required: true, message: "Chọn công thức" }]}
-              >
-                <Select
-                  showSearch
-                  optionFilterProp="label"
-                  placeholder="Chọn công thức"
-                  options={data.recipes.map((recipe) => ({
-                    value: recordId(recipe),
-                    label: `${recipe.name} · ${recipe.code} · ${formatVnd(recipe.costPerMl)}/ml`,
-                  }))}
-                />
-              </Form.Item>
-            ) : (
-              <>
-                <div className="product-onboarding-grid">
-                  <Form.Item
-                    name="recipeName"
-                    label="Tên công thức"
-                    rules={[{ required: true, message: "Nhập tên công thức" }]}
+            <Form.List
+              name="ingredientItems"
+              rules={[
+                {
+                  validator: async (_, items) => {
+                    if (!items?.length) {
+                      throw new Error("Sản phẩm cần ít nhất một nguyên liệu hoặc topping");
+                    }
+                  },
+                },
+              ]}
+            >
+              {(fields, { add, remove }, { errors }) => (
+                <Space orientation="vertical" size={10} style={{ width: "100%" }}>
+                  {fields.map((field) => {
+                    const line = values?.ingredientItems?.[field.name];
+                    const [source, selectedId] = String(line?.itemKey ?? "").split(":");
+                    const selectedBatch =
+                      source === "batch" ? batchesById.get(selectedId) : undefined;
+                    const selectedIngredient =
+                      source === "ingredient"
+                        ? ingredientsById.get(selectedId)
+                        : undefined;
+                    const sourceUnit = selectedBatch
+                      ? normalizedPreparationCostSource(selectedBatch).outputBaseUnit
+                      : selectedIngredient?.costUnit || "g";
+                    return (
+                    <div className="product-recipe-row" key={field.key}>
+                      <Form.Item
+                        name={[field.name, "itemKey"]}
+                        rules={[{ required: true, message: "Chọn nguyên liệu" }]}
+                      >
+                        <Select
+                          showSearch
+                          open={openIngredientSelectIndex === field.name}
+                          onOpenChange={(open) =>
+                            setOpenIngredientSelectIndex(open ? field.name : null)
+                          }
+                          optionFilterProp="label"
+                          placeholder="Chọn nguyên liệu hoặc topping"
+                          options={[
+                            {
+                              label: "Nguyên liệu chế biến",
+                              options: data.batches.map((batch) => {
+                                const normalized =
+                                  normalizedPreparationCostSource(batch);
+                                return {
+                                  value: `batch:${recordId(batch)}`,
+                                  label: `${batch.name} · ${batch.code} · ${formatVnd(normalized.costPerBaseUnit)}/${normalized.outputBaseUnit}`,
+                                };
+                              }),
+                            },
+                            {
+                              label: "Nguyên liệu thô & topping khô",
+                              options: rawIngredientOptions.map((ingredient) => ({
+                                value: `ingredient:${recordId(ingredient)}`,
+                                label: `${ingredient.name} · ${ingredient.code} · ${formatVnd(Number(ingredient.averageUnitCost ?? 0))}/${ingredient.costUnit || "đơn vị"}`,
+                              })),
+                            },
+                          ]}
+                          popupRender={(menu) => (
+                            <>
+                              {menu}
+                              <div
+                                className="product-ingredient-select-footer"
+                                onMouseDown={(event) => event.preventDefault()}
+                              >
+                                <Button
+                                  type="text"
+                                  block
+                                  icon={<PlusOutlined />}
+                                  onClick={() => {
+                                    setOpenIngredientSelectIndex(null);
+                                    openIngredientCreator(field.name);
+                                  }}
+                                >
+                                  Thêm mới
+                                </Button>
+                              </div>
+                            </>
+                          )}
+                          onChange={(selectedValue: string) => {
+                            const [selectedSource, id] = selectedValue.split(":");
+                            const unit =
+                              selectedSource === "batch"
+                                ? normalizedPreparationCostSource(
+                                    batchesById.get(id) ?? {},
+                                  ).outputBaseUnit
+                                : ingredientsById.get(id)?.costUnit || "g";
+                            form.setFieldValue(
+                              ["ingredientItems", field.name, "unit"],
+                              preferredInputUnit(unit),
+                            );
+                          }}
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        name={[field.name, "quantity"]}
+                        rules={[{ required: true, message: "Nhập lượng dùng" }]}
+                      >
+                        <InputNumber min={0.001} placeholder="Lượng/ly" style={{ width: "100%" }} />
+                      </Form.Item>
+                      <Form.Item name={[field.name, "unit"]}>
+                        <Select
+                          placeholder="Đơn vị"
+                          options={compatibleUnitOptions(sourceUnit)}
+                        />
+                      </Form.Item>
+                      <Button
+                        type="text"
+                        danger
+                        disabled={fields.length === 1}
+                        icon={<MinusCircleOutlined />}
+                        aria-label="Xóa nguyên liệu"
+                        onClick={() => remove(field.name)}
+                      />
+                    </div>
+                  );})}
+                  <Button
+                    type="dashed"
+                    block
+                    icon={<PlusOutlined />}
+                    onClick={() => add({ quantity: 1, unit: "g" })}
                   >
-                    <Input />
-                  </Form.Item>
-                  <Form.Item
-                    name="recipeYieldMl"
-                    label="Thành phẩm công thức (ml)"
-                    rules={[{ required: true, message: "Nhập sản lượng thực tế" }]}
-                  >
-                    <InputNumber min={0.001} style={{ width: "100%" }} />
-                  </Form.Item>
-                </div>
-                <Form.List name="recipeIngredients">
-                  {(fields, { add, remove }) => (
-                    <Space orientation="vertical" size={10} style={{ width: "100%" }}>
-                      {fields.map((field) => {
-                        const ingredientId = values?.recipeIngredients?.[field.name]?.ingredientId;
-                        const ingredient = ingredientsById.get(String(ingredientId ?? ""));
-                        const unitOptions = compatibleUnitOptions(
-                          String(ingredient?.costUnit ?? "đơn vị"),
-                        );
-                        return (
-                          <div className="product-recipe-row" key={field.key}>
-                            <Form.Item
-                              name={[field.name, "ingredientId"]}
-                              rules={[{ required: true, message: "Chọn nguyên liệu" }]}
-                            >
-                              <Select
-                                showSearch
-                                optionFilterProp="label"
-                                placeholder="Nguyên liệu"
-                                onChange={(id) => {
-                                  const selected = ingredientsById.get(id);
-                                  form.setFieldValue(
-                                    ["recipeIngredients", field.name, "unit"],
-                                    preferredRecipeUnit(selected?.costUnit),
-                                  );
-                                }}
-                                options={recipeIngredients.map((item) => ({
-                                  value: recordId(item),
-                                  label: `${item.name} · ${item.code} · ${formatVnd(item.averageUnitCost)}/${item.costUnit || "đơn vị"}`,
-                                }))}
-                              />
-                            </Form.Item>
-                            <Form.Item
-                              name={[field.name, "quantity"]}
-                              rules={[{ required: true, message: "Nhập lượng" }]}
-                            >
-                              <InputNumber min={0.0001} placeholder="Số lượng" style={{ width: "100%" }} />
-                            </Form.Item>
-                            <Form.Item
-                              name={[field.name, "unit"]}
-                              rules={[{ required: true, message: "Chọn đơn vị" }]}
-                            >
-                              <Select placeholder="Đơn vị" options={unitOptions} />
-                            </Form.Item>
-                            <Button
-                              type="text"
-                              danger
-                              icon={<MinusCircleOutlined />}
-                              aria-label="Xóa nguyên liệu"
-                              onClick={() => remove(field.name)}
-                            />
-                          </div>
-                        );
-                      })}
-                      <Button block icon={<PlusOutlined />} onClick={() => add({ quantity: 1 })}>
-                        Thêm nguyên liệu
-                      </Button>
-                    </Space>
-                  )}
-                </Form.List>
-              </>
-            )}
+                    Thêm nguyên liệu hoặc topping
+                  </Button>
+                  <Form.ErrorList errors={errors} />
+                </Space>
+              )}
+            </Form.List>
           </section>
 
           <section className="product-onboarding-section">
@@ -1002,199 +1281,250 @@ export function ProductOnboardingWorkspace() {
               <span>3</span>
               <div>
                 <Text strong>Bao bì</Text>
-                <Text type="secondary">
-                  Chọn hàng có sẵn hoặc nhập luôn lốc đầu tiên, hệ thống tự tính giá một đơn vị.
-                </Text>
+                <Text type="secondary">Ly, nắp, tem, túi dùng cho một sản phẩm.</Text>
               </div>
             </div>
             <Form.List name="packagingItems">
               {(fields, { add, remove }) => (
-                <Space orientation="vertical" size={12} style={{ width: "100%" }}>
+                <Space orientation="vertical" size={10} style={{ width: "100%" }}>
                   {fields.map((field) => {
                     const line = values?.packagingItems?.[field.name];
-                    const selectedPackaging = ingredientsById.get(
+                    const ingredient = ingredientsById.get(
                       String(line?.ingredientId ?? ""),
                     );
                     const needsOpeningPurchase =
                       line?.source === "existing" &&
-                      Boolean(selectedPackaging) &&
-                      Number(selectedPackaging?.averageUnitCost ?? 0) <= 0;
-                    const inlineUnitCost = calculateInlinePackagingUnitCost({
-                      packageQuantity: Number(line?.packageQuantity ?? 0),
-                      packagePrice: Number(line?.packagePrice ?? 0),
-                    });
-                    const openingUnitCost = calculateInlinePackagingUnitCost({
-                      packageQuantity: Number(
-                        selectedPackaging?.packageQuantity ?? 0,
-                      ),
-                      packagePrice: Number(line?.openingPackagePrice ?? 0),
-                    });
+                      Boolean(ingredient) &&
+                      Number(ingredient?.averageUnitCost ?? 0) <= 0;
                     return (
-                      <Card
-                        size="small"
-                        className="product-packaging-card"
-                        key={field.key}
-                        title={`Bao bì ${field.name + 1}`}
-                        extra={
-                          fields.length > 1 ? (
-                            <Button
-                              type="text"
-                              danger
-                              icon={<DeleteOutlined />}
-                              aria-label="Xóa bao bì"
-                              onClick={() => remove(field.name)}
-                            />
-                          ) : null
-                        }
-                      >
-                        <Form.Item name={[field.name, "source"]} label="Nguồn dữ liệu">
-                          <Radio.Group optionType="button" buttonStyle="solid">
-                            <Radio.Button value="existing">Chọn có sẵn</Radio.Button>
-                            <Radio.Button value="new">Tạo và nhập kho</Radio.Button>
-                          </Radio.Group>
+                      <div className="product-packaging-row-group" key={field.key}>
+                        <Form.Item name={[field.name, "source"]} hidden>
+                          <Input />
                         </Form.Item>
                         {line?.source === "new" ? (
-                          <div className="product-packaging-grid">
-                            <Form.Item
-                              name={[field.name, "name"]}
-                              label="Tên bao bì"
-                              rules={[{ required: true, message: "Nhập tên bao bì" }]}
-                            >
-                              <Input placeholder="Ví dụ: Chai sữa 430ml" />
-                            </Form.Item>
-                            <Form.Item
-                              name={[field.name, "purchaseUnit"]}
-                              label="Đơn vị mua"
-                              rules={[{ required: true, message: "Nhập đơn vị mua" }]}
-                            >
-                              <Input placeholder="Lốc" />
-                            </Form.Item>
-                            <Form.Item
-                              name={[field.name, "packageQuantity"]}
-                              label="Số đơn vị trong lốc"
-                              rules={[{ required: true, message: "Nhập quy cách" }]}
-                            >
-                              <InputNumber min={0.0001} style={{ width: "100%" }} />
-                            </Form.Item>
-                            <Form.Item
-                              name={[field.name, "costUnit"]}
-                              label="Đơn vị cost"
-                              rules={[{ required: true, message: "Nhập đơn vị cost" }]}
-                            >
-                              <Input placeholder="chai" />
-                            </Form.Item>
-                            <Form.Item
-                              name={[field.name, "packagePrice"]}
-                              label="Giá một lốc"
-                              rules={[{ required: true, message: "Nhập giá lốc" }]}
-                            >
-                              <InputNumber
-                                min={0}
-                                formatter={formatVndInput}
-                                parser={parseVndInput}
-                                style={{ width: "100%" }}
-                              />
-                            </Form.Item>
-                            <Form.Item
-                              name={[field.name, "packageCount"]}
-                              label="Số lốc nhập đầu tiên"
-                              rules={[{ required: true, message: "Nhập số lốc" }]}
-                            >
-                              <InputNumber min={0.0001} style={{ width: "100%" }} />
-                            </Form.Item>
-                            <Form.Item name={[field.name, "supplier"]} label="Nhà cung cấp">
-                              <Input />
-                            </Form.Item>
-                            <Form.Item label="Giá vốn tự động">
-                              <Input value={`${formatVnd(inlineUnitCost)}/${line.costUnit || "đơn vị"}`} readOnly />
-                            </Form.Item>
-                          </div>
+                          <Card
+                            size="small"
+                            title="Tạo và nhập kho bao bì mới"
+                            extra={
+                              <Space size={4}>
+                                <Button
+                                  type="link"
+                                  size="small"
+                                  onClick={() =>
+                                    form.setFieldValue(
+                                      ["packagingItems", field.name],
+                                      {
+                                        source: "existing",
+                                        quantity: Number(line?.quantity ?? 1),
+                                        openingPackageCount: 1,
+                                      },
+                                    )
+                                  }
+                                >
+                                  Chọn có sẵn
+                                </Button>
+                                {fields.length > 1 ? (
+                                  <Button
+                                    type="text"
+                                    danger
+                                    icon={<MinusCircleOutlined />}
+                                    aria-label="Xóa bao bì"
+                                    onClick={() => remove(field.name)}
+                                  />
+                                ) : null}
+                              </Space>
+                            }
+                            className="product-packaging-card"
+                          >
+                            <div className="product-packaging-grid">
+                              <Form.Item
+                                name={[field.name, "name"]}
+                                label="Tên bao bì"
+                                rules={[{ required: true, message: "Nhập tên bao bì" }]}
+                              >
+                                <Input placeholder="Ví dụ: Ly nhựa 500 ml" />
+                              </Form.Item>
+                              <Form.Item
+                                name={[field.name, "purchaseUnit"]}
+                                label="Mua theo"
+                                rules={[{ required: true, message: "Nhập cách mua" }]}
+                              >
+                                <Input placeholder="Ví dụ: lốc, thùng" />
+                              </Form.Item>
+                              <Form.Item
+                                name={[field.name, "packageQuantity"]}
+                                label="Số cái trong 1 lốc/thùng"
+                                rules={[{ required: true, message: "Nhập số lượng" }]}
+                              >
+                                <InputNumber min={1} style={{ width: "100%" }} />
+                              </Form.Item>
+                              <Form.Item
+                                name={[field.name, "costUnit"]}
+                                label="Đơn vị dùng"
+                                rules={[{ required: true, message: "Nhập đơn vị" }]}
+                              >
+                                <Input placeholder="Ví dụ: cái" />
+                              </Form.Item>
+                              <Form.Item
+                                name={[field.name, "packagePrice"]}
+                                label="Giá 1 lốc/thùng"
+                                rules={[{ required: true, message: "Nhập giá mua" }]}
+                              >
+                                <InputNumber
+                                  min={1}
+                                  formatter={formatVndInput}
+                                  parser={parseVndInput}
+                                  style={{ width: "100%" }}
+                                />
+                              </Form.Item>
+                              <Form.Item
+                                name={[field.name, "packageCount"]}
+                                label="Số lốc/thùng nhập kho"
+                                rules={[{ required: true, message: "Nhập số lượng" }]}
+                              >
+                                <InputNumber min={1} style={{ width: "100%" }} />
+                              </Form.Item>
+                              <Form.Item
+                                name={[field.name, "supplier"]}
+                                label="Nhà cung cấp"
+                              >
+                                <Input />
+                              </Form.Item>
+                              <Form.Item
+                                name={[field.name, "quantity"]}
+                                label="Số lượng dùng cho 1 sản phẩm"
+                                rules={[{ required: true, message: "Nhập lượng dùng" }]}
+                              >
+                                <InputNumber min={0.001} style={{ width: "100%" }} />
+                              </Form.Item>
+                            </div>
+                          </Card>
                         ) : (
                           <>
-                            <Form.Item
-                              name={[field.name, "ingredientId"]}
-                              label="Bao bì có sẵn"
-                              rules={[{ required: true, message: "Chọn bao bì" }]}
-                            >
-                              <Select
-                                showSearch
-                                optionFilterProp="label"
-                                placeholder="Chọn chai, nắp, tem…"
-                                options={packagingOptions.map((item) => ({
-                                  value: recordId(item),
-                                  label: `${item.name} · ${item.code} · ${formatVnd(item.averageUnitCost)}/${item.costUnit || "đơn vị"}`,
-                                }))}
-                              />
-                            </Form.Item>
-                            {needsOpeningPurchase ? (
-                              <>
-                                <Alert
-                                  type="warning"
-                                  showIcon
-                                  message="Bao bì này chưa có giá vốn"
-                                  description={`Nhập lô đầu tiên theo quy cách ${formatNumber(selectedPackaging?.packageQuantity ?? 0)} ${selectedPackaging?.costUnit || "đơn vị"}/${selectedPackaging?.purchaseUnit || "lốc"}; không cần sang trang Hàng hóa.`}
-                                  style={{ marginBottom: 16 }}
+                            <div className="product-recipe-row">
+                              <Form.Item
+                                name={[field.name, "ingredientId"]}
+                                rules={[{ required: true, message: "Chọn bao bì" }]}
+                              >
+                                <Select
+                                  showSearch
+                                  optionFilterProp="label"
+                                  placeholder="Chọn chai, ly, nắp, tem…"
+                                  options={packagingOptions.map((item) => ({
+                                    value: recordId(item),
+                                    label: `${item.name} · ${item.code} · ${formatVnd(Number(item.averageUnitCost ?? 0))}/${item.costUnit || "đơn vị"}`,
+                                  }))}
+                                  popupRender={(menu) => (
+                                    <>
+                                      {menu}
+                                      <div
+                                        className="product-ingredient-select-footer"
+                                        onMouseDown={(event) => event.preventDefault()}
+                                      >
+                                        <Button
+                                          type="text"
+                                          block
+                                          icon={<PlusOutlined />}
+                                          onClick={() =>
+                                            form.setFieldValue(
+                                              ["packagingItems", field.name],
+                                              {
+                                                source: "new",
+                                                quantity: Number(line?.quantity ?? 1),
+                                                packageQuantity: 1,
+                                                costUnit: "cái",
+                                                packageCount: 1,
+                                              },
+                                            )
+                                          }
+                                        >
+                                          Tạo và nhập kho bao bì mới
+                                        </Button>
+                                      </div>
+                                    </>
+                                  )}
                                 />
-                                <div className="product-packaging-grid">
-                                  <Form.Item
-                                    name={[field.name, "openingPackagePrice"]}
-                                    label={`Giá một ${selectedPackaging?.purchaseUnit || "lốc"}`}
-                                    rules={[{ required: true, message: "Nhập giá lốc đầu tiên" }]}
-                                  >
-                                    <InputNumber
-                                      min={0.0001}
-                                      formatter={formatVndInput}
-                                      parser={parseVndInput}
-                                      style={{ width: "100%" }}
-                                    />
-                                  </Form.Item>
-                                  <Form.Item
-                                    name={[field.name, "openingPackageCount"]}
-                                    label={`Số ${selectedPackaging?.purchaseUnit || "lốc"} nhập đầu tiên`}
-                                    rules={[{ required: true, message: "Nhập số lốc" }]}
-                                  >
-                                    <InputNumber min={0.0001} style={{ width: "100%" }} />
-                                  </Form.Item>
-                                  <Form.Item
-                                    name={[field.name, "openingSupplier"]}
-                                    label="Nhà cung cấp"
-                                  >
-                                    <Input />
-                                  </Form.Item>
-                                  <Form.Item label="Giá vốn tự động">
-                                    <Input
-                                      value={`${formatVnd(openingUnitCost)}/${selectedPackaging?.costUnit || "đơn vị"}`}
-                                      readOnly
-                                    />
-                                  </Form.Item>
-                                </div>
-                              </>
+                              </Form.Item>
+                              <Form.Item
+                                name={[field.name, "quantity"]}
+                                rules={[{ required: true, message: "Nhập lượng dùng" }]}
+                              >
+                                <InputNumber
+                                  min={0.001}
+                                  placeholder="Số lượng/SP"
+                                  style={{ width: "100%" }}
+                                />
+                              </Form.Item>
+                              <Form.Item>
+                                <Input
+                                  value={ingredient?.costUnit || "cái"}
+                                  aria-label="Đơn vị bao bì"
+                                  readOnly
+                                />
+                              </Form.Item>
+                              <Button
+                                type="text"
+                                danger
+                                disabled={fields.length === 1}
+                                icon={<MinusCircleOutlined />}
+                                aria-label="Xóa bao bì"
+                                onClick={() => remove(field.name)}
+                              />
+                            </div>
+                            {needsOpeningPurchase ? (
+                              <Alert
+                                type="warning"
+                                showIcon
+                                title={`${ingredient?.name} chưa có giá vốn. Nhập giá ${purchaseUnitName(ingredient?.purchaseUnit)} đầu tiên:`}
+                                description={
+                                  <div className="product-packaging-grid">
+                                    <Form.Item
+                                      name={[field.name, "openingPackagePrice"]}
+                                      label={`Giá 1 ${purchaseUnitName(ingredient?.purchaseUnit)}`}
+                                      rules={[{ required: true, message: "Nhập giá mua" }]}
+                                    >
+                                      <InputNumber
+                                        min={1}
+                                        formatter={formatVndInput}
+                                        parser={parseVndInput}
+                                        style={{ width: "100%" }}
+                                      />
+                                    </Form.Item>
+                                    <Form.Item
+                                      name={[field.name, "openingPackageCount"]}
+                                      label={`Số ${purchaseUnitName(ingredient?.purchaseUnit)} nhập`}
+                                      rules={[{ required: true, message: "Nhập số lượng" }]}
+                                    >
+                                      <InputNumber min={1} style={{ width: "100%" }} />
+                                    </Form.Item>
+                                    <Form.Item
+                                      name={[field.name, "openingSupplier"]}
+                                      label="Nhà cung cấp"
+                                    >
+                                      <Input />
+                                    </Form.Item>
+                                  </div>
+                                }
+                              />
                             ) : null}
                           </>
                         )}
-                        <Form.Item
-                          name={[field.name, "quantity"]}
-                          label="Số lượng dùng cho một sản phẩm"
-                          rules={[{ required: true, message: "Nhập số lượng" }]}
-                        >
-                          <InputNumber min={0.0001} style={{ width: "100%" }} />
-                        </Form.Item>
-                      </Card>
+                      </div>
                     );
                   })}
                   <Button
                     block
+                    type="dashed"
                     icon={<PlusOutlined />}
                     onClick={() =>
                       add({
                         source: "existing",
                         quantity: 1,
-                        packageCount: 1,
                         openingPackageCount: 1,
                       })
                     }
                   >
-                    Thêm chai, nắp, tem hoặc túi
+                    Thêm bao bì
                   </Button>
                 </Space>
               )}
@@ -1205,51 +1535,396 @@ export function ProductOnboardingWorkspace() {
             <div className="product-onboarding-section-title">
               <span>4</span>
               <div>
-                <Text strong>Kiểm tra giá vốn</Text>
-                <Text type="secondary">Cost được xem trước và tính lại ở server khi lưu.</Text>
+                <Text strong>Giá vốn dự kiến</Text>
+                <Text type="secondary">Tổng hợp từ hai mục đã chọn ở trên.</Text>
               </div>
             </div>
             {preview.costError ? (
-              <Alert type="error" showIcon message={preview.costError} style={{ marginBottom: 12 }} />
+              <Alert
+                type="error"
+                showIcon
+                title={preview.costError}
+                style={{ marginBottom: 12 }}
+              />
             ) : null}
             <Descriptions bordered size="small" column={1}>
-              <Descriptions.Item label="Cost nguyên liệu/công thức gốc">
-                {formatVnd(preview.recipeIngredientCost)}
+              <Descriptions.Item label="Nguyên liệu & topping">
+                {formatVnd(preview.milkCost + preview.toppingCost)}
               </Descriptions.Item>
-              <Descriptions.Item label="Cost công thức/sản phẩm">
-                {formatVnd(preview.recipeCost)}
-              </Descriptions.Item>
-              <Descriptions.Item label="Cost bao bì">
+              <Descriptions.Item label="Bao bì">
                 {formatVnd(preview.packagingCost)}
               </Descriptions.Item>
-              <Descriptions.Item label="Overhead biến đổi">
+              <Descriptions.Item label="Chi phí biến đổi">
                 {formatVnd(preview.overheadCost)}
               </Descriptions.Item>
               <Descriptions.Item label="Phân bổ cố định">
-                {formatVnd(data.costSettings.allocatedFixedCost)}
+                {formatVnd(preview.allocatedFixedCost)}
               </Descriptions.Item>
               <Descriptions.Item label="Full cost">
                 <Text strong>{formatVnd(preview.fullCost)}</Text>
               </Descriptions.Item>
-              <Descriptions.Item label="Lãi gộp dự kiến/SP">
+              <Descriptions.Item label="Lãi gộp dự kiến">
                 <Text
-                  strong
                   type={
                     Number(values?.sellingPrice ?? 0) - preview.fullCost < 0
                       ? "danger"
                       : "success"
                   }
+                  strong
                 >
-                  {formatVnd(Number(values?.sellingPrice ?? 0) - preview.fullCost)}
+                  {formatVnd(
+                    Number(values?.sellingPrice ?? 0) - preview.fullCost,
+                  )}
                 </Text>
               </Descriptions.Item>
             </Descriptions>
             <Form.Item name="note" label="Ghi chú" style={{ marginTop: 16 }}>
-              <Input.TextArea rows={3} />
+              <Input.TextArea rows={2} />
             </Form.Item>
           </section>
         </Form>
       </Drawer>
+
+      <Modal
+        open={preparedIngredientCreatorOpen}
+        title="Thêm nguyên liệu"
+        className="ingredient-creator-modal"
+        width={880}
+        zIndex={1200}
+        okText={
+          ingredientCreatorMode === "raw"
+            ? "Nhập hàng và chọn"
+            : "Lưu và chọn nguyên liệu"
+        }
+        cancelText="Hủy"
+        confirmLoading={savingPreparedIngredient}
+        okButtonProps={{ disabled: ingredientCreatorMode === null }}
+        onCancel={closeIngredientCreator}
+        onOk={() => {
+          if (ingredientCreatorMode === "raw") rawIngredientForm.submit();
+          if (ingredientCreatorMode === "processed") {
+            preparedIngredientForm.submit();
+          }
+        }}
+        forceRender
+      >
+        <div
+          className="ingredient-creator-choices"
+          role="radiogroup"
+          aria-label="Chọn loại nguyên liệu cần thêm"
+        >
+          <Card
+            hoverable
+            role="radio"
+            aria-checked={ingredientCreatorMode === "raw"}
+            tabIndex={0}
+            className={`ingredient-creator-choice ${
+              ingredientCreatorMode === "raw" ? "is-selected" : ""
+            }`}
+            onClick={() => setIngredientCreatorMode("raw")}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setIngredientCreatorMode("raw");
+              }
+            }}
+          >
+            <Text strong>Nguyên liệu thô</Text>
+            <Text type="secondary">
+              Tạo hàng hóa mới và ghi nhận lần nhập kho đầu tiên.
+            </Text>
+          </Card>
+          <Card
+            hoverable
+            role="radio"
+            aria-checked={ingredientCreatorMode === "processed"}
+            tabIndex={0}
+            className={`ingredient-creator-choice ${
+              ingredientCreatorMode === "processed" ? "is-selected" : ""
+            }`}
+            onClick={() => setIngredientCreatorMode("processed")}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setIngredientCreatorMode("processed");
+              }
+            }}
+          >
+            <Text strong>Nguyên liệu chế biến</Text>
+            <Text type="secondary">
+              Gom nguyên liệu thô thành một nguyên liệu sau chế biến.
+            </Text>
+          </Card>
+        </div>
+
+        {ingredientCreatorMode === null ? (
+          <Alert
+            type="info"
+            showIcon
+            title="Chọn một loại nguyên liệu để tiếp tục"
+            description="Form tương ứng sẽ hiện ngay bên dưới. Dữ liệu sản phẩm đang nhập vẫn được giữ nguyên."
+          />
+        ) : null}
+
+        <Form<QuickRawIngredientForm>
+          form={rawIngredientForm}
+          layout="vertical"
+          onFinish={saveRawIngredient}
+          className="ingredient-creator-form"
+          style={{
+            display: ingredientCreatorMode === "raw" ? "grid" : "none",
+          }}
+        >
+          <Alert
+            className="ingredient-creator-callout"
+            type="info"
+            showIcon
+            title="Nguyên liệu thô sẽ được nhập kho ngay"
+            description="Giá vốn được tính từ tổng tiền và quy cách của lần nhập đầu tiên."
+          />
+          <section className="ingredient-form-section">
+            <div className="ingredient-form-section-heading">
+              <div>
+                <Text strong>Thông tin nhập kho</Text>
+                <Text type="secondary">
+                  Khai báo quy cách và giá của lần nhập đầu tiên.
+                </Text>
+              </div>
+            </div>
+            <div className="purchase-form-grid">
+                <Form.Item
+                  name="name"
+                  label="Tên nguyên liệu"
+                  rules={[{ required: true, message: "Nhập tên nguyên liệu" }]}
+                >
+                  <Input placeholder="Ví dụ: Dâu sấy, bột cacao" />
+                </Form.Item>
+                <Form.Item
+                  name="purchaseUnit"
+                  label="Mua theo"
+                  rules={[{ required: true, message: "Nhập đơn vị mua" }]}
+                >
+                  <Input placeholder="Ví dụ: gói, túi, thùng" />
+                </Form.Item>
+                <Form.Item
+                  name="packageQuantity"
+                  label="Số lượng trong một gói/túi"
+                  rules={[{ required: true, message: "Nhập quy cách" }]}
+                >
+                  <InputNumber min={0.001} style={{ width: "100%" }} />
+                </Form.Item>
+                <Form.Item
+                  name="costUnit"
+                  label="Đơn vị sử dụng"
+                  rules={[{ required: true, message: "Nhập đơn vị sử dụng" }]}
+                >
+                  <Input placeholder="Ví dụ: g, ml, cái" />
+                </Form.Item>
+                <Form.Item
+                  name="packageCount"
+                  label="Số gói/túi nhập"
+                  rules={[{ required: true, message: "Nhập số lượng" }]}
+                >
+                  <InputNumber min={0.001} style={{ width: "100%" }} />
+                </Form.Item>
+                <Form.Item
+                  name="totalAmount"
+                  label="Tổng tiền nhập"
+                  rules={[{ required: true, message: "Nhập tổng tiền" }]}
+                >
+                  <InputNumber
+                    min={0}
+                    formatter={formatVndInput}
+                    parser={parseVndInput}
+                    style={{ width: "100%" }}
+                  />
+                </Form.Item>
+                <Form.Item name="supplier" label="Nhà cung cấp">
+                  <Input placeholder="Có thể để trống" />
+                </Form.Item>
+                <Form.Item name="note" label="Ghi chú">
+                  <Input placeholder="Có thể để trống" />
+                </Form.Item>
+            </div>
+          </section>
+        </Form>
+
+        <div
+          className="ingredient-creator-panel"
+          style={{
+            display:
+              ingredientCreatorMode === "processed" ? "grid" : "none",
+          }}
+        >
+          <Alert
+            className="ingredient-creator-callout"
+            type="info"
+            showIcon
+            title="Tạo nguyên liệu sau chế biến"
+            description="Chọn nguyên liệu thô cần gom, khai báo lượng dùng và sản lượng thu được. Lưu xong, nguyên liệu mới sẽ tự được chọn cho sản phẩm."
+          />
+          <Form<QuickPreparedIngredientForm>
+            form={preparedIngredientForm}
+            layout="vertical"
+            onFinish={savePreparedIngredient}
+            className="ingredient-creator-form"
+          >
+          <section className="ingredient-form-section">
+            <div className="ingredient-form-section-heading">
+              <div>
+                <Text strong>Thông tin thành phẩm</Text>
+                <Text type="secondary">
+                  Đặt tên, sản lượng thu được và thời gian chế biến.
+                </Text>
+              </div>
+            </div>
+            <div className="purchase-form-grid">
+              <Form.Item
+                name="name"
+                label="Tên nguyên liệu sau khi nấu"
+                rules={[{ required: true, message: "Nhập tên nguyên liệu" }]}
+              >
+                <Input placeholder="Ví dụ: Nền sữa tuyết, trân châu đường đen" />
+              </Form.Item>
+              <Form.Item label="Sản lượng sau khi nấu" required>
+                <Space.Compact block>
+                  <Form.Item
+                    name="outputQuantity"
+                    noStyle
+                    rules={[{ required: true, message: "Nhập sản lượng" }]}
+                  >
+                    <InputNumber min={0.001} style={{ width: "100%" }} />
+                  </Form.Item>
+                  <Form.Item
+                    name="outputUnit"
+                    noStyle
+                    rules={[{ required: true, message: "Chọn đơn vị" }]}
+                  >
+                    <Select
+                      style={{ width: 100 }}
+                      options={[
+                        { value: "ml", label: "ml" },
+                        { value: "lít", label: "lít" },
+                        { value: "g", label: "g" },
+                        { value: "kg", label: "kg" },
+                      ]}
+                    />
+                  </Form.Item>
+                </Space.Compact>
+              </Form.Item>
+              <Form.Item
+                name="cookingHours"
+                label="Thời gian sơ chế/nấu (giờ)"
+                rules={[{ required: true, message: "Nhập thời gian" }]}
+              >
+                <InputNumber min={0} style={{ width: "100%" }} />
+              </Form.Item>
+              <Form.Item name="note" label="Ghi chú">
+                <Input placeholder="Có thể để trống" />
+              </Form.Item>
+            </div>
+          </section>
+
+          <Form.List name="ingredients">
+            {(fields, { add, remove }) => (
+              <section className="ingredient-form-section">
+                <div className="ingredient-form-section-heading">
+                  <div>
+                    <Text strong>Công thức nguyên liệu thô</Text>
+                    <Text type="secondary">
+                      Chọn từng nguyên liệu và lượng thực tế dùng để chế biến.
+                    </Text>
+                  </div>
+                </div>
+                <Space
+                  className="ingredient-materials-list"
+                  orientation="vertical"
+                  size={12}
+                  style={{ width: "100%" }}
+                >
+                  {fields.map((field) => (
+                    <div className="inline-topping-ingredient-row" key={field.key}>
+                    <Form.Item
+                      name={[field.name, "ingredientId"]}
+                      rules={[{ required: true, message: "Chọn nguyên liệu" }]}
+                    >
+                      <Select
+                        showSearch
+                        optionFilterProp="label"
+                        placeholder="Ví dụ: Dâu sấy"
+                        options={preparationIngredients.map((ingredient) => ({
+                          value: recordId(ingredient),
+                          label: `${ingredient.name} · ${ingredient.code} · ${ingredient.costUnit || "chưa có đơn vị cost"}`,
+                        }))}
+                        onChange={(ingredientId: string) => {
+                          const ingredient = ingredientsById.get(ingredientId);
+                          preparedIngredientForm.setFieldValue(
+                            ["ingredients", field.name, "unit"],
+                            preferredInputUnit(ingredient?.costUnit),
+                          );
+                          if (
+                            field.name === 0 &&
+                            !String(
+                              preparedIngredientForm.getFieldValue("name") ?? "",
+                            ).trim()
+                          ) {
+                            preparedIngredientForm.setFieldValue(
+                              "name",
+                              ingredient?.name ?? "",
+                            );
+                          }
+                        }}
+                      />
+                    </Form.Item>
+                    <Form.Item
+                      name={[field.name, "quantity"]}
+                      rules={[{ required: true, message: "Nhập lượng dùng" }]}
+                    >
+                      <InputNumber
+                        min={0.0001}
+                        placeholder="Lượng dùng"
+                        style={{ width: "100%" }}
+                      />
+                    </Form.Item>
+                    <Form.Item
+                      name={[field.name, "unit"]}
+                      rules={[{ required: true, message: "Chọn đơn vị" }]}
+                    >
+                      <Select
+                        placeholder="Đơn vị"
+                        options={compatibleUnitOptions(
+                          ingredientsById.get(
+                            preparedIngredientCreatorValues?.ingredients?.[field.name]
+                              ?.ingredientId,
+                          )?.costUnit || "g",
+                        )}
+                      />
+                    </Form.Item>
+                    <Button
+                      type="text"
+                      danger
+                      disabled={fields.length === 1}
+                      icon={<MinusCircleOutlined />}
+                      aria-label="Xóa nguyên liệu thô"
+                      onClick={() => remove(field.name)}
+                    />
+                    </div>
+                  ))}
+                  <Button
+                    block
+                    type="dashed"
+                    icon={<PlusOutlined />}
+                    onClick={() => add({ quantity: 1, unit: "g" })}
+                  >
+                    Thêm nguyên liệu khác
+                  </Button>
+                </Space>
+              </section>
+            )}
+          </Form.List>
+          </Form>
+        </div>
+      </Modal>
     </div>
   );
 }

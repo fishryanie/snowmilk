@@ -1,0 +1,24 @@
+[
+  {
+    "oldProductId": "6a7741e81977b7f8b9e70279",
+    "oldProductCode": "SP-001",
+    "businessLineCode": "FRESH_MILK",
+    "catalogProductCode": "FRESH-MILK",
+    "catalogProductName": "Sữa tươi",
+    "skuCode": "SP-001",
+    "categoryCode": "FRESH_MILK",
+    "salesUnit": "bottle",
+    "fulfillment": "made_to_order"
+  },
+  {
+    "oldProductId": "6a7752b41977b7f8b9e7027c",
+    "oldProductCode": "SP-002",
+    "businessLineCode": "FRESH_MILK",
+    "catalogProductCode": "FRESH-MILK",
+    "catalogProductName": "Sữa tươi",
+    "skuCode": "SP-002",
+    "categoryCode": "FRESH_MILK",
+    "salesUnit": "bottle",
+    "fulfillment": "made_to_order"
+  }
+]

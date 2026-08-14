@@ -8,12 +8,12 @@ import {
 describe("purchase funding sources", () => {
   test("treats purchases without a saved source as owner capital", () => {
     expect(DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE).toBe("owner_capital");
-    expect(purchaseFundingSourceLabel()).toBe("Vốn chủ");
+    expect(purchaseFundingSourceLabel()).toBe("Tiền cá nhân");
   });
 
   test("uses a clear label for each selectable source", () => {
     expect(purchaseFundingSourceLabel("sales_revenue")).toBe("Tiền bán hàng");
-    expect(purchaseFundingSourceLabel("owner_capital")).toBe("Vốn chủ");
+    expect(purchaseFundingSourceLabel("owner_capital")).toBe("Tiền cá nhân");
     expect(purchaseFundingSourceLabel("loan")).toBe("Tiền vay");
     expect(purchaseFundingSourceLabel("other")).toBe("Nguồn khác");
   });

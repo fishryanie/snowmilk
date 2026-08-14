@@ -2,6 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import PDFDocument from "pdfkit";
 import { formatDate, formatNumber } from "@/lib/formatters";
+import {
+  DEFAULT_BUSINESS_PROFILE,
+  type BusinessProfile,
+} from "@/lib/business-profile";
 import { purchaseFundingSourceLabel, type PurchaseFundingSource } from "@/lib/purchase-funding";
 
 export type PurchasePdfRecord = {
@@ -45,15 +49,14 @@ type TableColumn = {
   align: "left" | "right" | "center";
 };
 
-const BRAND_COLOR = "#16645a";
-const INK_COLOR = "#17343b";
-const MUTED_COLOR = "#60767b";
+const BRAND_COLOR = DEFAULT_BUSINESS_PROFILE.brandColors.terracotta;
+const INK_COLOR = DEFAULT_BUSINESS_PROFILE.brandColors.ink;
+const MUTED_COLOR = DEFAULT_BUSINESS_PROFILE.brandColors.green;
 const LINE_COLOR = "#d9e4e1";
-const LIGHT_COLOR = "#eef6f4";
+const LIGHT_COLOR = DEFAULT_BUSINESS_PROFILE.brandColors.cream;
 const PAGE_MARGIN = 32;
 const TABLE_TOP = 126;
 const FOOTER_HEIGHT = 28;
-const BUSINESS_NAME = "SỮA TUYẾT VÂN NAM";
 
 const tableColumns: TableColumn[] = [
   { key: "index", label: "STT", width: 27, align: "center" },
@@ -111,11 +114,12 @@ function addPageHeader(
   generatedAt: Date,
   recordCount: number,
   filters: PurchasePdfFilters,
+  businessName: string,
 ) {
   doc
     .fillColor(BRAND_COLOR)
     .fontSize(17)
-    .text(BUSINESS_NAME, PAGE_MARGIN, 28, {
+    .text(businessName, PAGE_MARGIN, 28, {
       width: 360,
       lineBreak: false,
     })
@@ -293,7 +297,11 @@ function addSummary(
 
 export async function createPurchasePdf(
   records: PurchasePdfRecord[],
-  options: { filters?: PurchasePdfFilters; generatedAt?: Date } = {},
+  options: {
+    filters?: PurchasePdfFilters;
+    generatedAt?: Date;
+    businessProfile?: Pick<BusinessProfile, "displayName" | "wordmark">;
+  } = {},
 ) {
   if (records.length === 0) {
     throw new Error("Không có lần nhập hàng để xuất PDF");
@@ -301,6 +309,8 @@ export async function createPurchasePdf(
 
   const filters = options.filters ?? {};
   const generatedAt = options.generatedAt ?? new Date();
+  const businessProfile = options.businessProfile ?? DEFAULT_BUSINESS_PROFILE;
+  const businessName = businessProfile.wordmark.toUpperCase();
   return await new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
@@ -314,8 +324,8 @@ export async function createPurchasePdf(
       },
       bufferPages: true,
       info: {
-        Title: "Danh sách nhập hàng - Sữa Tuyết Vân Nam",
-        Author: "Sữa Tuyết Vân Nam",
+        Title: `Danh sách nhập hàng - ${businessProfile.displayName}`,
+        Author: businessProfile.displayName,
         Subject: "Danh sách nhập hàng theo bộ lọc và tổng hợp chi phí",
       },
     });
@@ -325,7 +335,7 @@ export async function createPurchasePdf(
     doc.on("error", reject);
 
     doc.registerFont("Geist", pdfFontPath()).font("Geist");
-    addPageHeader(doc, generatedAt, records.length, filters);
+    addPageHeader(doc, generatedAt, records.length, filters, businessName);
     let y = drawTableHeader(doc, TABLE_TOP);
 
     records.forEach((record, index) => {
@@ -333,7 +343,7 @@ export async function createPurchasePdf(
       const expectedHeight = rowHeight(doc, values);
       if (y + expectedHeight > doc.page.height - FOOTER_HEIGHT - 34) {
         doc.addPage();
-        addPageHeader(doc, generatedAt, records.length, filters);
+        addPageHeader(doc, generatedAt, records.length, filters, businessName);
         y = drawTableHeader(doc, TABLE_TOP);
       }
       y = drawTableRow(doc, values, index, y);
@@ -341,7 +351,7 @@ export async function createPurchasePdf(
 
     if (y + 118 > doc.page.height - FOOTER_HEIGHT) {
       doc.addPage();
-      addPageHeader(doc, generatedAt, records.length, filters);
+      addPageHeader(doc, generatedAt, records.length, filters, businessName);
       y = TABLE_TOP;
     } else {
       y += 16;

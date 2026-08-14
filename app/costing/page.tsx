@@ -15,6 +15,10 @@ import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/common/page-header";
 import { RouteSkeleton } from "@/components/common/route-skeleton";
 import { useApiData } from "@/hooks/use-api-data";
+import {
+  normalizedPreparationCostSource,
+  type PreparationBatchType,
+} from "@/lib/calculations/preparation-batch";
 import { formatVnd } from "@/lib/formatters";
 import {
   workbookBatches,
@@ -37,7 +41,19 @@ type Product = (typeof workbookProducts)[number] & {
 
 type Batch = (typeof workbookBatches)[number] & {
   _id?: string;
+  batchType?: PreparationBatchType;
+  outputQuantity?: number;
+  outputUnit?: string;
+  outputBaseQuantity?: number;
+  outputBaseUnit?: string;
+  costPerBaseUnit?: number;
 };
+
+function batchOutput(batch: Batch) {
+  return batch.outputQuantity && batch.outputUnit
+    ? `${batch.outputQuantity} ${batch.outputUnit}`
+    : `${batch.actualLiters} L`;
+}
 
 export default function CostingPage() {
   const [productCode, setProductCode] = useState(workbookProducts[0].code);
@@ -58,8 +74,8 @@ export default function CostingPage() {
         (batch) =>
           batch.code === product.milkBatchCode ||
           batch.name === product.milkBatchName,
-      ) ?? batches[0]
-    : batches[0];
+      ) ?? batches.find((batch) => batch.batchType !== "topping")
+    : batches.find((batch) => batch.batchType !== "topping");
   const breakdown = useMemo(
     () => ({
       milk: Number(product?.milkCost ?? 0),
@@ -79,8 +95,8 @@ export default function CostingPage() {
   return (
     <div className="page-wrap">
       <PageHeader
-        title="Công thức & giá vốn"
-        description="Theo dõi cost sữa nền, topping, bao bì, overhead và phần cố định được phân bổ."
+        title="Giá vốn sản phẩm"
+        description="Theo dõi riêng cost nền sữa, topping đã nấu, bao bì, overhead và phần cố định được phân bổ."
         actions={
           <Select
             value={product?.code}
@@ -97,7 +113,7 @@ export default function CostingPage() {
         <Alert
           type="info"
           showIcon
-          message="Không kết nối được API; đang hiển thị dữ liệu dự phòng của mẻ 6L hiện tại."
+          title="Không kết nối được API; đang hiển thị dữ liệu dự phòng của mẻ 6L hiện tại."
           style={{ marginBottom: 16 }}
         />
       )}
@@ -105,7 +121,7 @@ export default function CostingPage() {
         <Alert
           type="warning"
           showIcon
-          message="Chưa có sản phẩm để tính giá vốn."
+          title="Chưa có sản phẩm để tính giá vốn."
         />
       ) : (
         <>
@@ -113,7 +129,7 @@ export default function CostingPage() {
             <Alert
               type="warning"
               showIcon
-              message="Giá vốn sản phẩm đang bất thường"
+              title="Giá vốn sản phẩm đang bất thường"
               description="Hãy kiểm tra quy cách/gói và đơn vị cost của topping trước khi dùng cho quyết định kinh doanh."
               style={{ marginBottom: 16 }}
             />
@@ -225,7 +241,7 @@ export default function CostingPage() {
       )}
       <Card
         className="surface-card"
-        title="Mẻ sữa đang có"
+        title="Mẻ chuẩn bị đang có"
         style={{ marginTop: 16 }}
       >
         <Table
@@ -239,9 +255,15 @@ export default function CostingPage() {
             { title: "Mã mẻ", dataIndex: "code" },
             { title: "Tên mẻ", dataIndex: "name" },
             {
+              title: "Loại",
+              dataIndex: "batchType",
+              render: (value) =>
+                value === "topping" ? "Topping" : "Nền sữa",
+            },
+            {
               title: "Thành phẩm",
-              dataIndex: "actualLiters",
-              render: (value) => `${value} L`,
+              key: "output",
+              render: (_, batch) => batchOutput(batch),
             },
             {
               title: "Tổng cost",
@@ -249,9 +271,12 @@ export default function CostingPage() {
               render: (value) => formatVnd(Number(value)),
             },
             {
-              title: "Cost/ml",
-              dataIndex: "costPerMl",
-              render: (value) => formatVnd(Number(value)),
+              title: "Cost/đơn vị",
+              key: "unitCost",
+              render: (_, batch) => {
+                const normalized = normalizedPreparationCostSource(batch);
+                return `${formatVnd(normalized.costPerBaseUnit)}/${normalized.outputBaseUnit}`;
+              },
             },
           ]}
         />
@@ -261,11 +286,16 @@ export default function CostingPage() {
               <div>
                 <Text strong>{batch.name}</Text>
                 <Text type="secondary">
-                  {batch.code} · {batch.actualLiters} L
+                  {batch.code} · {batch.batchType === "topping" ? "Topping" : "Nền sữa"} · {batchOutput(batch)}
                 </Text>
               </div>
               <div>
-                <Text strong>{formatVnd(Number(batch.costPerLiter))}/L</Text>
+                <Text strong>
+                  {(() => {
+                    const normalized = normalizedPreparationCostSource(batch);
+                    return `${formatVnd(normalized.costPerBaseUnit)}/${normalized.outputBaseUnit}`;
+                  })()}
+                </Text>
                 <Text type="secondary">
                   Tổng {formatVnd(Number(batch.totalCost))}
                 </Text>

@@ -1,11 +1,30 @@
-# Snowmilk — quản lý quán Sữa Tuyết
+# Bếp Nhà Nè
 
-Ứng dụng Next.js thay thế workbook quản lý bán Sữa Tuyết: bán nhanh theo ngày/mẻ, nhập hàng, sản phẩm, hàng hóa, công thức giá vốn, tài sản, chi phí, dashboard, import/export Excel.
+> “làm ở nhà, ngon thiệt nè.”
+
+Ứng dụng quản lý bán hàng cuối ngày, chuẩn bị món, kho, công thức, giá vốn và
+tài chính cho Bếp Nhà Nè. Hệ thống hỗ trợ nhiều dòng kinh doanh; hiện tại gồm
+Sữa Tuyết, Sữa tươi và Đồ ăn sáng.
+
+## Nguồn dữ liệu production
+
+Nguồn chính thức là MongoDB Atlas được cấu hình bằng `mongodb+srv` trong
+`.env.local`, database `snowmilk`. Database local chỉ dùng để phát triển hoặc
+restore thử migration; tuyệt đối không dùng số liệu local làm baseline
+production.
+
+Baseline đã đối soát ngày 12/08/2026:
+
+- 20 ngày bán, từ 22/07/2026 đến 11/08/2026.
+- Tổng doanh thu 110.501.000đ.
+- Sữa Tuyết 108.501.000đ; Sữa tươi 2.000.000đ và 100 chai.
+- Tiền mặt 70.030.000đ; chuyển khoản 40.471.000đ; chênh lệch 0đ.
+- 2.893 ly Sữa Tuyết là số lượng ước tính, không phải dòng SKU thực tế.
 
 ## Yêu cầu
 
 - Bun 1.1+.
-- MongoDB Community chạy local.
+- MongoDB Atlas cho production; MongoDB Community chỉ cần khi phát triển local.
 - MongoDB Database Tools (`mongodump`, `mongorestore`) nếu dùng backup/restore.
 
 ## Cài đặt bằng Bun
@@ -13,24 +32,23 @@
 ```bash
 bun install
 cp .env.example .env.local
-bun run db:start
 bun run dev
 ```
 
-Mở [http://localhost:3000](http://localhost:3000). Cấu hình MongoDB local:
-
-```env
-MONGODB_URI=mongodb://127.0.0.1:27017
-MONGODB_DB_NAME=snowmilk
-```
-
-Với MongoDB Atlas, URI chỉ cần chứa cluster host. Ứng dụng tự URL-encode rồi
-chèn username/password vào URI:
+Mở [http://localhost:3000](http://localhost:3000). Với môi trường production
+hoặc khi cần đọc baseline thật, giữ nguyên cấu hình Atlas trong `.env.local`:
 
 ```env
 MONGODB_USERNAME=your_username
 MONGODB_PASSWORD=your_password
 MONGODB_URI=mongodb+srv://your-cluster.mongodb.net
+MONGODB_DB_NAME=snowmilk
+```
+
+Chỉ khi chủ động phát triển trên database local mới dùng:
+
+```env
+MONGODB_URI=mongodb://127.0.0.1:27017
 MONGODB_DB_NAME=snowmilk
 ```
 
@@ -49,6 +67,33 @@ MongoDB local được lưu trong `.mongodb/` của dự án. Kiểm tra hoặc 
 bun run db:status
 bun run db:stop
 ```
+
+## Nâng cấp v2 an toàn
+
+Dry-run mặc định chỉ đọc Atlas và in nhận diện target đã che credential:
+
+```bash
+bun run migrate:v2 --catalog-map=config/v2-catalog-map.online-snowmilk.json
+```
+
+Không chạy `--apply` trước khi hoàn tất backup/restore thử, đối soát báo cáo,
+kiểm kho vật lý tại cutover và maintenance window. Apply yêu cầu đồng thời
+target Atlas `snowmilk`, confirmation token và checksum mới nhất của chính
+dry-run đó. Xem [docs/v2-rollout.md](docs/v2-rollout.md).
+
+## Xác thực và phân quyền
+
+Giữ `AUTH_ENFORCEMENT=disabled` trong lúc rollout dữ liệu để các màn hình
+legacy hiện tại không bị gián đoạn. Cờ này chỉ điều khiển proxy của phần legacy:
+mọi Route Handler `/api/v2/*` vẫn luôn yêu cầu session thật. Sau khi migration
+tạo organization, dùng bootstrap token một lần để tạo owner, xác minh đăng nhập
+và membership, rồi bật `AUTH_ENFORCEMENT=enabled`. Owner, staff và viewer đều
+được kiểm tra lại tại Route Handler/DAL, không chỉ ẩn nút trên giao diện.
+
+`V2_OPERATIONS_ENABLED` cũng mặc định là `disabled`; chỉ bật cùng
+`AUTH_ENFORCEMENT` trong maintenance window sau migration và trước khi owner
+ghi opening balance. Trước cutover, `/sales` tiếp tục dùng luồng legacy để quán
+không bị gián đoạn.
 
 ## Phân tích và import Excel
 
@@ -106,6 +151,8 @@ docs/                   phân tích, schema, business rules, đối chiếu
 
 - `/dashboard`
 - `/sales`
+- `/preparation`
+- `/reports`
 - `/purchases`
 - `/expenses`
 - `/products`
@@ -118,8 +165,13 @@ docs/                   phân tích, schema, business rules, đối chiếu
 ## Quy tắc quan trọng
 
 - Một product–size là một product riêng.
-- Một sale là một ngày + mẻ + phương thức thanh toán, có `items[]`.
+- V2 dùng một `SalesDay` cho mỗi ngày/điểm bán; người dùng nhập số lượng từng
+  SKU cuối ngày, không nhập từng đơn POS.
 - Giá và cost được snapshot tại thời điểm bán.
+- Doanh thu toàn app là tổng các business line cấp lá; không thêm field cứng
+  theo món mới.
+- VND luôn là integer; số lượng/cost rate dùng Decimal128. Thiếu cost phải hiển
+  thị thiếu dữ liệu, không mặc định thành 0 để tạo lợi nhuận giả.
 - Kiểm kho là snapshot cuối ngày: nhập tồn thực tế để định giá kho và đối chiếu
   số ly theo vỏ ly. Số ly suy ra là chỉ báo vận hành, không phải số bán thực tế.
 - Import giữ `sourceSheet`, `sourceRow`, `legacyId`.

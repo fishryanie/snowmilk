@@ -94,7 +94,7 @@ export default function DivestmentsPage() {
     <div className="page-wrap divestments-page">
       <PageHeader
         title="Thoái vốn"
-        description="Dùng tiền bán hàng còn lại để hoàn vốn cho phiếu nhập và tài sản trước đây đã trả bằng vốn chủ."
+        description="Dùng tiền bán hàng còn lại để hoàn vốn cho phiếu nhập và tài sản trước đây đã trả bằng tiền cá nhân."
       />
 
       {loading ? (
@@ -201,10 +201,10 @@ export default function DivestmentsPage() {
             : summary.isRecovered
               ? "Bạn đã thu hồi đủ vốn đầu tư ban đầu"
               : claimReady
-                ? `Doanh nghiệp còn ${formatVnd(context.businessCash.remainingBalance)}; chỉ chọn tổng tiền nhỏ hơn số này`
+                ? `Tiệm còn ${formatVnd(context.businessCash.remainingBalance)}; chỉ chọn tổng tiền nhỏ hơn số này`
                 : context.withdrawalLimit > 0
-                  ? `Doanh nghiệp còn ${formatVnd(context.businessCash.remainingBalance)} nhưng chưa có phiếu nhập hoặc tài sản Vốn chủ nào nhỏ hơn số tiền này`
-                  : "Hiện doanh nghiệp chưa còn tiền bán hàng để claim"
+                  ? `Tiệm còn ${formatVnd(context.businessCash.remainingBalance)} nhưng chưa có phiếu nhập hoặc tài sản dùng Tiền cá nhân nào nhỏ hơn số tiền này`
+                  : "Hiện tiệm chưa còn tiền bán hàng để claim"
         }
         description={
           usingFallback

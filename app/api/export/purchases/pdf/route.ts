@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { apiError, errorMessage } from "@/lib/api-response";
+import { loadBusinessProfile } from "@/lib/business-profile.server";
 import { createPurchasePdf } from "@/lib/purchase-pdf";
 
 export const runtime = "nodejs";
@@ -31,8 +32,8 @@ const requestSchema = z.object({
   filters: z
     .object({
       query: z.string().trim().max(240).optional(),
-      dateFrom: z.string().date().optional(),
-      dateTo: z.string().date().optional(),
+      dateFrom: z.iso.date().optional(),
+      dateTo: z.iso.date().optional(),
       category: z.string().trim().max(160).optional(),
       fundingSource: fundingSourceSchema.optional(),
     })
@@ -46,8 +47,10 @@ export async function POST(request: Request) {
       return apiError("Danh sách nhập hàng xuất PDF không hợp lệ", 422);
     }
 
+    const businessProfile = await loadBusinessProfile();
     const pdf = await createPurchasePdf(parsed.data.purchases, {
       filters: parsed.data.filters,
+      businessProfile,
     });
     return new Response(new Uint8Array(pdf), {
       headers: {

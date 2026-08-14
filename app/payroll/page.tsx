@@ -662,7 +662,7 @@ export default function PayrollPage() {
           <Statistic
             title={
               <PayrollHelpTitle
-                title="Tiền doanh nghiệp cuối tháng"
+                title="Tiền tiệm cuối tháng"
                 topic="business-cash"
                 onOpen={openHelp}
               />
@@ -690,7 +690,7 @@ export default function PayrollPage() {
             formatter={(value) => formatVnd(Number(value))}
             prefix={<SafetyCertificateOutlined />}
           />
-          <Text type="secondary">Mức cố định theo quy tắc doanh nghiệp</Text>
+          <Text type="secondary">Mức cố định theo quy tắc của tiệm</Text>
         </Card>
         <Card className="surface-card payroll-kpi-card payroll-kpi-share">
           <Statistic
@@ -706,7 +706,7 @@ export default function PayrollPage() {
             prefix={<TeamOutlined />}
           />
           <Text type="secondary">
-            Đã chừa {formatVnd(outstandingOwnerCapital)} vốn chủ chưa claim
+            Đã chừa {formatVnd(outstandingOwnerCapital)} tiền cá nhân chưa claim
           </Text>
         </Card>
         <Card className="surface-card payroll-kpi-card payroll-kpi-available">
@@ -757,7 +757,7 @@ export default function PayrollPage() {
             <div>
               <Paragraph type="secondary" className="payroll-allocation-note">
                 {selectedTotalShare < 100
-                  ? `${formatVnd(unallocatedPool)} chưa được gán và vẫn nằm trong doanh nghiệp.`
+                  ? `${formatVnd(unallocatedPool)} chưa được gán và vẫn nằm trong tiệm.`
                   : "Toàn bộ quỹ có thể chia đã được gán cho nhân sự."}
               </Paragraph>
               <div className="payroll-allocation-list">
@@ -1047,6 +1047,7 @@ export default function PayrollPage() {
             className="payroll-payslip-preview-frame"
             src={payslipPreviewUrl}
             title="Bản xem trước phiếu lương"
+            sandbox="allow-same-origin"
           />
         ) : null}
       </Modal>

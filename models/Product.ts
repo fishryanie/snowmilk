@@ -14,6 +14,29 @@ const ProductPackagingItemSchema = new Schema(
   { _id: false },
 );
 
+const ProductIngredientItemSchema = new Schema(
+  {
+    source: {
+      type: String,
+      enum: ["batch", "ingredient"],
+      required: true,
+    },
+    batchType: { type: String, enum: ["milk_base", "topping"] },
+    batchId: { type: Schema.Types.ObjectId, ref: "MilkBatch" },
+    ingredientId: { type: Schema.Types.ObjectId, ref: "Ingredient" },
+    batchCode: { type: String, trim: true },
+    ingredientCode: { type: String, trim: true },
+    batchName: { type: String, trim: true },
+    itemName: { type: String, required: true, trim: true },
+    quantity: { type: Number, min: 0, required: true },
+    unit: { type: String, required: true, trim: true },
+    costUnit: { type: String, required: true, trim: true },
+    unitCost: { type: Number, min: 0, default: 0 },
+    amount: { type: Number, min: 0, default: 0 },
+  },
+  { _id: false },
+);
+
 const ProductSchema = new Schema(
   {
     code: { type: String, required: true, trim: true, unique: true },
@@ -26,7 +49,7 @@ const ProductSchema = new Schema(
     recipeName: { type: String, trim: true },
     productMode: {
       type: String,
-      enum: ["legacy", "recipe"],
+      enum: ["legacy", "recipe", "composed"],
       default: "legacy",
       index: true,
     },
@@ -40,6 +63,8 @@ const ProductSchema = new Schema(
     milkCost: { type: Number, min: 0, default: 0 },
     recipeCost: { type: Number, min: 0, default: 0 },
     toppingCost: { type: Number, min: 0, default: 0 },
+    ingredientItems: { type: [ProductIngredientItemSchema], default: [] },
+    toppingItems: { type: [ProductIngredientItemSchema], default: [] },
     packagingCost: { type: Number, min: 0, default: 0 },
     packagingItems: { type: [ProductPackagingItemSchema], default: [] },
     overheadCost: { type: Number, min: 0, default: 0 },
@@ -59,7 +84,8 @@ const cachedProductModel = mongoose.models.Product;
 if (
   process.env.NODE_ENV !== "production" &&
   cachedProductModel &&
-  !cachedProductModel.schema.path("recipeId")
+  (!cachedProductModel.schema.path("recipeId") ||
+    !cachedProductModel.schema.path("ingredientItems"))
 ) {
   mongoose.deleteModel("Product");
 }

@@ -120,4 +120,68 @@ describe("milk purchase sterilization validation", () => {
     expect(result.sterilizationOutsourcedLiters).toBe(0);
     expect(result.sterilizationUnitPrice).toBe(5_000);
   });
+
+  it("accepts a new one-off item and defaults saving it for next time", () => {
+    const result = resourceSchemas.purchases.parse({
+      source: "new",
+      purchaseDate: "2026-08-12",
+      itemName: "Trân châu",
+      category: "Topping",
+      purchaseUnit: "gói",
+      packageQuantity: 1,
+      costUnit: "kg",
+      packageCount: 2,
+      totalAmount: 70_000,
+    });
+
+    expect(result).toMatchObject({
+      source: "new",
+      itemName: "Trân châu",
+      saveToCatalog: true,
+    });
+  });
+});
+
+describe("preparation batch validation", () => {
+  it("accepts a topping batch measured in grams with ingredient usage in grams", () => {
+    const result = resourceSchemas.batches.parse({
+      name: "Trân châu đường đen",
+      batchType: "topping",
+      outputQuantity: 75,
+      outputUnit: "g",
+      cookingHours: 0.5,
+      ingredients: [
+        {
+          ingredientId: "507f1f77bcf86cd799439011",
+          quantity: 60,
+          unit: "g",
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      batchType: "topping",
+      outputQuantity: 75,
+      outputUnit: "g",
+    });
+  });
+
+  it("rejects a topping output measured in liters", () => {
+    const result = resourceSchemas.batches.safeParse({
+      name: "Trân châu đường đen",
+      batchType: "topping",
+      outputQuantity: 1,
+      outputUnit: "lít",
+      cookingHours: 0,
+      ingredients: [
+        {
+          ingredientId: "507f1f77bcf86cd799439011",
+          quantity: 60,
+          unit: "g",
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
 });

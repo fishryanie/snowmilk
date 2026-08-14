@@ -494,7 +494,7 @@ export async function GET(request: Request) {
         severity: "warning",
         title: `${missingPurchaseFunding} phiếu nhập cũ chưa ghi nguồn tiền`,
         description:
-          "Hệ thống đang tạm coi các phiếu này là Vốn chủ; hãy đối soát để tổng vốn và tiền doanh nghiệp chính xác.",
+          "Hệ thống đang tạm coi các phiếu này là Tiền cá nhân; hãy đối soát để tổng vốn và tiền tiệm chính xác.",
         href: "/purchases",
       });
     }
@@ -504,7 +504,7 @@ export async function GET(request: Request) {
         severity: "warning",
         title: `${missingExpenseFunding} chi phí cũ chưa ghi nguồn tiền`,
         description:
-          "Hãy xác nhận chi phí được thanh toán từ tiền bán hàng, vốn chủ, tiền vay hay nguồn khác.",
+          "Hãy xác nhận chi phí được thanh toán từ tiền bán hàng, tiền cá nhân, tiền vay hay nguồn khác.",
         href: "/expenses",
       });
     }
@@ -514,7 +514,7 @@ export async function GET(request: Request) {
         severity: "warning",
         title: `${missingEquipmentFunding} tài sản cũ chưa ghi nguồn tiền`,
         description:
-          "Hệ thống đang tạm coi các tài sản này là Vốn chủ; hãy đối soát để tiến độ thu hồi vốn chính xác.",
+          "Hệ thống đang tạm coi các tài sản này là Tiền cá nhân; hãy đối soát để tiến độ thu hồi vốn chính xác.",
         href: "/equipment",
       });
     }

@@ -12,6 +12,7 @@ const PurchaseSchema = new Schema(
     itemCode: { type: String, trim: true },
     itemName: { type: String, required: true, trim: true },
     category: { type: String, trim: true },
+    purchaseUnit: { type: String, trim: true },
     packageCount: { type: Number, min: 0, required: true },
     packageQuantity: { type: Number, min: 0, default: 1 },
     costUnit: { type: String, trim: true },

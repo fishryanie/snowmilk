@@ -18,6 +18,64 @@ const nonNegative = z.coerce.number().min(0);
 const requiredText = z.string().trim().min(1);
 const optionalText = z.string().trim().optional().default("");
 
+const purchaseCommonFields = {
+  purchaseDate: z.coerce.date(),
+  packageCount: z.coerce.number().positive(),
+  totalAmount: nonNegative.optional(),
+  actualPackagePrice: nonNegative.optional(),
+  fundingSource: z
+    .enum(PURCHASE_FUNDING_SOURCES)
+    .optional()
+    .default(DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE),
+  sterilizationOutsourcedLiters: nonNegative.optional().default(0),
+  sterilizationUnitPrice: nonNegative
+    .optional()
+    .default(DEFAULT_STERILIZATION_UNIT_PRICE),
+  sterilizationProvider: optionalText,
+  supplier: optionalText,
+  note: optionalText,
+};
+
+const existingPurchaseSchema = z.strictObject({
+  ...purchaseCommonFields,
+  source: z.literal("existing"),
+  ingredientId: z
+    .string()
+    .regex(/^[a-f\d]{24}$/i, "Hàng hóa không hợp lệ"),
+});
+
+const newPurchaseSchema = z.strictObject({
+  ...purchaseCommonFields,
+  source: z.literal("new"),
+  itemName: requiredText,
+  category: z.enum(INGREDIENT_CATEGORIES),
+  purchaseUnit: requiredText,
+  packageQuantity: z.coerce.number().positive(),
+  costUnit: requiredText,
+  saveToCatalog: z.boolean().optional().default(true),
+});
+
+const purchaseSchema = z
+  .preprocess(
+    (value) =>
+      value && typeof value === "object" && !("source" in value)
+        ? { ...value, source: "existing" }
+        : value,
+    z.discriminatedUnion("source", [
+      existingPurchaseSchema,
+      newPurchaseSchema,
+    ]),
+  )
+  .refine(
+    (purchase) =>
+      purchase.totalAmount !== undefined ||
+      purchase.actualPackagePrice !== undefined,
+    {
+      message: "Cần nhập tổng tiền thanh toán",
+      path: ["totalAmount"],
+    },
+  );
+
 export const resourceSchemas = {
   products: z
     .object({
@@ -52,37 +110,7 @@ export const resourceSchemas = {
       note: optionalText,
     })
     .strict(),
-  purchases: z
-    .object({
-      purchaseDate: z.coerce.date(),
-      ingredientId: z
-        .string()
-        .regex(/^[a-f\d]{24}$/i, "Hàng hóa không hợp lệ"),
-      packageCount: z.coerce.number().positive(),
-      totalAmount: nonNegative.optional(),
-      actualPackagePrice: nonNegative.optional(),
-      fundingSource: z
-        .enum(PURCHASE_FUNDING_SOURCES)
-        .optional()
-        .default(DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE),
-      sterilizationOutsourcedLiters: nonNegative.optional().default(0),
-      sterilizationUnitPrice: nonNegative
-        .optional()
-        .default(DEFAULT_STERILIZATION_UNIT_PRICE),
-      sterilizationProvider: optionalText,
-      supplier: optionalText,
-      note: optionalText,
-    })
-    .refine(
-      (purchase) =>
-        purchase.totalAmount !== undefined ||
-        purchase.actualPackagePrice !== undefined,
-      {
-        message: "Cần nhập tổng tiền thanh toán",
-        path: ["totalAmount"],
-      },
-    )
-    .strict(),
+  purchases: purchaseSchema,
   expenses: z
     .strictObject({
       expenseDate: z.coerce.date(),
@@ -178,7 +206,10 @@ export const resourceSchemas = {
   batches: z
     .object({
       name: requiredText,
-      actualLiters: z.coerce.number().positive(),
+      batchType: z.enum(["milk_base", "topping"]).optional().default("milk_base"),
+      outputQuantity: z.coerce.number().positive().optional(),
+      outputUnit: z.enum(["ml", "lít", "g", "kg"]).optional(),
+      actualLiters: z.coerce.number().positive().optional(),
       cookingHours: nonNegative,
       ingredients: z
         .array(
@@ -188,6 +219,7 @@ export const resourceSchemas = {
                 .string()
                 .regex(/^[a-f\d]{24}$/i, "Nguyên liệu không hợp lệ"),
               quantity: z.coerce.number().positive(),
+              unit: optionalText,
               note: optionalText,
             })
             .strict(),
@@ -195,7 +227,39 @@ export const resourceSchemas = {
         .min(1),
       note: optionalText,
     })
-    .strict(),
+    .strict()
+    .superRefine((batch, context) => {
+      if (batch.outputQuantity == null && batch.actualLiters == null) {
+        context.addIssue({
+          code: "custom",
+          path: ["outputQuantity"],
+          message: "Nhập sản lượng thành phẩm thực tế",
+        });
+      }
+      if (batch.outputQuantity != null && !batch.outputUnit) {
+        context.addIssue({
+          code: "custom",
+          path: ["outputUnit"],
+          message: "Chọn đơn vị thành phẩm",
+        });
+      }
+      const volumeUnits = new Set(["ml", "lít"]);
+      const massUnits = new Set(["g", "kg"]);
+      if (
+        batch.outputUnit &&
+        ((batch.batchType === "milk_base" && !volumeUnits.has(batch.outputUnit)) ||
+          (batch.batchType === "topping" && !massUnits.has(batch.outputUnit)))
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["outputUnit"],
+          message:
+            batch.batchType === "milk_base"
+              ? "Nền sữa phải dùng ml hoặc lít"
+              : "Topping phải dùng g hoặc kg",
+        });
+      }
+    }),
 } as const;
 
 export type ResourceName = keyof typeof resourceSchemas;

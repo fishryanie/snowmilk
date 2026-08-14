@@ -18,18 +18,22 @@
     "db:restore": "bun scripts/db-restore.ts",
     "recalculate:estimated-sales": "bun scripts/recalculate-estimated-sales.ts",
     "recalculate:products": "bun scripts/recalculate-product-costs.ts",
-    "repair:cost-units": "bun scripts/repair-cost-units.ts"
+    "repair:cost-units": "bun scripts/repair-cost-units.ts",
+    "migrate:v2": "bun scripts/migrate-v2.ts"
   },
   "dependencies": {
     "@ant-design/charts": "^2.6.7",
     "@ant-design/icons": "^6.3.2",
     "@ant-design/nextjs-registry": "^1.3.0",
+    "@better-auth/mongo-adapter": "^1.6.27",
     "@hookform/resolvers": "^5.4.0",
     "add": "^2.0.9",
     "antd": "^6.5.1",
+    "better-auth": "^1.6.27",
     "chart.js": "^4.5.1",
     "dayjs": "^1.11.21",
     "exceljs": "^4.4.0",
+    "mongodb": "^7.5.0",
     "mongoose": "^9.8.0",
     "next": "16.2.11",
     "pdfkit": "^0.19.1",
@@ -37,7 +41,6 @@
     "react-chartjs-2": "^5.3.1",
     "react-dom": "19.2.4",
     "react-hook-form": "^7.82.0",
-    "react-snowfall": "^2.4.0",
     "server-only": "^0.0.1",
     "zod": "^4.4.3"
   },

@@ -233,7 +233,7 @@ export function DivestmentClaimManager({
           title="Xóa lần thu hồi này?"
           description={
             record.claims.length > 0
-              ? "Nguồn tiền của các phiếu nhập và tài sản đã chọn sẽ được hoàn lại thành Vốn chủ."
+              ? "Nguồn tiền của các phiếu nhập và tài sản đã chọn sẽ được hoàn lại thành Tiền cá nhân."
               : "Tổng vốn đã thu hồi sẽ được tính lại."
           }
           okText="Xóa"
@@ -277,7 +277,7 @@ export function DivestmentClaimManager({
       );
       if (currentTotal + item.amount >= context.withdrawalLimit) {
         message.warning(
-          "Tổng đã chọn phải nhỏ hơn số tiền còn lại của doanh nghiệp.",
+          "Tổng đã chọn phải nhỏ hơn số tiền còn lại của tiệm.",
         );
         return current;
       }
@@ -351,13 +351,13 @@ export function DivestmentClaimManager({
           <div>
             <Text strong>Claim từ lịch sử đầu tư</Text>
             <Text type="secondary">
-              Claim sẽ đổi nguồn tiền của phiếu nhập hoặc tài sản từ Vốn chủ
+              Claim sẽ đổi nguồn tiền của phiếu nhập hoặc tài sản từ Tiền cá nhân
               sang Tiền bán hàng.
             </Text>
           </div>
           <div
             className="divestment-cash-breakdown"
-            aria-label="Cách tính số tiền còn lại của doanh nghiệp"
+            aria-label="Cách tính số tiền còn lại của tiệm"
           >
             <Statistic
               title="Doanh thu"
@@ -366,13 +366,13 @@ export function DivestmentClaimManager({
             />
             <span aria-hidden="true">−</span>
             <Statistic
-              title="Chi bằng tiền công ty"
+              title="Chi bằng tiền tiệm"
               value={context.businessCash.totalCompanyFundedOutflow}
               formatter={(value) => formatVnd(Number(value))}
             />
             <span aria-hidden="true">=</span>
             <Statistic
-              title="Tiền doanh nghiệp còn lại"
+              title="Tiền tiệm còn lại"
               value={context.businessCash.remainingBalance}
               formatter={(value) => formatVnd(Number(value))}
             />
@@ -392,7 +392,7 @@ export function DivestmentClaimManager({
             showIcon
             type="warning"
             title={`${context.unavailableItemCount} khoản đầu tư chưa thể claim`}
-            description="Giá trị từng phiếu nhập hoặc tài sản phải nhỏ hơn số tiền doanh nghiệp còn lại. Danh sách sẽ tự cập nhật khi có thêm doanh thu."
+            description="Giá trị từng phiếu nhập hoặc tài sản phải nhỏ hơn số tiền tiệm còn lại. Danh sách sẽ tự cập nhật khi có thêm doanh thu."
           />
         )}
 
@@ -436,7 +436,7 @@ export function DivestmentClaimManager({
                   title="Xóa lần thu hồi này?"
                   description={
                     record.claims.length > 0
-                      ? "Nguồn tiền của các khoản đã chọn sẽ được hoàn lại thành Vốn chủ."
+                      ? "Nguồn tiền của các khoản đã chọn sẽ được hoàn lại thành Tiền cá nhân."
                       : "Tổng vốn đã thu hồi sẽ được tính lại."
                   }
                   okText="Xóa"
@@ -509,7 +509,7 @@ export function DivestmentClaimManager({
       >
         <div className="divestment-claim-summary">
           <Statistic
-            title="Tiền doanh nghiệp còn lại"
+            title="Tiền tiệm còn lại"
             value={context.withdrawalLimit}
             formatter={(value) => formatVnd(Number(value))}
           />
@@ -553,8 +553,8 @@ export function DivestmentClaimManager({
           <div>
             <Text strong>Các khoản có thể chọn</Text>
             <Text type="secondary">
-              Hiện phiếu nhập và tài sản trong mục Đầu tư & tài sản dùng Vốn
-              chủ, có giá trị nhỏ hơn số tiền còn lại.
+              Hiện phiếu nhập và tài sản trong mục Đầu tư & tài sản dùng Tiền
+              cá nhân, có giá trị nhỏ hơn số tiền còn lại.
             </Text>
           </div>
           <div className="divestment-suggestion-filters">

@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     const product = await createOnboardedProduct(parsed.data);
     return apiSuccess(
       product,
-      "Đã tạo sản phẩm, công thức và dữ liệu bao bì",
+      "Đã tạo sản phẩm và liên kết các mẻ chuẩn bị",
       201,
     );
   } catch (error) {

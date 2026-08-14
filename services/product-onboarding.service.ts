@@ -1,9 +1,13 @@
-import { calculateIngredientCostWithUnits } from "@/lib/calculations/costing";
 import {
   calculateInlinePackagingUnitCost,
   calculateOnboardingProductCost,
-  calculateRecipeCost,
 } from "@/lib/calculations/product-onboarding";
+import { calculateIngredientCostWithUnits } from "@/lib/calculations/costing";
+import {
+  calculatePreparationUsageCost,
+  normalizedPreparationCostSource,
+} from "@/lib/calculations/preparation-batch";
+import { convertQuantity } from "@/lib/calculations/units";
 import {
   ingredientCodePrefix,
   nextIngredientCode,
@@ -15,9 +19,9 @@ import { resolveSettingValue } from "@/lib/settings";
 import type { ProductOnboardingInput } from "@/lib/validators/product-onboarding";
 import { Equipment } from "@/models/Equipment";
 import { Ingredient } from "@/models/Ingredient";
+import { MilkBatch } from "@/models/MilkBatch";
 import { Product } from "@/models/Product";
 import { Purchase } from "@/models/Purchase";
-import { Recipe } from "@/models/Recipe";
 import { Setting } from "@/models/Setting";
 
 function escapeRegExp(value: string) {
@@ -30,15 +34,6 @@ function isCodeCollision(error: unknown) {
     keyPattern?: Record<string, number>;
   };
   return mongoError.code === 11000 && Boolean(mongoError.keyPattern?.code);
-}
-
-async function nextRecipeCode() {
-  const records = await Recipe.find({ code: /^CT-\d+$/ }).select("code").lean();
-  const max = records.reduce((current, record) => {
-    const number = Number(String(record.code).replace("CT-", ""));
-    return Number.isFinite(number) ? Math.max(current, number) : current;
-  }, 0);
-  return `CT-${String(max + 1).padStart(3, "0")}`;
 }
 
 async function nextProductCode() {
@@ -111,77 +106,6 @@ async function costSettings() {
   };
 }
 
-async function createRecipe(
-  input: Extract<ProductOnboardingInput["recipe"], { mode: "new" }>,
-) {
-  const ingredientIds = input.ingredients.map((item) => item.ingredientId);
-  const ingredients = await Ingredient.find({
-    _id: { $in: ingredientIds },
-    isActive: true,
-    category: { $ne: "Bao bì" },
-  }).lean();
-  const ingredientsById = new Map(
-    ingredients.map((ingredient) => [String(ingredient._id), ingredient]),
-  );
-  if (
-    input.ingredients.some(
-      (item) => !ingredientsById.has(item.ingredientId),
-    )
-  ) {
-    throw new Error("Có nguyên liệu không tồn tại hoặc đã ngừng kích hoạt.");
-  }
-
-  const resolvedIngredients = input.ingredients.map((item) => {
-    const ingredient = ingredientsById.get(item.ingredientId)!;
-    const unitCost = Number(ingredient.averageUnitCost ?? 0);
-    const costUnit = String(ingredient.costUnit ?? "").trim();
-    if (!costUnit) {
-      throw new Error(`${ingredient.name} chưa có đơn vị cost.`);
-    }
-    return {
-      ingredientId: ingredient._id,
-      ingredientCode: ingredient.code,
-      ingredientName: ingredient.name,
-      quantity: item.quantity,
-      unit: item.unit,
-      costUnit,
-      unitCost,
-      amount: calculateIngredientCostWithUnits({
-        quantity: item.quantity,
-        quantityUnit: item.unit,
-        unitCost,
-        costUnit,
-      }),
-    };
-  });
-  const costs = calculateRecipeCost(
-    input.yieldMl,
-    resolvedIngredients.map((item) => ({
-      quantity: item.quantity,
-      unit: item.unit,
-      unitCost: item.unitCost,
-      costUnit: item.costUnit,
-    })),
-  );
-
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    try {
-      return await Recipe.create({
-        code: await nextRecipeCode(),
-        name: input.name,
-        yieldMl: input.yieldMl,
-        ingredients: resolvedIngredients,
-        ...costs,
-        note: input.note,
-        isActive: true,
-      });
-    } catch (error) {
-      if (!isCodeCollision(error) || attempt === 4) throw error;
-    }
-  }
-  throw new Error("Không thể tạo mã công thức. Vui lòng thử lại.");
-}
-
 async function createInlinePackaging(
   input: Extract<
     ProductOnboardingInput["packagingItems"][number],
@@ -215,6 +139,7 @@ async function createInlinePackaging(
       itemCode: ingredient.code,
       itemName: ingredient.name,
       category: ingredient.category,
+      purchaseUnit: ingredient.purchaseUnit,
       packageCount: input.packageCount,
       packageQuantity: input.packageQuantity,
       costUnit: input.costUnit,
@@ -231,21 +156,6 @@ async function createInlinePackaging(
     await Ingredient.findByIdAndDelete(ingredient._id);
     throw error;
   }
-}
-
-async function resolveRecipe(input: ProductOnboardingInput["recipe"]) {
-  if (input.mode === "new") {
-    const recipe = await createRecipe(input);
-    return { recipe, created: true };
-  }
-  const recipe = await Recipe.findOne({
-    _id: input.recipeId,
-    isActive: true,
-  });
-  if (!recipe) {
-    throw new Error("Công thức không tồn tại hoặc đã ngừng kích hoạt.");
-  }
-  return { recipe, created: false };
 }
 
 type PackagingMutation = {
@@ -313,9 +223,14 @@ async function resolvePackaging(
               `${ingredient.name} chưa có quy cách hoặc đơn vị cost hợp lệ.`,
             );
           }
+          const {
+            packageCount: openingPackageCount,
+            packagePrice: openingPackagePrice,
+            supplier: openingSupplier,
+          } = item.openingPurchase;
           unitCost = calculateInlinePackagingUnitCost({
             packageQuantity,
-            packagePrice: item.openingPurchase.packagePrice,
+            packagePrice: openingPackagePrice,
           });
           const purchase = await Purchase.create({
             purchaseDate: new Date(),
@@ -323,24 +238,22 @@ async function resolvePackaging(
             itemCode: ingredient.code,
             itemName: ingredient.name,
             category: ingredient.category,
-            packageCount: item.openingPurchase.packageCount,
+            purchaseUnit: ingredient.purchaseUnit,
+            packageCount: openingPackageCount,
             packageQuantity,
             costUnit,
-            referencePackagePrice: item.openingPurchase.packagePrice,
-            actualPackagePrice: item.openingPurchase.packagePrice,
-            convertedQuantity:
-              item.openingPurchase.packageCount * packageQuantity,
-            totalAmount:
-              item.openingPurchase.packageCount *
-              item.openingPurchase.packagePrice,
+            referencePackagePrice: openingPackagePrice,
+            actualPackagePrice: openingPackagePrice,
+            convertedQuantity: openingPackageCount * packageQuantity,
+            totalAmount: openingPackageCount * openingPackagePrice,
             fundingSource: DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
-            supplier: item.openingPurchase.supplier,
+            supplier: openingSupplier,
             note: "Phiếu nhập đầu tiên tạo cùng sản phẩm",
           });
           try {
             await Ingredient.findByIdAndUpdate(ingredient._id, {
               averageUnitCost: unitCost,
-              referencePackagePrice: item.openingPurchase.packagePrice,
+              referencePackagePrice: openingPackagePrice,
             });
           } catch (error) {
             await Purchase.findByIdAndDelete(purchase._id);
@@ -367,6 +280,7 @@ async function resolvePackaging(
         });
         continue;
       }
+
       const inline = await createInlinePackaging(item);
       created.push({
         ingredientId: String(inline.ingredient._id),
@@ -390,41 +304,159 @@ async function resolvePackaging(
   }
 }
 
-async function removeCreatedPackaging(created: PackagingMutation[]) {
-  await rollbackPackagingMutations(created);
+async function resolveIngredientUsage(
+  items: ProductOnboardingInput["ingredientItems"],
+) {
+  const itemKeys = items.map((item) =>
+    item.source === "batch"
+      ? `batch:${item.batchId}`
+      : `ingredient:${item.ingredientId}`,
+  );
+  if (new Set(itemKeys).size !== itemKeys.length) {
+    throw new Error("Một nguyên liệu đang được chọn nhiều lần.");
+  }
+
+  const batchIds = items.flatMap((item) =>
+    item.source === "batch" ? [item.batchId] : [],
+  );
+  const ingredientIds = items.flatMap((item) =>
+    item.source === "ingredient" ? [item.ingredientId] : [],
+  );
+  const [batches, ingredients] = await Promise.all([
+    MilkBatch.find({ _id: { $in: batchIds } }).lean(),
+    Ingredient.find({
+      _id: { $in: ingredientIds },
+      category: { $ne: "Bao bì" },
+      isActive: true,
+    }).lean(),
+  ]);
+  const batchesById = new Map(
+    batches.map((batch) => [String(batch._id), batch]),
+  );
+  const ingredientsById = new Map(
+    ingredients.map((ingredient) => [String(ingredient._id), ingredient]),
+  );
+  if (batchIds.some((id) => !batchesById.has(id))) {
+    throw new Error("Có nguyên liệu đã nấu không tồn tại.");
+  }
+  if (ingredientIds.some((id) => !ingredientsById.has(id))) {
+    throw new Error("Có nguyên liệu thô không tồn tại hoặc đã ngừng kích hoạt.");
+  }
+
+  const resolvedItems = items.map((item) => {
+    if (item.source === "batch") {
+      const batch = batchesById.get(item.batchId)!;
+      const normalized = normalizedPreparationCostSource(batch);
+      return {
+        source: "batch" as const,
+        batchType: normalized.batchType,
+        batchId: batch._id,
+        batchCode: batch.code,
+        batchName: batch.name,
+        itemName: batch.name,
+        quantity: item.quantity,
+        unit: item.unit,
+        costUnit: normalized.outputBaseUnit,
+        unitCost: normalized.costPerBaseUnit,
+        amount: calculatePreparationUsageCost(batch, item.quantity, item.unit),
+      };
+    }
+
+    const ingredient = ingredientsById.get(item.ingredientId)!;
+    const costUnit = String(ingredient.costUnit ?? "").trim();
+    if (!costUnit) throw new Error(`${ingredient.name} chưa có đơn vị cost.`);
+    const unitCost = Number(ingredient.averageUnitCost ?? 0);
+    return {
+      source: "ingredient" as const,
+      ingredientId: ingredient._id,
+      ingredientCode: ingredient.code,
+      itemName: ingredient.name,
+      batchName: ingredient.name,
+      quantity: item.quantity,
+      unit: item.unit,
+      costUnit,
+      unitCost,
+      amount: calculateIngredientCostWithUnits({
+        quantity: item.quantity,
+        quantityUnit: item.unit,
+        unitCost,
+        costUnit,
+      }),
+    };
+  });
+  const { milkItems, toppingItems } = resolvedItems.reduce(
+    (groups, item) => {
+      if (item.source === "batch" && item.batchType === "milk_base") {
+        groups.milkItems.push(item);
+      } else {
+        groups.toppingItems.push(item);
+      }
+      return groups;
+    },
+    {
+      milkItems: [] as typeof resolvedItems,
+      toppingItems: [] as typeof resolvedItems,
+    },
+  );
+  return {
+    ingredientItems: resolvedItems,
+    primaryMilk: milkItems[0],
+    milkCost: milkItems.reduce((total, item) => total + item.amount, 0),
+    toppingItems,
+    toppingCost: toppingItems.reduce((total, item) => total + item.amount, 0),
+  };
 }
 
 async function buildProductPayload(input: ProductOnboardingInput) {
-  const recipeResult = await resolveRecipe(input.recipe);
+  const preparation = await resolveIngredientUsage(input.ingredientItems);
   let packagingResult: Awaited<ReturnType<typeof resolvePackaging>> | null =
     null;
   try {
     packagingResult = await resolvePackaging(input.packagingItems);
     const settings = await costSettings();
-    const recipe = recipeResult.recipe;
     const packagingCost = packagingResult.items.reduce(
       (total, item) => total + item.amount,
       0,
     );
     const costs = calculateOnboardingProductCost({
-      recipeCostPerMl: Number(recipe.costPerMl ?? 0),
-      servingMl: input.servingMl,
+      milkCost: preparation.milkCost,
+      toppingCost: preparation.toppingCost,
       packagingCost,
       ...settings,
     });
+    const toppingGrams = preparation.toppingItems.reduce((total, item) => {
+      try {
+        return total + convertQuantity(item.quantity, item.unit, "g");
+      } catch {
+        return total;
+      }
+    }, 0);
+    const milkMl = preparation.primaryMilk
+      ? convertQuantity(
+          preparation.primaryMilk.quantity,
+          preparation.primaryMilk.unit,
+          "ml",
+        )
+      : 0;
     return {
       payload: {
         name: input.name,
-        recipeId: recipe._id,
-        recipeCode: recipe.code,
-        recipeName: recipe.name,
-        productMode: "recipe",
-        sizeName: `${input.servingMl} ml`,
-        milkMl: input.servingMl,
+        productMode: "composed",
+        milkBatchId: preparation.primaryMilk?.batchId ?? null,
+        milkBatchCode: preparation.primaryMilk?.batchCode ?? "",
+        milkBatchName: preparation.primaryMilk?.batchName ?? "",
+        sizeName: milkMl > 0 ? `${milkMl} ml` : "",
+        milkMl,
+        toppingName: preparation.toppingItems
+          .map((item) => item.itemName)
+          .join(", "),
+        toppingGrams,
+        ingredientItems: preparation.ingredientItems,
+        toppingItems: preparation.toppingItems,
         sellingPrice: input.sellingPrice,
-        milkCost: costs.recipeCost,
-        recipeCost: costs.recipeCost,
-        toppingCost: 0,
+        milkCost: preparation.milkCost,
+        recipeCost: preparation.milkCost,
+        toppingCost: preparation.toppingCost,
         packagingCost,
         packagingItems: packagingResult.items,
         overheadCost: costs.overheadCost,
@@ -432,37 +464,31 @@ async function buildProductPayload(input: ProductOnboardingInput) {
         allocatedFixedCost: settings.allocatedFixedCost,
         fullCost: costs.fullCost,
         hasCostWarning:
-          costs.recipeCost <= 0 ||
+          preparation.ingredientItems.some((item) => item.unitCost <= 0) ||
           packagingResult.items.some((item) => item.unitCost <= 0) ||
           costs.fullCost >= input.sellingPrice,
         isActive: input.isActive,
         note: input.note,
       },
-      recipeCreated: recipeResult.created ? String(recipe._id) : "",
       packagingCreated: packagingResult.created,
     };
   } catch (error) {
-    await Promise.all([
-      recipeResult.created
-        ? Recipe.findByIdAndDelete(recipeResult.recipe._id)
-        : null,
-      packagingResult
-        ? removeCreatedPackaging(packagingResult.created)
-        : null,
-    ]);
+    if (packagingResult) {
+      await rollbackPackagingMutations(packagingResult.created);
+    }
     throw error;
   }
 }
 
 export async function loadProductOnboardingData() {
   await connectMongo();
-  const [products, recipes, ingredients, settings] = await Promise.all([
+  const [products, batches, ingredients, settings] = await Promise.all([
     Product.find().sort({ createdAt: -1 }).lean(),
-    Recipe.find({ isActive: true }).sort({ createdAt: -1 }).lean(),
+    MilkBatch.find().sort({ createdAt: -1 }).lean(),
     Ingredient.find({ isActive: true }).sort({ name: 1 }).lean(),
     costSettings(),
   ]);
-  return { products, recipes, ingredients, costSettings: settings };
+  return { products, batches, ingredients, costSettings: settings };
 }
 
 export async function createOnboardedProduct(input: ProductOnboardingInput) {
@@ -486,12 +512,7 @@ export async function createOnboardedProduct(input: ProductOnboardingInput) {
     }
     throw new Error("Không thể tạo mã sản phẩm. Vui lòng thử lại.");
   } catch (error) {
-    await Promise.all([
-      built.recipeCreated
-        ? Recipe.findByIdAndDelete(built.recipeCreated)
-        : null,
-      removeCreatedPackaging(built.packagingCreated),
-    ]);
+    await rollbackPackagingMutations(built.packagingCreated);
     throw error;
   }
 }
@@ -518,33 +539,124 @@ export async function updateOnboardedProduct(
       {
         $set: built.payload,
         $unset: {
+          recipeId: 1,
+          recipeCode: 1,
+          recipeName: 1,
           toppingIngredientId: 1,
           sizeId: 1,
-          milkBatchId: 1,
-          milkBatchCode: 1,
-          milkBatchName: 1,
-          toppingName: 1,
-          toppingGrams: 1,
         },
       },
       { returnDocument: "after", runValidators: true },
     );
     if (!product) {
-      await Promise.all([
-        built.recipeCreated
-          ? Recipe.findByIdAndDelete(built.recipeCreated)
-          : null,
-        removeCreatedPackaging(built.packagingCreated),
-      ]);
+      await rollbackPackagingMutations(built.packagingCreated);
     }
     return product;
   } catch (error) {
-    await Promise.all([
-      built.recipeCreated
-        ? Recipe.findByIdAndDelete(built.recipeCreated)
-        : null,
-      removeCreatedPackaging(built.packagingCreated),
-    ]);
+    await rollbackPackagingMutations(built.packagingCreated);
     throw error;
   }
+}
+
+type RecalculationIngredientItem = {
+  source?: "batch" | "ingredient";
+  batchId?: unknown;
+  ingredientId?: unknown;
+  quantity?: number;
+  unit?: string;
+};
+
+export async function recalculateComposedProductCosts(batchId?: string) {
+  await connectMongo();
+  const filter = batchId
+    ? {
+        productMode: "composed",
+        $or: [
+          { milkBatchId: batchId },
+          { "toppingItems.batchId": batchId },
+          { "ingredientItems.batchId": batchId },
+        ],
+      }
+    : { productMode: "composed" };
+  const products = await Product.find(filter).lean();
+  if (products.length === 0) return;
+
+  const settings = await costSettings();
+
+  await Promise.all(
+    products.map(async (product) => {
+      const storedItems = (product.ingredientItems ?? []) as RecalculationIngredientItem[];
+      const legacyItems: RecalculationIngredientItem[] = [
+        ...(product.milkBatchId
+          ? [
+              {
+                source: "batch" as const,
+                batchId: product.milkBatchId,
+                quantity: Number(product.milkMl ?? 0),
+                unit: "ml",
+              },
+            ]
+          : []),
+        ...((product.toppingItems ?? []) as RecalculationIngredientItem[]),
+      ];
+      const recalculationInput = (storedItems.length ? storedItems : legacyItems)
+        .flatMap((item) => {
+          const source = item.source ?? "batch";
+          const id = source === "batch" ? item.batchId : item.ingredientId;
+          if (!id || !item.unit || Number(item.quantity ?? 0) <= 0) return [];
+          return [
+            {
+              source,
+              ...(source === "batch"
+                ? { batchId: String(id) }
+                : { ingredientId: String(id) }),
+              quantity: Number(item.quantity),
+              unit: item.unit,
+            },
+          ];
+        }) as ProductOnboardingInput["ingredientItems"];
+      if (recalculationInput.length === 0) return;
+      const usage = await resolveIngredientUsage(recalculationInput);
+      const milkMl = usage.primaryMilk
+        ? convertQuantity(usage.primaryMilk.quantity, usage.primaryMilk.unit, "ml")
+        : 0;
+      const toppingGrams = usage.toppingItems.reduce((total, item) => {
+        try {
+          return total + convertQuantity(item.quantity, item.unit, "g");
+        } catch {
+          return total;
+        }
+      }, 0);
+      const packagingCost = Number(product.packagingCost ?? 0);
+      const costs = calculateOnboardingProductCost({
+        milkCost: usage.milkCost,
+        toppingCost: usage.toppingCost,
+        packagingCost,
+        ...settings,
+      });
+      await Product.findByIdAndUpdate(product._id, {
+        $set: {
+          milkBatchId: usage.primaryMilk?.batchId ?? null,
+          milkBatchCode: usage.primaryMilk?.batchCode ?? "",
+          milkBatchName: usage.primaryMilk?.batchName ?? "",
+          milkMl,
+          sizeName: milkMl > 0 ? `${milkMl} ml` : "",
+          milkCost: usage.milkCost,
+          recipeCost: usage.milkCost,
+          ingredientItems: usage.ingredientItems,
+          toppingItems: usage.toppingItems,
+          toppingName: usage.toppingItems.map((item) => item.itemName).join(", "),
+          toppingGrams,
+          toppingCost: usage.toppingCost,
+          overheadCost: costs.overheadCost,
+          variableCost: costs.variableCost,
+          allocatedFixedCost: settings.allocatedFixedCost,
+          fullCost: costs.fullCost,
+          hasCostWarning:
+            usage.ingredientItems.some((item) => item.unitCost <= 0) ||
+            costs.fullCost >= Number(product.sellingPrice ?? 0),
+        },
+      });
+    }),
+  );
 }

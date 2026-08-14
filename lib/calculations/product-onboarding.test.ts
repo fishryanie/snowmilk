@@ -31,21 +31,19 @@ describe("product onboarding costs", () => {
     expect(calculateSterilizationCost(1_000)).toBe(5_000);
   });
 
-  test("combines recipe, packaging, overhead and fixed allocation", () => {
-    expect(
-      calculateOnboardingProductCost({
-        recipeCostPerMl: 20,
-        servingMl: 400,
-        packagingCost: 725,
-        overheadRate: 0.05,
-        allocatedFixedCost: 500,
-      }),
-    ).toEqual({
-      recipeCost: 8_000,
-      directCost: 8_725,
-      overheadCost: 436.25,
-      variableCost: 9_161.25,
-      fullCost: 9_661.25,
+  test("combines milk, topping, packaging, overhead and fixed allocation", () => {
+    const result = calculateOnboardingProductCost({
+      milkCost: 8_000,
+      toppingCost: 324,
+      packagingCost: 725,
+      overheadRate: 0.05,
+      allocatedFixedCost: 500,
     });
+
+    expect(result.recipeCost).toBe(8_000);
+    expect(result.directCost).toBe(9_049);
+    expect(result.overheadCost).toBeCloseTo(452.45);
+    expect(result.variableCost).toBeCloseTo(9_501.45);
+    expect(result.fullCost).toBeCloseTo(10_001.45);
   });
 });

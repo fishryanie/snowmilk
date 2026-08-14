@@ -2,6 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import PDFDocument from "pdfkit";
 import { calculateSterilizationCost } from "@/lib/calculations/product-onboarding";
+import {
+  DEFAULT_BUSINESS_PROFILE,
+  type BusinessProfile,
+} from "@/lib/business-profile";
 import { formatDate, formatNumber } from "@/lib/formatters";
 
 export type ProductPdfRecord = {
@@ -18,6 +22,7 @@ export type ProductPdfRecord = {
 type ProductPdfOptions = {
   includeSterilizationCost?: boolean;
   generatedAt?: Date;
+  businessProfile?: Pick<BusinessProfile, "displayName" | "wordmark">;
 };
 
 type TableColumn = {
@@ -36,15 +41,14 @@ type TableColumn = {
   align: "left" | "right" | "center";
 };
 
-const BRAND_COLOR = "#16645a";
-const INK_COLOR = "#17343b";
-const MUTED_COLOR = "#60767b";
+const BRAND_COLOR = DEFAULT_BUSINESS_PROFILE.brandColors.terracotta;
+const INK_COLOR = DEFAULT_BUSINESS_PROFILE.brandColors.ink;
+const MUTED_COLOR = DEFAULT_BUSINESS_PROFILE.brandColors.green;
 const LINE_COLOR = "#d9e4e1";
-const LIGHT_COLOR = "#eef6f4";
+const LIGHT_COLOR = DEFAULT_BUSINESS_PROFILE.brandColors.cream;
 const PAGE_MARGIN = 36;
 const TABLE_TOP = 112;
 const FOOTER_HEIGHT = 28;
-const BUSINESS_NAME = "SỮA TUYẾT VÂN NAM";
 
 function pdfFontPath() {
   const fontPath = path.join(
@@ -107,11 +111,12 @@ function addPageHeader(
   generatedAt: Date,
   productCount: number,
   includeSterilizationCost: boolean,
+  businessName: string,
 ) {
   doc
     .fillColor(BRAND_COLOR)
     .fontSize(17)
-    .text(BUSINESS_NAME, PAGE_MARGIN, 30, {
+    .text(businessName, PAGE_MARGIN, 30, {
       width: 340,
       lineBreak: false,
     })
@@ -263,6 +268,8 @@ export async function createProductPdf(
   }
 
   const generatedAt = options.generatedAt ?? new Date();
+  const businessProfile = options.businessProfile ?? DEFAULT_BUSINESS_PROFILE;
+  const businessName = businessProfile.wordmark.toUpperCase();
   const includeSterilizationCost = Boolean(options.includeSterilizationCost);
   const columns = tableColumns(includeSterilizationCost);
 
@@ -279,8 +286,8 @@ export async function createProductPdf(
       },
       bufferPages: true,
       info: {
-        Title: "Danh sách sản phẩm - Sữa Tuyết Vân Nam",
-        Author: "Sữa Tuyết Vân Nam",
+        Title: `Danh sách sản phẩm - ${businessProfile.displayName}`,
+        Author: businessProfile.displayName,
         Subject: "Danh sách sản phẩm và giá vốn",
       },
     });
@@ -295,6 +302,7 @@ export async function createProductPdf(
       generatedAt,
       records.length,
       includeSterilizationCost,
+      businessName,
     );
     let y = drawTableHeader(doc, columns, TABLE_TOP);
 
@@ -308,6 +316,7 @@ export async function createProductPdf(
           generatedAt,
           records.length,
           includeSterilizationCost,
+          businessName,
         );
         y = drawTableHeader(doc, columns, TABLE_TOP);
       }

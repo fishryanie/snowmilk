@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { apiError, errorMessage } from "@/lib/api-response";
+import { loadBusinessProfile } from "@/lib/business-profile.server";
 import { createProductPdf } from "@/lib/product-pdf";
 
 export const runtime = "nodejs";
@@ -27,8 +28,10 @@ export async function POST(request: Request) {
       return apiError("Danh sách sản phẩm xuất PDF không hợp lệ", 422);
     }
 
+    const businessProfile = await loadBusinessProfile();
     const pdf = await createProductPdf(parsed.data.products, {
       includeSterilizationCost: parsed.data.includeSterilizationCost,
+      businessProfile,
     });
     return new Response(new Uint8Array(pdf), {
       headers: {

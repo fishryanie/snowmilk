@@ -2,20 +2,28 @@ import type { Metadata, Viewport } from 'next';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { AppShell } from '@/components/layout/app-shell';
 import { Providers } from '@/components/providers';
+import { loadBusinessProfile } from '@/lib/business-profile.server';
+import { areV2OperationsEnabled } from '@/lib/v2/feature-flag';
 import './globals.css';
 
-export const metadata: Metadata = {
-  title: 'Sữa Tuyết — Quản lý vận hành',
-  description: 'Quản lý bán hàng, giá vốn và chi phí quán Sữa Tuyết',
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'black-translucent',
-    title: 'Sữa Tuyết',
-  },
-  other: {
-    'apple-mobile-web-app-capable': 'yes',
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const profile = await loadBusinessProfile();
+  return {
+    title: {
+      default: `${profile.displayName} — Quản lý vận hành`,
+      template: `%s — ${profile.displayName}`,
+    },
+    description: profile.description,
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: 'black-translucent',
+      title: profile.displayName,
+    },
+    other: {
+      'apple-mobile-web-app-capable': 'yes',
+    },
+  };
+}
 
 export const viewport: Viewport = {
   initialScale: 1,
@@ -31,13 +39,20 @@ export const viewport: Viewport = {
   width: 'device-width',
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const businessProfile = await loadBusinessProfile();
+  const v2OperationsEnabled = areV2OperationsEnabled();
   return (
     <html lang='vi'>
       <body>
         <AntdRegistry>
-          <Providers>
-            <AppShell>{children}</AppShell>
+          <Providers businessProfile={businessProfile}>
+            <AppShell
+              businessProfile={businessProfile}
+              v2OperationsEnabled={v2OperationsEnabled}
+            >
+              {children}
+            </AppShell>
           </Providers>
         </AntdRegistry>
       </body>

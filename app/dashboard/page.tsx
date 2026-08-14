@@ -235,7 +235,7 @@ export default function DashboardPage() {
       formula: "Σ Số chai sữa tươi đã bán",
     },
     {
-      label: "Tiền còn lại trong doanh nghiệp",
+      label: "Tiền còn lại trong tiệm",
       value: data.kpis.businessCashBalance,
       icon: <WalletOutlined />,
       money: true,
@@ -244,7 +244,7 @@ export default function DashboardPage() {
         "Số tiền bán hàng còn lại sau khi trừ toàn bộ khoản nhập hàng, chi phí và tài sản được thanh toán bằng nguồn Tiền bán hàng.",
       formula:
         "Doanh thu lũy kế − (Nhập hàng + Chi phí + Tài sản dùng Tiền bán hàng)",
-      note: "Đây là số lũy kế của toàn doanh nghiệp, không phụ thuộc khoảng ngày đang chọn trên dashboard.",
+      note: "Đây là số lũy kế của toàn tiệm, không phụ thuộc khoảng ngày đang chọn trên dashboard.",
     },
     {
       label: "Chi phí mua hàng kỳ này",
@@ -273,9 +273,9 @@ export default function DashboardPage() {
       icon: <TrophyOutlined />,
       money: true,
       description:
-        "Tổng tiền mua thiết bị và các lần nhập hàng dùng nguồn Vốn chủ được ghi nhận từ trước đến nay.",
+        "Tổng tiền mua thiết bị và các lần nhập hàng dùng nguồn Tiền cá nhân được ghi nhận từ trước đến nay.",
       formula:
-        "Vốn chủ đang mở + Các khoản Vốn chủ đã được thu hồi",
+        "Tiền cá nhân đang mở + Các khoản Tiền cá nhân đã được thu hồi",
       note: "Khoản đã claim vẫn được giữ trong nguyên giá vốn ban đầu nhưng không bị tính hai lần khi nguồn tiền của phiếu gốc thay đổi.",
     },
     {
@@ -286,7 +286,7 @@ export default function DashboardPage() {
       description:
         "Tổng số tiền mua thiết bị có ngày mua nằm trong khoảng thời gian đang chọn.",
       formula: "Σ Thành tiền thiết bị mua trong kỳ",
-      note: "Khoản này luôn được tính vào tiền ra; chỉ tài sản dùng Vốn chủ mới làm tăng Tổng vốn đã bỏ lũy kế.",
+      note: "Khoản này luôn được tính vào tiền ra; chỉ tài sản dùng Tiền cá nhân mới làm tăng Tổng vốn đã bỏ lũy kế.",
     },
     {
       label: "Vốn còn cần thu hồi",
@@ -295,7 +295,7 @@ export default function DashboardPage() {
       money: true,
       attention: true,
       description:
-        "Phần vốn chủ ban đầu chưa được ghi nhận là đã rút về qua các lần thu hồi vốn.",
+        "Phần tiền cá nhân ban đầu chưa được ghi nhận là đã rút về qua các lần thu hồi vốn.",
       formula: "Tổng vốn đã bỏ lũy kế − Tổng vốn đã thu hồi",
       note: "Chỉ số này không đổi khi bạn thay khoảng ngày trên dashboard; nó chỉ đổi khi vốn gốc hoặc lịch sử thu hồi vốn thay đổi.",
     },

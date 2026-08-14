@@ -34,6 +34,7 @@ import {
   Select,
   Space,
   Statistic,
+  Switch,
   Table,
   Tag,
   Typography,
@@ -69,6 +70,7 @@ type Ingredient = {
   code: string;
   name: string;
   category: string;
+  purchaseUnit?: string;
   packageQuantity: number;
   costUnit: string;
   referencePackagePrice: number;
@@ -83,6 +85,7 @@ type Purchase = {
   itemCode: string;
   itemName: string;
   category: string;
+  purchaseUnit?: string;
   packageCount: number;
   packageQuantity: number;
   costUnit: string;
@@ -105,7 +108,14 @@ type Purchase = {
 
 type PurchaseForm = {
   purchaseDate: Dayjs;
-  ingredientId: string;
+  source: 'existing' | 'new';
+  ingredientId?: string;
+  itemName?: string;
+  category?: 'Nguyên liệu' | 'Topping' | 'Bao bì' | 'Khác';
+  purchaseUnit?: string;
+  packageQuantity?: number;
+  costUnit?: string;
+  saveToCatalog?: boolean;
   packageCount: number;
   totalAmount?: number;
   sterilizationOutsourcedLiters?: number;
@@ -177,18 +187,49 @@ export default function PurchasesPage() {
     data: ingredients,
     loading: ingredientsLoading,
     usingFallback: ingredientsFallback,
+    setData: setIngredients,
   } = useApiData<Ingredient[]>('/api/ingredients?limit=500', workbookIngredients);
 
+  const purchaseSource = Form.useWatch('source', form) ?? 'existing';
   const selectedIngredientId = Form.useWatch('ingredientId', form);
+  const newItemName = Form.useWatch('itemName', form);
+  const newItemCategory = Form.useWatch('category', form);
+  const newPurchaseUnit = Form.useWatch('purchaseUnit', form);
+  const newPackageQuantity = Form.useWatch('packageQuantity', form) ?? 0;
+  const newCostUnit = Form.useWatch('costUnit', form);
+  const saveNewItemToCatalog = Form.useWatch('saveToCatalog', form) ?? true;
   const packageCount = Form.useWatch('packageCount', form) ?? 0;
   const enteredTotalAmount = Form.useWatch('totalAmount', form);
   const outsourcedLiters = Form.useWatch('sterilizationOutsourcedLiters', form) ?? 0;
   const sterilizationUnitPrice =
     Form.useWatch('sterilizationUnitPrice', form) ?? DEFAULT_STERILIZATION_UNIT_PRICE;
   const ingredientById = useMemo(() => new Map(ingredients.map(ingredient => [recordId(ingredient), ingredient])), [ingredients]);
+  const activeIngredientOptions = useMemo(
+    () =>
+      ingredients.flatMap(ingredient =>
+        ingredient.isActive
+          ? [{ value: recordId(ingredient), label: `${ingredient.name} · ${ingredient.code}` }]
+          : [],
+      ),
+    [ingredients],
+  );
   const selectedIngredient = selectedIngredientId ? ingredientById.get(selectedIngredientId) : undefined;
-  const convertedQuantity = packageCount * (selectedIngredient?.packageQuantity ?? 0);
-  const isFreshMilk = Boolean(selectedIngredient && isFreshMilkIngredient(selectedIngredient));
+  const purchaseItem =
+    purchaseSource === 'new'
+      ? {
+          name: newItemName,
+          category: newItemCategory,
+          purchaseUnit: newPurchaseUnit,
+          packageQuantity: newPackageQuantity,
+          costUnit: newCostUnit,
+          referencePackagePrice: 0,
+        }
+      : selectedIngredient;
+  const convertedQuantity = packageCount * (purchaseItem?.packageQuantity ?? 0);
+  const hasCompletePackageSpec = Boolean(
+    purchaseItem?.costUnit && Number(purchaseItem.packageQuantity) > 0,
+  );
+  const isFreshMilk = Boolean(purchaseItem && isFreshMilkIngredient(purchaseItem));
   const safeOutsourcedLiters = Math.min(
     Math.max(0, Number(outsourcedLiters)),
     Math.max(0, convertedQuantity),
@@ -200,7 +241,7 @@ export default function PurchasesPage() {
     sterilizationUnitPrice,
   });
   const effectivePrice =
-    packageCount > 0 && enteredTotalAmount !== undefined ? enteredTotalAmount / packageCount : (selectedIngredient?.referencePackagePrice ?? 0);
+    packageCount > 0 && enteredTotalAmount !== undefined ? enteredTotalAmount / packageCount : (purchaseItem?.referencePackagePrice ?? 0);
   const normalizedQuery = query.trim().toLocaleLowerCase('vi');
   const categoryOptions = useMemo(
     () =>
@@ -503,6 +544,7 @@ export default function PurchasesPage() {
 
   function openEditor(record?: Purchase) {
     const ingredient = record ? ingredients.find(item => recordId(item) === String(record.ingredientId ?? '') || item.code === record.itemCode) : undefined;
+    const source = ingredient ? 'existing' : record ? 'new' : 'existing';
     setEditing(record ?? null);
     const recordTotalLiters = Number(record?.convertedQuantity ?? 0);
     const recordOutsourcedLiters = Number(
@@ -517,9 +559,16 @@ export default function PurchasesPage() {
     setSterilizationChoice(nextChoice);
     form.setFieldsValue(
       record
-        ? {
+          ? {
             purchaseDate: dayjs(record.purchaseDate),
+            source,
             ingredientId: ingredient ? recordId(ingredient) : undefined,
+            itemName: ingredient ? undefined : record.itemName,
+            category: ingredient ? undefined : record.category as PurchaseForm['category'],
+            purchaseUnit: ingredient ? undefined : record.purchaseUnit || 'gói',
+            packageQuantity: ingredient ? undefined : record.packageQuantity,
+            costUnit: ingredient ? undefined : record.costUnit,
+            saveToCatalog: false,
             packageCount: record.packageCount,
             totalAmount: record.totalAmount,
             sterilizationOutsourcedLiters: recordOutsourcedLiters,
@@ -530,8 +579,9 @@ export default function PurchasesPage() {
             supplier: record.supplier,
             note: record.note,
           }
-        : {
+          : {
             purchaseDate: dayjs(),
+            source: 'existing',
             packageCount: 1,
             fundingSource: 'sales_revenue',
             sterilizationOutsourcedLiters: 0,
@@ -556,8 +606,18 @@ export default function PurchasesPage() {
         method: id ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          source: values.source,
           purchaseDate: values.purchaseDate.toISOString(),
-          ingredientId: values.ingredientId,
+          ...(values.source === 'existing'
+            ? { ingredientId: values.ingredientId }
+            : {
+                itemName: values.itemName,
+                category: values.category,
+                purchaseUnit: values.purchaseUnit,
+                packageQuantity: values.packageQuantity,
+                costUnit: values.costUnit,
+                saveToCatalog: values.saveToCatalog ?? true,
+              }),
           packageCount: values.packageCount,
           totalAmount: values.totalAmount,
           sterilizationOutsourcedLiters,
@@ -572,15 +632,35 @@ export default function PurchasesPage() {
           note: values.note ?? '',
         }),
       });
+      if (!response.ok) {
+        const failure = (await response.json().catch(() => null)) as {
+          message?: string;
+        } | null;
+        throw new Error(failure?.message ?? 'Không thể lưu lần nhập');
+      }
       const body = (await response.json()) as {
         success: boolean;
         message: string;
         data?: Purchase;
       };
-      if (!response.ok || !body.success || !body.data) {
+      if (!body.success || !body.data) {
         throw new Error(body.message);
       }
       setPurchases(current => (id ? current.map(item => (recordId(item) === id ? (body.data as Purchase) : item)) : [body.data as Purchase, ...current]));
+      if (values.source === 'new' && values.saveToCatalog !== false) {
+        const ingredientResponse = await fetch('/api/ingredients?limit=500', {
+          cache: 'no-store',
+        });
+        if (ingredientResponse.ok) {
+          const ingredientBody = (await ingredientResponse.json()) as {
+            success: boolean;
+            data?: Ingredient[];
+          };
+          if (ingredientBody.success && ingredientBody.data) {
+            setIngredients(ingredientBody.data);
+          }
+        }
+      }
       message.success(body.message);
       closeEditor();
     } catch (error) {
@@ -916,30 +996,87 @@ export default function PurchasesPage() {
             <Form.Item name='purchaseDate' label='Ngày nhập' rules={[{ required: true, message: 'Vui lòng chọn ngày nhập' }]}>
               <DatePicker format='DD/MM/YYYY' style={{ width: '100%' }} />
             </Form.Item>
-            <Form.Item name='ingredientId' label='Tên hàng' rules={[{ required: true, message: 'Vui lòng chọn hàng có sẵn' }]}>
-              <Select
-                showSearch
-                optionFilterProp='label'
-                placeholder='Chọn từ danh mục Hàng hóa'
-                options={ingredients
-                  .filter(ingredient => ingredient.isActive)
-                  .map(ingredient => ({
-                    value: recordId(ingredient),
-                    label: `${ingredient.name} · ${ingredient.code}`,
-                  }))}
-                onChange={ingredientId => {
-                  const ingredient = ingredientById.get(ingredientId);
-                  form.setFieldValue('totalAmount', packageCount * (ingredient?.referencePackagePrice ?? 0));
+            <Form.Item name='source' label='Cách nhập tên hàng'>
+              <Radio.Group
+                optionType='button'
+                buttonStyle='solid'
+                onChange={event => {
+                  if (event.target.value === 'new') {
+                    form.setFieldValue('category', 'Khác');
+                    form.setFieldValue('saveToCatalog', true);
+                  }
                   form.setFieldValue('sterilizationOutsourcedLiters', 0);
-                  form.setFieldValue(
-                    'sterilizationUnitPrice',
-                    DEFAULT_STERILIZATION_UNIT_PRICE,
-                  );
                   form.setFieldValue('sterilizationProvider', '');
                   setSterilizationChoice('self');
-                }}
-              />
+                }}>
+                <Radio.Button value='existing'>Chọn có sẵn</Radio.Button>
+                <Radio.Button value='new'>Nhập món mới</Radio.Button>
+              </Radio.Group>
             </Form.Item>
+            {purchaseSource === 'existing' ? (
+              <Form.Item name='ingredientId' label='Tên hàng' rules={[{ required: true, message: 'Vui lòng chọn hàng có sẵn' }]}>
+                <Select
+                  showSearch
+                  optionFilterProp='label'
+                  placeholder='Chọn từ danh mục Hàng hóa'
+                  options={activeIngredientOptions}
+                  onChange={ingredientId => {
+                    const ingredient = ingredientById.get(ingredientId);
+                    form.setFieldValue('totalAmount', packageCount * (ingredient?.referencePackagePrice ?? 0));
+                    form.setFieldValue('sterilizationOutsourcedLiters', 0);
+                    form.setFieldValue(
+                      'sterilizationUnitPrice',
+                      DEFAULT_STERILIZATION_UNIT_PRICE,
+                    );
+                    form.setFieldValue('sterilizationProvider', '');
+                    setSterilizationChoice('self');
+                  }}
+                />
+              </Form.Item>
+            ) : (
+              <Card
+                size='small'
+                className='inline-new-purchase-card'
+                title='Thông tin món mới'
+                style={{ gridColumn: '1 / -1' }}>
+                <Alert
+                  type='info'
+                  showIcon
+                  title='Ví dụ: mua 2 gói trân châu, mỗi gói 1 kg — Đơn vị mua là “gói”, lượng trong mỗi gói là 1, đơn vị tính là “kg”.'
+                  style={{ marginBottom: 16 }}
+                />
+                <div className='inline-new-item-grid'>
+                  <Form.Item name='itemName' label='Tên hàng mới' rules={[{ required: true, message: 'Nhập tên hàng' }]}>
+                    <Input placeholder='Ví dụ: Trân châu đen' />
+                  </Form.Item>
+                  <Form.Item name='category' label='Nhóm hàng' rules={[{ required: true, message: 'Chọn nhóm hàng' }]}>
+                    <Select
+                      options={['Nguyên liệu', 'Topping', 'Bao bì', 'Khác'].map(value => ({ value, label: value }))}
+                    />
+                  </Form.Item>
+                  <Form.Item name='purchaseUnit' label='Đơn vị mua' rules={[{ required: true, message: 'Nhập đơn vị mua' }]}>
+                    <Input placeholder='gói, túi, thùng…' />
+                  </Form.Item>
+                  <Form.Item name='packageQuantity' label='Lượng trong 1 đơn vị mua' rules={[{ required: true, message: 'Nhập quy cách' }]}>
+                    <InputNumber min={0.000001} inputMode='decimal' style={{ width: '100%' }} />
+                  </Form.Item>
+                  <Form.Item name='costUnit' label='Đơn vị tính lượng' rules={[{ required: true, message: 'Nhập đơn vị tính' }]}>
+                    <Input placeholder='g, kg, ml, lít, cái…' />
+                  </Form.Item>
+                </div>
+                <div className='inline-new-item-save-row'>
+                  <Form.Item name='saveToCatalog' valuePropName='checked' noStyle>
+                    <Switch />
+                  </Form.Item>
+                  <div>
+                    <Text strong>Lưu vào danh sách cho lần sau</Text>
+                    <Text type='secondary'>
+                      Khi bật, hệ thống tự tạo mã hàng; lần nhập sau chỉ cần chọn lại trong danh sách.
+                    </Text>
+                  </div>
+                </div>
+              </Card>
+            )}
             <Form.Item
               name='packageCount'
               label='Số gói mua'
@@ -957,7 +1094,7 @@ export default function PurchasesPage() {
                 style={{ width: '100%' }}
                 onChange={value => {
                   const nextPackageCount = Number(value ?? 0);
-                  const referencePackagePrice = selectedIngredient?.referencePackagePrice ?? 0;
+                  const referencePackagePrice = purchaseItem?.referencePackagePrice ?? 0;
                   const referenceTotal = packageCount * referencePackagePrice;
                   if (enteredTotalAmount === undefined || enteredTotalAmount === referenceTotal) {
                     form.setFieldValue('totalAmount', nextPackageCount * referencePackagePrice);
@@ -965,7 +1102,7 @@ export default function PurchasesPage() {
                   if (sterilizationChoice === 'full') {
                     form.setFieldValue(
                       'sterilizationOutsourcedLiters',
-                      nextPackageCount * (selectedIngredient?.packageQuantity ?? 0),
+                      nextPackageCount * (purchaseItem?.packageQuantity ?? 0),
                     );
                   }
                 }}
@@ -991,7 +1128,7 @@ export default function PurchasesPage() {
             <Form.Item
               name='fundingSource'
               label='Nguồn tiền'
-              tooltip='Chỉ nguồn Vốn chủ mới làm tăng Tổng vốn đã bỏ và phần vốn cần thu hồi. Các nguồn khác vẫn được tính là tiền ra trong kỳ.'
+              tooltip='Chỉ nguồn Tiền cá nhân mới làm tăng Tổng vốn đã bỏ và phần vốn cần thu hồi. Các nguồn khác vẫn được tính là tiền ra trong kỳ.'
               rules={[
                 {
                   required: true,
@@ -1096,15 +1233,29 @@ export default function PurchasesPage() {
 
         <Card size='small' title='Thông tin tự động' className='calculated-card'>
           <Descriptions size='small' bordered column={1}>
-            <Descriptions.Item label='Mã nội bộ'>{selectedIngredient?.code ?? '—'}</Descriptions.Item>
-            <Descriptions.Item label='Nhóm'>{selectedIngredient?.category ?? '—'}</Descriptions.Item>
-            <Descriptions.Item label='Quy cách/gói'>
-              {selectedIngredient ? `${formatNumber(selectedIngredient.packageQuantity)} ${selectedIngredient.costUnit}` : '—'}
+            <Descriptions.Item label='Mã nội bộ'>
+              {purchaseSource === 'new'
+                ? saveNewItemToCatalog
+                  ? 'Tự tạo khi lưu danh mục'
+                  : 'Mua lẻ · không lưu danh mục'
+                : selectedIngredient?.code ?? '—'}
             </Descriptions.Item>
-            <Descriptions.Item label='Giá tham khảo/gói'>{selectedIngredient ? formatVnd(selectedIngredient.referencePackagePrice) : '—'}</Descriptions.Item>
-            <Descriptions.Item label='Giá thực tế/gói'>{selectedIngredient && packageCount > 0 ? formatVnd(effectivePrice) : '—'}</Descriptions.Item>
+            <Descriptions.Item label='Nhóm'>{purchaseItem?.category ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label='Quy cách/gói'>
+              {hasCompletePackageSpec
+                ? `${formatNumber(purchaseItem?.packageQuantity ?? 0)} ${purchaseItem?.costUnit}`
+                : '—'}
+            </Descriptions.Item>
+            <Descriptions.Item label='Giá tham khảo/gói'>
+              {purchaseSource === 'existing' && purchaseItem
+                ? formatVnd(purchaseItem.referencePackagePrice)
+                : '—'}
+            </Descriptions.Item>
+            <Descriptions.Item label='Giá thực tế/gói'>{purchaseItem && packageCount > 0 ? formatVnd(effectivePrice) : '—'}</Descriptions.Item>
             <Descriptions.Item label='Tổng lượng quy đổi'>
-              {selectedIngredient ? `${formatNumber(convertedQuantity)} ${selectedIngredient.costUnit}` : '—'}
+              {hasCompletePackageSpec && packageCount > 0
+                ? `${formatNumber(convertedQuantity)} ${purchaseItem?.costUnit}`
+                : '—'}
             </Descriptions.Item>
             <Descriptions.Item label='Tổng tiền'>
               <Text strong>{formatVnd(enteredTotalAmount ?? 0)}</Text>

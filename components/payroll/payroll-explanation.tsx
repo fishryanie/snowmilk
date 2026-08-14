@@ -44,8 +44,8 @@ export type PayrollExplanationData = {
 
 const HELP_META: Record<PayrollHelpTopic, { title: string; tooltip: string }> = {
   "business-cash": {
-    title: "Tiền doanh nghiệp được tính thế nào?",
-    tooltip: "Doanh thu trừ các khoản đã chi bằng tiền doanh nghiệp.",
+    title: "Tiền tiệm được tính thế nào?",
+    tooltip: "Doanh thu trừ các khoản đã chi bằng tiền tiệm.",
   },
   "working-capital": {
     title: "Vì sao phải giữ vốn xoay vòng?",
@@ -114,11 +114,11 @@ function ExplanationContent({
     return (
       <>
         <Paragraph>
-          Đây là số tiền thực sự thuộc doanh nghiệp tại cuối tháng, trước khi
-          chừa vốn chủ chưa claim và vốn xoay vòng.
+          Đây là số tiền thực sự thuộc tiệm tại cuối tháng, trước khi chừa tiền
+          cá nhân chưa claim và vốn xoay vòng.
         </Paragraph>
         <FormulaBox>
-          <Text type="secondary">Doanh thu lũy kế − Chi bằng tiền doanh nghiệp</Text>
+          <Text type="secondary">Doanh thu lũy kế − Chi bằng tiền tiệm</Text>
           <strong>
             {formatVnd(data.cumulativeRevenue)} − {formatVnd(data.companyFundedOutflow)} ={" "}
             {formatVnd(data.businessCashBalance)}
@@ -132,7 +132,7 @@ function ExplanationContent({
     return (
       <>
         <Paragraph>
-          Doanh nghiệp luôn giữ lại khoản này để nhập hàng và vận hành. Khoản
+          Tiệm luôn giữ lại khoản này để nhập hàng và vận hành. Khoản
           này không chia cho nhân sự, kể cả khi tháng đó bán tốt.
         </Paragraph>
         <FormulaBox>
@@ -148,11 +148,11 @@ function ExplanationContent({
       <>
         <Paragraph>
           Quỹ tháng {data.periodLabel} chỉ lấy phần tiền sạch còn lại sau khi
-          chừa đủ vốn chủ có thể claim, quỹ các tháng trước và vốn xoay vòng.
+          chừa đủ khoản tiền cá nhân có thể claim, quỹ các tháng trước và vốn xoay vòng.
         </Paragraph>
         <FormulaBox>
           <Text type="secondary">
-            Tiền doanh nghiệp − Vốn chủ chưa claim − Quỹ tháng trước − Vốn xoay vòng
+            Tiền tiệm − Tiền cá nhân chưa claim − Quỹ tháng trước − Vốn xoay vòng
           </Text>
           <strong>
             {formatVnd(data.businessCashBalance)} − {formatVnd(data.outstandingOwnerCapital)} −{" "}
@@ -172,7 +172,7 @@ function ExplanationContent({
       <>
         <Paragraph>
           Đây là tổng phần đã gán cho nhân sự nhưng chưa được rút. Phần chưa
-          phân bổ vẫn nằm trong doanh nghiệp nên không tính vào đây.
+          phân bổ vẫn nằm trong tiệm nên không tính vào đây.
         </Paragraph>
         <FormulaBox>
           <Text type="secondary">Đã phân bổ − Đã rút</Text>

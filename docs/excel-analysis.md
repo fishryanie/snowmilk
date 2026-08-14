@@ -84,8 +84,8 @@ Web lưu `unitPrice` và `unitVariableCost` trong từng `sale.items[]` để b�
 
 Card `Tổng âm còn lại` hiển thị trực tiếp kết quả cuối; dashboard không hiển
 thị riêng tổng trung gian. `Tổng vốn đã bỏ lũy kế` bao gồm tiền thiết bị và
-chỉ các phiếu nhập hàng chọn nguồn `Vốn chủ`. Phiếu nhập từ workbook không có
-nguồn tiền được mặc định là `Vốn chủ`; các nguồn khác vẫn được tính vào tiền ra
+chỉ các phiếu nhập hàng chọn nguồn `Tiền cá nhân`. Phiếu nhập từ workbook không có
+nguồn tiền được mặc định là `Tiền cá nhân`; các nguồn khác vẫn được tính vào tiền ra
 nhưng không làm tăng vốn cần thu hồi.
 
 ### Gợi ý thoái vốn

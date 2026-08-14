@@ -93,7 +93,7 @@ export function resolveClaimSelection(
     const item = itemsByKey.get(key);
     if (!item) {
       throw new Error(
-        "Có khoản không còn tồn tại, không dùng vốn chủ hoặc đã được thu hồi.",
+        "Có khoản không còn tồn tại, không dùng tiền cá nhân hoặc đã được thu hồi.",
       );
     }
     return item;
@@ -109,7 +109,7 @@ export function resolveClaimSelection(
   }
   if (total >= safeLimit) {
     throw new Error(
-      "Tổng các khoản đã chọn phải nhỏ hơn số tiền còn lại của doanh nghiệp.",
+      "Tổng các khoản đã chọn phải nhỏ hơn số tiền còn lại của tiệm.",
     );
   }
 

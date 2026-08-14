@@ -5,6 +5,10 @@ import {
   calculatePurchasePricing,
 } from "@/lib/calculations/costing";
 import {
+  calculatePreparationBatchCost,
+  type PreparationBatchType,
+} from "@/lib/calculations/preparation-batch";
+import {
   normalizePurchaseUnit,
   summarizePurchases,
   type PurchaseQuantityRecord,
@@ -46,10 +50,14 @@ import {
   nextIngredientCode,
   type IngredientCategory,
 } from "@/lib/ingredient-code";
+import { recalculateComposedProductCosts } from "@/services/product-onboarding.service";
 
-type PurchaseInput = {
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+type PurchaseCommonInput = {
   purchaseDate: Date;
-  ingredientId: string;
   packageCount: number;
   totalAmount?: number;
   actualPackagePrice?: number;
@@ -60,6 +68,20 @@ type PurchaseInput = {
   supplier?: string;
   note?: string;
 };
+
+type PurchaseInput = PurchaseCommonInput &
+  (
+    | { source: "existing"; ingredientId: string }
+    | {
+        source: "new";
+        itemName: string;
+        category: IngredientCategory;
+        purchaseUnit: string;
+        packageQuantity: number;
+        costUnit: string;
+        saveToCatalog: boolean;
+      }
+  );
 
 type EquipmentInput = {
   purchaseDate: Date;
@@ -113,11 +135,15 @@ async function createIngredient(payload: Record<string, unknown>) {
 
 type BatchInput = {
   name: string;
-  actualLiters: number;
+  batchType?: PreparationBatchType;
+  outputQuantity?: number;
+  outputUnit?: string;
+  actualLiters?: number;
   cookingHours: number;
   ingredients: Array<{
     ingredientId: string;
     quantity: number;
+    unit?: string;
     note?: string;
   }>;
   note?: string;
@@ -161,7 +187,7 @@ async function batchPayload(
       ...(editingId ? { _id: { $ne: editingId } } : {}),
     }),
   ]);
-  if (duplicate) throw new Error("Tên mẻ sữa đã tồn tại.");
+  if (duplicate) throw new Error("Tên mẻ chuẩn bị đã tồn tại.");
   const ingredientsById = new Map(
     ingredients.map((ingredient) => [String(ingredient._id), ingredient]),
   );
@@ -177,14 +203,25 @@ async function batchPayload(
   const resolvedIngredients = payload.ingredients.map((item) => {
     const ingredient = ingredientsById.get(item.ingredientId)!;
     const unitCost = Number(ingredient.averageUnitCost ?? 0);
+    const costUnit = String(ingredient.costUnit ?? "").trim();
+    const unit = String(item.unit ?? costUnit).trim();
+    if (!costUnit || !unit) {
+      throw new Error(`${ingredient.name} chưa có đơn vị tính hợp lệ.`);
+    }
     return {
       ingredientId: ingredient._id,
       ingredientName: ingredient.name,
       quantity: item.quantity,
-      unit: ingredient.costUnit,
+      unit,
       unitCost,
-      amount: item.quantity * unitCost,
+      amount: calculateIngredientCostWithUnits({
+        quantity: item.quantity,
+        quantityUnit: unit,
+        unitCost,
+        costUnit,
+      }),
       note: item.note ?? "",
+      costUnit,
     };
   });
   const settingsByKey = new Map(
@@ -206,29 +243,49 @@ async function batchPayload(
     settingsByKey,
     "nuoc_ve_sinh_moi_me_d",
   );
-  const ingredientCost = resolvedIngredients.reduce(
-    (total, item) => total + item.amount,
-    0,
-  );
   const electricityCost =
     payload.cookingHours * stoveKw * electricityPrice +
     otherElectricityCost;
-  const totalCost = ingredientCost + electricityCost + waterCleaningCost;
+  const batchType = payload.batchType ?? "milk_base";
+  const outputQuantity =
+    Number(payload.outputQuantity ?? 0) || Number(payload.actualLiters ?? 0);
+  const outputUnit =
+    payload.outputUnit || (payload.actualLiters != null ? "lít" : "");
+  if (!outputUnit) throw new Error("Chưa chọn đơn vị thành phẩm.");
+  const costs = calculatePreparationBatchCost({
+    batchType,
+    outputQuantity,
+    outputUnit,
+    ingredients: resolvedIngredients.map((item) => ({
+      quantity: item.quantity,
+      unit: item.unit,
+      unitCost: item.unitCost,
+      costUnit: item.costUnit,
+    })),
+    electricityCost,
+    waterCleaningCost,
+  });
 
   return {
     code,
     name: payload.name,
-    actualLiters: payload.actualLiters,
+    batchType,
+    outputQuantity,
+    outputUnit,
+    outputBaseQuantity: costs.outputBaseQuantity,
+    outputBaseUnit: costs.outputBaseUnit,
+    costPerBaseUnit: costs.costPerBaseUnit,
+    actualLiters: costs.actualLiters,
     cookingHours: payload.cookingHours,
     stoveKw,
     electricityPrice,
     otherElectricityCost,
     waterCleaningCost,
-    ingredientCost,
+    ingredientCost: costs.ingredientCost,
     electricityCost,
-    totalCost,
-    costPerLiter: totalCost / payload.actualLiters,
-    costPerMl: totalCost / (payload.actualLiters * 1_000),
+    totalCost: costs.totalCost,
+    costPerLiter: costs.costPerLiter,
+    costPerMl: costs.costPerMl,
     ingredients: resolvedIngredients,
     note: payload.note ?? "",
   };
@@ -399,19 +456,25 @@ async function nextEquipmentCode() {
 }
 
 async function purchasePayload(payload: PurchaseInput) {
-  const ingredient = await Ingredient.findById(payload.ingredientId).lean();
-  if (!ingredient) {
+  const existingIngredient =
+    payload.source === "existing"
+      ? await Ingredient.findById(payload.ingredientId).lean()
+      : null;
+  if (payload.source === "existing" && !existingIngredient) {
     throw new Error(
       "Hàng hóa đã chọn không còn tồn tại. Hãy tải lại danh mục và chọn lại.",
     );
   }
-  if (!ingredient.isActive) {
+  if (existingIngredient && !existingIngredient.isActive) {
     throw new Error("Hàng hóa đã ngừng kích hoạt nên không thể nhập thêm.");
   }
 
-  const packageQuantity = Number(ingredient.packageQuantity ?? 1);
+  const packageQuantity = Number(
+    existingIngredient?.packageQuantity ??
+      (payload.source === "new" ? payload.packageQuantity : 1),
+  );
   const referencePackagePrice = Number(
-    ingredient.referencePackagePrice ?? 0,
+    existingIngredient?.referencePackagePrice ?? 0,
   );
   const { actualPackagePrice, totalAmount } = calculatePurchasePricing({
     packageCount: payload.packageCount,
@@ -420,7 +483,14 @@ async function purchasePayload(payload: PurchaseInput) {
     totalAmount: payload.totalAmount,
   });
   const convertedQuantity = payload.packageCount * packageQuantity;
-  const isFreshMilk = isFreshMilkIngredient(ingredient);
+  const item = existingIngredient ?? {
+    name: payload.source === "new" ? payload.itemName : "",
+    category: payload.source === "new" ? payload.category : "Khác",
+    purchaseUnit: payload.source === "new" ? payload.purchaseUnit : "",
+    packageQuantity,
+    costUnit: payload.source === "new" ? payload.costUnit : "",
+  };
+  const isFreshMilk = isFreshMilkIngredient(item);
   const milkCost = calculateMilkPurchaseCost({
     goodsAmount: totalAmount,
     totalLiters: convertedQuantity,
@@ -436,15 +506,42 @@ async function purchasePayload(payload: PurchaseInput) {
     throw new Error("Vui lòng nhập bên nhận tiệt trùng sữa.");
   }
 
-  return {
+  let ingredient = existingIngredient;
+  let createdIngredientId = "";
+  if (payload.source === "new" && payload.saveToCatalog) {
+    const duplicate = await Ingredient.exists({
+      name: new RegExp(`^${escapeRegExp(payload.itemName)}$`, "i"),
+    });
+    if (duplicate) {
+      throw new Error(
+        `Hàng hóa “${payload.itemName}” đã có trong danh sách. Hãy chọn hàng có sẵn.`,
+      );
+    }
+    ingredient = await createIngredient({
+      name: payload.itemName,
+      category: payload.category,
+      purchaseUnit: payload.purchaseUnit,
+      packageQuantity,
+      costUnit: payload.costUnit,
+      referencePackagePrice: actualPackagePrice,
+      averageUnitCost:
+        packageQuantity > 0 ? actualPackagePrice / packageQuantity : 0,
+      isActive: true,
+      note: "Tạo nhanh khi nhập hàng",
+    });
+    createdIngredientId = String(ingredient._id);
+  }
+
+  return { resolved: {
     purchaseDate: payload.purchaseDate,
-    ingredientId: ingredient._id,
-    itemCode: ingredient.code,
-    itemName: ingredient.name,
-    category: ingredient.category,
+    ingredientId: ingredient?._id,
+    itemCode: ingredient?.code ?? "MUA-LE",
+    itemName: ingredient?.name ?? item.name,
+    category: ingredient?.category ?? item.category,
+    purchaseUnit: ingredient?.purchaseUnit ?? item.purchaseUnit,
     packageCount: payload.packageCount,
     packageQuantity,
-    costUnit: ingredient.costUnit,
+    costUnit: ingredient?.costUnit ?? item.costUnit,
     referencePackagePrice,
     actualPackagePrice,
     convertedQuantity,
@@ -470,10 +567,10 @@ async function purchasePayload(payload: PurchaseInput) {
       payload.fundingSource ?? DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
     supplier: payload.supplier ?? "",
     note: payload.note ?? "",
-  };
+  }, createdIngredientId };
 }
 
-type ResolvedPurchase = Awaited<ReturnType<typeof purchasePayload>>;
+type ResolvedPurchase = Awaited<ReturnType<typeof purchasePayload>>["resolved"];
 
 async function linkedSterilizationExpense(purchase: {
   _id: unknown;
@@ -742,9 +839,9 @@ export async function recalculateIngredientAverages(
   }
 
   if (options.recalculateProducts !== false) {
-    const toppingIds = ingredients
-      .filter((ingredient) => ingredient.category === "Topping")
-      .map((ingredient) => ingredient._id);
+    const toppingIds = ingredients.flatMap((ingredient) =>
+      ingredient.category === "Topping" ? [ingredient._id] : [],
+    );
     if (toppingIds.length > 0) {
       await recalculateProductCosts({
         toppingIngredientId: { $in: toppingIds },
@@ -938,34 +1035,43 @@ export async function createResource(
 ) {
   await connectMongo();
   if (resource === "purchases") {
-    const resolved = await purchasePayload(payload as PurchaseInput);
-    const purchase = await Purchase.create(resolved);
+    const prepared = await purchasePayload(payload as PurchaseInput);
+    let purchase: InstanceType<typeof Purchase> | null = null;
     try {
+      purchase = await Purchase.create(prepared.resolved);
       await syncSterilizationExpense(purchase);
-      await refreshIngredientAverage(resolved.ingredientId, resolved.itemCode);
+      await refreshIngredientAverage(
+        prepared.resolved.ingredientId,
+        prepared.resolved.itemCode,
+      );
       return Purchase.findById(purchase._id);
     } catch (error) {
-      const linkedExpense = await Expense.findOne({
-        sourcePurchaseId: purchase._id,
-      });
-      const purchaseCreatedAt = new Date(
-        purchase.get("createdAt") ?? purchase.purchaseDate,
-      ).getTime();
-      const expenseCreatedAt = linkedExpense
-        ? new Date(linkedExpense.get("createdAt") ?? 0).getTime()
-        : 0;
-      if (linkedExpense && expenseCreatedAt >= purchaseCreatedAt) {
-        await linkedExpense.deleteOne();
-      } else if (linkedExpense) {
-        await Expense.findByIdAndUpdate(linkedExpense._id, {
-          $set: {
-            sourceType: "manual",
-            accountingTreatment: "operating_expense",
-          },
-          $unset: { sourcePurchaseId: 1 },
+      if (purchase) {
+        const linkedExpense = await Expense.findOne({
+          sourcePurchaseId: purchase._id,
         });
+        const purchaseCreatedAt = new Date(
+          purchase.get("createdAt") ?? purchase.purchaseDate,
+        ).getTime();
+        const expenseCreatedAt = linkedExpense
+          ? new Date(linkedExpense.get("createdAt") ?? 0).getTime()
+          : 0;
+        if (linkedExpense && expenseCreatedAt >= purchaseCreatedAt) {
+          await linkedExpense.deleteOne();
+        } else if (linkedExpense) {
+          await Expense.findByIdAndUpdate(linkedExpense._id, {
+            $set: {
+              sourceType: "manual",
+              accountingTreatment: "operating_expense",
+            },
+            $unset: { sourcePurchaseId: 1 },
+          });
+        }
+        await Purchase.findByIdAndDelete(purchase._id);
       }
-      await Purchase.findByIdAndDelete(purchase._id);
+      if (prepared.createdIngredientId) {
+        await Ingredient.findByIdAndDelete(prepared.createdIngredientId);
+      }
       throw error;
     }
   }
@@ -1011,20 +1117,43 @@ export async function updateResource(
   if (resource === "purchases") {
     const existing = await Purchase.findById(id).lean();
     if (!existing) return null;
-    const resolved = await purchasePayload(payload as PurchaseInput);
-    await assertSterilizationExpenseCanChange(existing, resolved);
-    const purchase = await Purchase.findByIdAndUpdate(id, resolved, {
-      returnDocument: "after",
-      runValidators: true,
-    });
-    if (purchase) await syncSterilizationExpense(purchase);
-    await Promise.all([
-      refreshIngredientAverage(resolved.ingredientId, resolved.itemCode),
-      String(existing.ingredientId ?? "") !== String(resolved.ingredientId)
-        ? refreshIngredientAverage(existing.ingredientId, existing.itemCode)
-        : null,
-    ]);
-    return Purchase.findById(id);
+    const prepared = await purchasePayload(payload as PurchaseInput);
+    let purchaseUpdated = false;
+    try {
+      await assertSterilizationExpenseCanChange(existing, prepared.resolved);
+      const purchase = await Purchase.findByIdAndUpdate(
+        id,
+        prepared.resolved,
+        {
+          returnDocument: "after",
+          runValidators: true,
+        },
+      );
+      if (!purchase) {
+        if (prepared.createdIngredientId) {
+          await Ingredient.findByIdAndDelete(prepared.createdIngredientId);
+        }
+        return null;
+      }
+      purchaseUpdated = true;
+      await syncSterilizationExpense(purchase);
+      await Promise.all([
+        refreshIngredientAverage(
+          prepared.resolved.ingredientId,
+          prepared.resolved.itemCode,
+        ),
+        String(existing.ingredientId ?? "") !==
+        String(prepared.resolved.ingredientId)
+          ? refreshIngredientAverage(existing.ingredientId, existing.itemCode)
+          : null,
+      ]);
+      return Purchase.findById(id);
+    } catch (error) {
+      if (prepared.createdIngredientId && !purchaseUpdated) {
+        await Ingredient.findByIdAndDelete(prepared.createdIngredientId);
+      }
+      throw error;
+    }
   }
   if (resource === "products") {
     const existing = await Product.findById(id).select("code").lean();
@@ -1045,6 +1174,7 @@ export async function updateResource(
     );
     await Promise.all([
       recalculateProductCosts(),
+      recalculateComposedProductCosts(id),
       batch
         ? Sale.updateMany(
             { batchId: batch._id },
@@ -1223,6 +1353,17 @@ export async function deleteResource(resource: ResourceName, id: string) {
     return Expense.findByIdAndDelete(id);
   }
   if (resource === "batches") {
+    const referencedProduct = await Product.findOne({
+      productMode: "composed",
+      $or: [{ milkBatchId: id }, { "toppingItems.batchId": id }],
+    })
+      .select("name")
+      .lean();
+    if (referencedProduct) {
+      throw new Error(
+        `Không thể xóa mẻ này vì sản phẩm “${referencedProduct.name}” đang sử dụng.`,
+      );
+    }
     const deleted = await MilkBatch.findByIdAndDelete(id);
     if (!deleted) return null;
     const replacement = await MilkBatch.findOne()

@@ -1,5 +1,10 @@
 # Đối chiếu dữ liệu
 
+> **Tài liệu lưu trữ của lần import Excel/local v1 ngày 23/07/2026.** Các số
+> bên dưới không phải baseline production hiện tại. Baseline chính thức để
+> migrate Bếp Nhà Nè v2 nằm trong `docs/v2-rollout.md`: Atlas `snowmilk`, 20
+> ngày bán, tổng 110.501.000đ.
+
 Ngày chạy dry-run: 23/07/2026.
 
 | Chỉ số | Excel đang hiển thị/cache | Importer tính từ dữ liệu gốc | Chênh lệch | Kết luận |

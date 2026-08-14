@@ -2,6 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import PDFDocument from "pdfkit";
 import { formatDate, formatNumber } from "@/lib/formatters";
+import {
+  DEFAULT_BUSINESS_PROFILE,
+  type BusinessProfile,
+} from "@/lib/business-profile";
 import { milkSterilizationDescription } from "@/lib/expense-categories";
 
 export type ExpensePdfRecord = {
@@ -15,13 +19,12 @@ export type ExpensePdfRecord = {
   amount: number;
 };
 
-const BRAND_COLOR = "#16645a";
-const INK_COLOR = "#17343b";
-const MUTED_COLOR = "#60767b";
+const BRAND_COLOR = DEFAULT_BUSINESS_PROFILE.brandColors.terracotta;
+const INK_COLOR = DEFAULT_BUSINESS_PROFILE.brandColors.ink;
+const MUTED_COLOR = DEFAULT_BUSINESS_PROFILE.brandColors.green;
 const LINE_COLOR = "#d9e4e1";
-const LIGHT_COLOR = "#eef6f4";
+const LIGHT_COLOR = DEFAULT_BUSINESS_PROFILE.brandColors.cream;
 const PAGE_MARGIN = 42;
-const BUSINESS_NAME = "SỮA TUYẾT VÂN NAM";
 
 function currency(value: number) {
   return `${formatNumber(value)} đ`;
@@ -44,11 +47,15 @@ function pdfFontPath() {
   return fontPath;
 }
 
-function addPageHeader(doc: PDFKit.PDFDocument, generatedAt: Date) {
+function addPageHeader(
+  doc: PDFKit.PDFDocument,
+  generatedAt: Date,
+  businessName: string,
+) {
   doc
     .fillColor(BRAND_COLOR)
     .fontSize(17)
-    .text(BUSINESS_NAME, PAGE_MARGIN, 40, {
+    .text(businessName, PAGE_MARGIN, 40, {
       width: 280,
       lineBreak: false,
     })
@@ -232,8 +239,14 @@ function addSignatures(doc: PDFKit.PDFDocument, y: number) {
 
 export async function createExpensePdf(
   records: ExpensePdfRecord[],
-  generatedAt = new Date(),
+  options: {
+    generatedAt?: Date;
+    businessProfile?: Pick<BusinessProfile, "displayName" | "wordmark">;
+  } = {},
 ) {
+  const generatedAt = options.generatedAt ?? new Date();
+  const businessProfile = options.businessProfile ?? DEFAULT_BUSINESS_PROFILE;
+  const businessName = businessProfile.wordmark.toUpperCase();
   return await new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
@@ -246,8 +259,8 @@ export async function createExpensePdf(
       },
       bufferPages: true,
       info: {
-        Title: "Hóa đơn chi phí - Sữa Tuyết Vân Nam",
-        Author: "Sữa Tuyết Vân Nam",
+        Title: `Hóa đơn chi phí - ${businessProfile.displayName}`,
+        Author: businessProfile.displayName,
         Subject: "Tổng hợp các khoản chi phí đã chọn",
       },
     });
@@ -257,7 +270,7 @@ export async function createExpensePdf(
     doc.on("error", reject);
 
     doc.registerFont("Geist", pdfFontPath()).font("Geist");
-    addPageHeader(doc, generatedAt);
+    addPageHeader(doc, generatedAt, businessName);
     let y = drawTableHeader(doc, 116);
 
     records.forEach((record, index) => {
@@ -275,7 +288,7 @@ export async function createExpensePdf(
       );
       if (y + expectedHeight > doc.page.height - 74) {
         doc.addPage();
-        addPageHeader(doc, generatedAt);
+        addPageHeader(doc, generatedAt, businessName);
         y = drawTableHeader(doc, 116);
       }
       y = drawTableRow(doc, record, index, y);
@@ -283,7 +296,7 @@ export async function createExpensePdf(
 
     if (y + 120 > doc.page.height - PAGE_MARGIN) {
       doc.addPage();
-      addPageHeader(doc, generatedAt);
+      addPageHeader(doc, generatedAt, businessName);
       y = 122;
     } else {
       y += 16;

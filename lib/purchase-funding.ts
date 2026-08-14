@@ -16,7 +16,7 @@ export const PURCHASE_FUNDING_SOURCE_OPTIONS: Array<{
   value: PurchaseFundingSource;
 }> = [
   { value: "sales_revenue", label: "Tiền bán hàng" },
-  { value: "owner_capital", label: "Vốn chủ" },
+  { value: "owner_capital", label: "Tiền cá nhân" },
   { value: "loan", label: "Tiền vay" },
   { value: "other", label: "Nguồn khác" },
 ];

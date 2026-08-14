@@ -2,15 +2,23 @@
 
 import { App, ConfigProvider } from "antd";
 import type { PropsWithChildren } from "react";
+import {
+  DEFAULT_BUSINESS_PROFILE,
+  type BusinessProfile,
+} from "@/lib/business-profile";
 
-export function Providers({ children }: PropsWithChildren) {
+export function Providers({
+  children,
+  businessProfile = DEFAULT_BUSINESS_PROFILE,
+}: PropsWithChildren<{ businessProfile?: BusinessProfile }>) {
+  const { brandColors } = businessProfile;
   return (
     <ConfigProvider
       theme={{
         token: {
-          colorPrimary: "#287f96",
-          colorInfo: "#287f96",
-          colorSuccess: "#2f7d59",
+          colorPrimary: brandColors.terracotta,
+          colorInfo: brandColors.terracotta,
+          colorSuccess: brandColors.green,
           colorWarning: "#c87916",
           colorError: "#c2413b",
           borderRadius: 12,

@@ -153,7 +153,7 @@ export function PayrollPeriodHistory({
                   />
                 </Text>
                 <Text type="secondary">
-                  Chừa {formatVnd(period.outstandingOwnerCapital)} vốn chủ chưa
+                  Chừa {formatVnd(period.outstandingOwnerCapital)} tiền cá nhân chưa
                   claim
                 </Text>
               </span>

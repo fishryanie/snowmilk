@@ -45,7 +45,7 @@ export async function DELETE(_request: Request, context: Context) {
     return apiSuccess(
       { id },
       resource === "divestments"
-        ? "Đã xóa claim và hoàn lại nguồn tiền Vốn chủ"
+        ? "Đã xóa claim và đổi nguồn về Tiền cá nhân"
         : "Đã xóa dữ liệu",
     );
   } catch (error) {
