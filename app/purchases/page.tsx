@@ -44,6 +44,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { useMemo, useState, type Key } from 'react';
 import { PageHeader } from '@/components/common/page-header';
 import { RouteSkeleton } from '@/components/common/route-skeleton';
+import { ToppingRankingCard } from '@/components/purchases/topping-ranking-card';
 import { useApiData } from '@/hooks/use-api-data';
 import { formatDate, formatNumber, formatVnd, formatVndInput, parseVndInput } from '@/lib/formatters';
 import {
@@ -174,6 +175,7 @@ export default function PurchasesPage() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [selectedPurchaseKeys, setSelectedPurchaseKeys] = useState<Key[]>([]);
   const [mobilePage, setMobilePage] = useState(1);
+  const [rankingRefreshToken, setRankingRefreshToken] = useState(0);
   const [sterilizationChoice, setSterilizationChoice] = useState<
     SterilizationChoice
   >('self');
@@ -663,6 +665,7 @@ export default function PurchasesPage() {
       }
       message.success(body.message);
       closeEditor();
+      setRankingRefreshToken(current => current + 1);
     } catch (error) {
       message.error(error instanceof Error ? error.message : 'Không thể lưu lần nhập');
     } finally {
@@ -683,6 +686,7 @@ export default function PurchasesPage() {
       };
       if (!response.ok || !body.success) throw new Error(body.message);
       setPurchases(current => current.filter(item => recordId(item) !== id));
+      setRankingRefreshToken(current => current + 1);
       message.success(body.message);
     } catch (error) {
       message.error(error instanceof Error ? error.message : 'Không thể xóa lần nhập');
@@ -705,6 +709,7 @@ export default function PurchasesPage() {
           style={{ marginBottom: 16 }}
         />
       )}
+      <ToppingRankingCard refreshToken={rankingRefreshToken} />
       <Card className='surface-card table-card'>
         <div className='purchase-overview'>
           <div className='purchase-filter-heading'>

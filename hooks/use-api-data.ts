@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type Envelope<T> = {
   success: boolean;
@@ -8,10 +8,23 @@ type Envelope<T> = {
   message: string;
 };
 
-export function useApiData<T>(url: string, fallback: T) {
+type UseApiDataOptions = {
+  refreshIntervalMs?: number;
+};
+
+export function useApiData<T>(
+  url: string,
+  fallback: T,
+  options: UseApiDataOptions = {},
+) {
   const [data, setData] = useState<T>(fallback);
   const [loading, setLoading] = useState(true);
   const [usingFallback, setUsingFallback] = useState(false);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const refresh = useCallback(() => {
+    setRefreshVersion((current) => current + 1);
+  }, []);
+  const refreshIntervalMs = options.refreshIntervalMs;
 
   useEffect(() => {
     let disposed = false;
@@ -45,22 +58,27 @@ export function useApiData<T>(url: string, fallback: T) {
       }
     }
 
-    const refresh = () => void load();
+    const reloadFromApi = () => void load();
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") refresh();
+      if (document.visibilityState === "visible") reloadFromApi();
     };
 
-    refresh();
-    window.addEventListener("focus", refresh);
+    reloadFromApi();
+    window.addEventListener("focus", reloadFromApi);
     document.addEventListener("visibilitychange", refreshWhenVisible);
+    const refreshTimer =
+      refreshIntervalMs && refreshIntervalMs > 0
+        ? window.setInterval(refreshWhenVisible, refreshIntervalMs)
+        : null;
 
     return () => {
       disposed = true;
       activeController?.abort();
-      window.removeEventListener("focus", refresh);
+      if (refreshTimer !== null) window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", reloadFromApi);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [url]);
+  }, [refreshIntervalMs, refreshVersion, url]);
 
-  return { data, loading, usingFallback, setData };
+  return { data, loading, usingFallback, setData, refresh };
 }

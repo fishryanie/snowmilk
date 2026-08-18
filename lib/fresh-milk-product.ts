@@ -20,7 +20,7 @@ export function findFreshMilkBottleProduct<
     products
       .filter(
         (product) =>
-          product.productMode === "recipe" &&
+          ["recipe", "composed"].includes(product.productMode ?? "") &&
           searchKey(product.name ?? "").includes("sua tuoi") &&
           Number(product.sellingPrice ?? 0) > 0,
       )
