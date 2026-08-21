@@ -4,6 +4,7 @@ import { calculateDivestmentSuggestion } from "@/lib/calculations/divestment-sug
 import { calculateBusinessCashBalance } from "@/lib/divestment-claims";
 import { calculateOwnerInvestmentTotal } from "@/lib/investment-total";
 import { connectMongo } from "@/lib/mongodb";
+import { normalizeProductGroupName } from "@/lib/product-groups";
 import { Divestment } from "@/models/Divestment";
 import { Equipment } from "@/models/Equipment";
 import { Expense } from "@/models/Expense";
@@ -12,7 +13,6 @@ import { MilkBatch } from "@/models/MilkBatch";
 import { Product } from "@/models/Product";
 import { Purchase } from "@/models/Purchase";
 import { Sale } from "@/models/Sale";
-import { ProductSize } from "@/models/Size";
 import { isExpensePaid } from "@/lib/expense-payment-status";
 import {
   isVietnamDateKey,
@@ -95,7 +95,6 @@ export async function GET(request: Request) {
       investmentEquipment,
       divestments,
       activeProductRecords,
-      activeSizeCount,
       validBatchCount,
       latestInventorySnapshot,
       missingPurchaseFunding,
@@ -163,10 +162,6 @@ export async function GET(request: Request) {
         Product.find({ isActive: true })
           .select("hasCostWarning fullCost sellingPrice")
           .lean(),
-        ProductSize.countDocuments({
-          code: { $in: ["M", "L"] },
-          isActive: true,
-        }),
         MilkBatch.countDocuments({ costPerMl: { $gt: 0 } }),
         InventorySnapshot.findOne({})
           .sort({ snapshotDate: -1 })
@@ -223,6 +218,15 @@ export async function GET(request: Request) {
           sale.entryMode === "daily-summary"
             ? Number(sale.freshMilkBottleCount ?? 0)
             : 0;
+        const saleCountedProductRevenue = (sale.items ?? []).reduce(
+          (sum: number, item: { revenue?: number }) =>
+            sum + Number(item.revenue ?? 0),
+          0,
+        );
+        const saleSnowMilkRevenueForSizes = Math.max(
+          0,
+          saleSnowMilkRevenue - saleCountedProductRevenue,
+        );
         acc.totalCups += sale.totalCups ?? 0;
         acc.revenue += sale.netRevenue ?? 0;
         acc.snowMilkRevenue += saleSnowMilkRevenue;
@@ -257,7 +261,7 @@ export async function GET(request: Request) {
             current.cups += summary.quantity;
             current.revenue +=
               totalWeight > 0
-                ? (saleSnowMilkRevenue * summary.weight) / totalWeight
+                ? (saleSnowMilkRevenueForSizes * summary.weight) / totalWeight
                 : 0;
             acc.products.set(summary.sizeName, current);
           }
@@ -271,17 +275,28 @@ export async function GET(request: Request) {
             current.revenue += saleFreshMilkRevenue;
             acc.products.set("Sữa tươi", current);
           }
-        } else {
-          for (const item of sale.items ?? []) {
-            const current = acc.products.get(item.productName) ?? {
-              product: item.productName,
-              cups: 0,
-              revenue: 0,
-            };
-            current.cups += item.quantity;
-            current.revenue += item.revenue;
-            acc.products.set(item.productName, current);
-          }
+        }
+        for (const item of sale.items ?? []) {
+          const itemRevenue = Number(item.revenue ?? 0);
+          const itemQuantity = Number(item.quantity ?? 0);
+          const current = acc.products.get(item.productName) ?? {
+            product: item.productName,
+            cups: 0,
+            revenue: 0,
+          };
+          current.cups += itemQuantity;
+          current.revenue += itemRevenue;
+          acc.products.set(item.productName, current);
+
+          const groupName = normalizeProductGroupName(item.groupName);
+          const group = acc.groups.get(groupName) ?? {
+            name: groupName,
+            quantity: 0,
+            revenue: 0,
+          };
+          group.quantity += itemQuantity;
+          group.revenue += itemRevenue;
+          acc.groups.set(groupName, group);
         }
         const day = vietnamDateKey(new Date(sale.saleDate));
         const daily = acc.daily.get(day) ?? emptyDailySummary(day);
@@ -304,6 +319,10 @@ export async function GET(request: Request) {
         profit: 0,
         estimatedSalesDays: 0,
         products: new Map<string, { product: string; cups: number; revenue: number }>(),
+        groups: new Map<
+          string,
+          { name: string; quantity: number; revenue: number }
+        >(),
         daily: new Map<string, DashboardDailySummary>(),
       },
     );
@@ -443,16 +462,6 @@ export async function GET(request: Request) {
       salesDays,
     });
     const healthIssues: HealthIssue[] = [];
-    if (activeSizeCount < 2) {
-      healthIssues.push({
-        key: "sizes",
-        severity: "error",
-        title: "Chưa đủ Size M và L đang hoạt động",
-        description:
-          "Không thể chốt ngày và ước tính giá vốn ổn định cho đến khi đủ hai size.",
-        href: "/sizes",
-      });
-    }
     if (activeProductRecords.length === 0) {
       healthIssues.push({
         key: "products",
@@ -568,9 +577,7 @@ export async function GET(request: Request) {
       });
     }
     const setupRequired =
-      activeSizeCount < 2 ||
-      activeProductRecords.length === 0 ||
-      validBatchCount === 0;
+      activeProductRecords.length === 0 || validBatchCount === 0;
     const hasError = healthIssues.some((issue) => issue.severity === "error");
     const hasWarning = healthIssues.some(
       (issue) => issue.severity === "warning",
@@ -635,6 +642,9 @@ export async function GET(request: Request) {
       divestmentSuggestion,
       daily,
       products: [...totals.products.values()].sort((a, b) => b.cups - a.cups),
+      groups: [...totals.groups.values()].sort(
+        (a, b) => b.revenue - a.revenue,
+      ),
     });
   } catch (error) {
     return apiError(errorMessage(error), 503);

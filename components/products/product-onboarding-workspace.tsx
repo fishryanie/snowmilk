@@ -1,22 +1,25 @@
 "use client";
 
 import {
+  CopyOutlined,
   DeleteOutlined,
   EditOutlined,
   FilePdfOutlined,
+  InfoCircleOutlined,
   MinusCircleOutlined,
   PlusOutlined,
-  RightOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
 import {
   Alert,
   App,
+  AutoComplete,
   Button,
   Card,
   Checkbox,
   Descriptions,
   Drawer,
+  Empty,
   Form,
   Input,
   InputNumber,
@@ -25,12 +28,10 @@ import {
   Select,
   Space,
   Switch,
-  Table,
   Tag,
-  theme,
+  Tooltip,
   Typography,
 } from "antd";
-import type { ColumnsType } from "antd/es/table";
 import { useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/common/page-header";
 import { RouteSkeleton } from "@/components/common/route-skeleton";
@@ -42,11 +43,13 @@ import {
   calculateSterilizationCost,
   DEFAULT_STERILIZATION_COST_PER_LITER,
 } from "@/lib/calculations/product-onboarding";
+import { calculateWeightedProductProfitEstimate } from "@/lib/calculations/product-profit-estimate";
 import {
   calculatePreparationUsageCost,
   normalizedPreparationCostSource,
   type PreparationBatchType,
 } from "@/lib/calculations/preparation-batch";
+import type { ToppingRankingReport } from "@/lib/calculations/topping-ranking";
 import { compatibleUnitOptions } from "@/lib/calculations/units";
 import {
   formatNumber,
@@ -54,6 +57,10 @@ import {
   formatVndInput,
   parseVndInput,
 } from "@/lib/formatters";
+import {
+  DEFAULT_PRODUCT_GROUP,
+  normalizeProductGroupName,
+} from "@/lib/product-groups";
 import {
   workbookIngredients,
   workbookProducts,
@@ -87,6 +94,10 @@ type PreparationBatch = {
   costPerBaseUnit?: number;
   actualLiters?: number;
   costPerMl?: number;
+  ingredients?: Array<{
+    ingredientId?: string;
+    ingredientName?: string;
+  }>;
 };
 
 type PackagingSnapshot = {
@@ -119,6 +130,7 @@ type ProductRecord = {
   _id?: string;
   code: string;
   name: string;
+  groupName?: string;
   productMode?: "legacy" | "recipe" | "composed";
   recipeCode?: string;
   recipeName?: string;
@@ -144,8 +156,10 @@ type ProductRecord = {
 
 type ProductOnboardingData = {
   products: ProductRecord[];
+  groups: string[];
   batches: PreparationBatch[];
   ingredients: IngredientOption[];
+  toppingRanking: ToppingRankingReport;
   costSettings: {
     overheadRate: number;
     allocatedFixedCost: number;
@@ -176,6 +190,7 @@ type PackagingLineForm = {
 
 type ProductForm = {
   name: string;
+  groupName: string;
   sellingPrice: number;
   ingredientItems: ProductIngredientLineForm[];
   packagingItems: PackagingLineForm[];
@@ -245,21 +260,129 @@ function productIngredientSummary(product: ProductRecord) {
 
 const fallbackData: ProductOnboardingData = {
   products: workbookProducts as ProductRecord[],
+  groups: [DEFAULT_PRODUCT_GROUP],
   batches: [],
   ingredients: workbookIngredients as IngredientOption[],
+  toppingRanking: {
+    asOfDate: "",
+    updatedAt: "",
+    totalKg: 0,
+    purchaseCount: 0,
+    excludedPurchaseCount: 0,
+    excludedUnits: [],
+    ranking: [],
+  },
   costSettings: { overheadRate: 0.05, allocatedFixedCost: 0 },
 };
 
+type ProductCatalogCardProps = {
+  product: ProductRecord;
+  includeSterilizationCost: boolean;
+  onEdit: (product: ProductRecord) => void;
+  onDuplicate: (product: ProductRecord) => void;
+  onRemove: (product: ProductRecord) => void;
+};
+
+function ProductCatalogCard({
+  product,
+  includeSterilizationCost,
+  onEdit,
+  onDuplicate,
+  onRemove,
+}: ProductCatalogCardProps) {
+  const fullCost =
+    Number(product.fullCost ?? 0) +
+    (includeSterilizationCost ? sterilizationCost(product) : 0);
+  const grossProfit = Number(product.sellingPrice ?? 0) - fullCost;
+  const productIsNormalized = product.productMode === "composed";
+
+  return (
+    <Card className="product-catalog-card" size="small">
+      <div className="product-catalog-heading">
+        <div className="product-catalog-copy">
+          <Text strong>{product.name}</Text>
+          <Text type="secondary">{product.code}</Text>
+        </div>
+        <Space size={[4, 4]} wrap>
+          <Tag color={product.isActive ? "green" : "default"}>
+            {product.isActive ? "Đang bán" : "Ngừng bán"}
+          </Tag>
+          <Tag color={productIsNormalized ? "blue" : "warning"}>
+            {productIsNormalized ? "Đã chuẩn hóa" : "Dữ liệu cũ"}
+          </Tag>
+          {product.hasCostWarning ? (
+            <Tag color="error">Cần kiểm tra cost</Tag>
+          ) : null}
+        </Space>
+      </div>
+
+      <div className="product-catalog-formula">
+        <Text type="secondary">Nguyên liệu &amp; topping</Text>
+        <Text>
+          {productIngredientSummary(product) || "Chưa chọn nguyên liệu"}
+        </Text>
+      </div>
+
+      <dl className="product-catalog-metrics">
+        <div>
+          <dt>Giá bán</dt>
+          <dd>{formatVnd(product.sellingPrice)}</dd>
+        </div>
+        <div>
+          <dt>Full cost</dt>
+          <dd>{formatVnd(fullCost)}</dd>
+        </div>
+        <div>
+          <dt>Lãi gộp</dt>
+          <dd className={grossProfit < 0 ? "is-negative" : "is-positive"}>
+            {formatVnd(grossProfit)}
+          </dd>
+        </div>
+      </dl>
+
+      <Space className="product-catalog-actions" size={6} wrap>
+        <Button
+          type="primary"
+          ghost
+          icon={<EditOutlined />}
+          onClick={() => onEdit(product)}
+        >
+          {productIsNormalized ? "Sửa" : "Chuẩn hóa"}
+        </Button>
+        <Button icon={<CopyOutlined />} onClick={() => onDuplicate(product)}>
+          Nhân bản
+        </Button>
+        <Popconfirm
+          title="Xóa sản phẩm?"
+          description={`Sản phẩm “${product.name}” sẽ bị xóa khỏi danh mục.`}
+          okText="Xóa"
+          cancelText="Hủy"
+          okButtonProps={{ danger: true }}
+          onConfirm={() => onRemove(product)}
+        >
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            aria-label={`Xóa ${product.name}`}
+          />
+        </Popconfirm>
+      </Space>
+    </Card>
+  );
+}
+
 export function ProductOnboardingWorkspace() {
   const { message } = App.useApp();
-  const { token } = theme.useToken();
   const [form] = Form.useForm<ProductForm>();
   const [preparedIngredientForm] = Form.useForm<QuickPreparedIngredientForm>();
   const [rawIngredientForm] = Form.useForm<QuickRawIngredientForm>();
   const [query, setQuery] = useState("");
+  const [groupFilter, setGroupFilter] = useState<string>();
   const [includeSterilizationCost, setIncludeSterilizationCost] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<ProductRecord | null>(null);
+  const [duplicatingFrom, setDuplicatingFrom] =
+    useState<ProductRecord | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [saving, setSaving] = useState(false);
   const [preparedIngredientCreatorOpen, setPreparedIngredientCreatorOpen] =
@@ -312,6 +435,20 @@ export function ProductOnboardingWorkspace() {
         (ingredient) => ingredient.category === "Bao bì" && ingredient.isActive,
       ),
     [data.ingredients],
+  );
+  const groupOptions = useMemo(
+    () => {
+      const groupNames = new Set(
+        data.groups.map((groupName) => normalizeProductGroupName(groupName)),
+      );
+      for (const product of data.products) {
+        groupNames.add(normalizeProductGroupName(product.groupName));
+      }
+      return Array.from(groupNames)
+        .toSorted((left, right) => left.localeCompare(right, "vi"))
+        .map((groupName) => ({ label: groupName, value: groupName }));
+    },
+    [data.groups, data.products],
   );
 
   const preview = useMemo(() => {
@@ -388,11 +525,18 @@ export function ProductOnboardingWorkspace() {
   const normalizedQuery = query.trim().toLocaleLowerCase("vi");
   const visibleProducts = useMemo(
     () =>
-      normalizedQuery
-        ? data.products.filter((product) =>
-            [
+      data.products.filter((product) => {
+        if (
+          groupFilter &&
+          normalizeProductGroupName(product.groupName) !== groupFilter
+        ) {
+          return false;
+        }
+        return normalizedQuery
+          ? [
               product.code,
               product.name,
+              normalizeProductGroupName(product.groupName),
               product.milkBatchName,
               product.toppingName,
               product.sizeName,
@@ -403,120 +547,75 @@ export function ProductOnboardingWorkspace() {
               String(value ?? "")
                 .toLocaleLowerCase("vi")
                 .includes(normalizedQuery),
-            ),
-          )
-        : data.products,
-    [data.products, normalizedQuery],
+            )
+          : true;
+      }),
+    [data.products, groupFilter, normalizedQuery],
   );
+  const visibleProductGroups = useMemo(() => {
+    const groups = new Map<string, ProductRecord[]>();
+    for (const product of visibleProducts) {
+      const groupName = normalizeProductGroupName(product.groupName);
+      const groupProducts = groups.get(groupName) ?? [];
+      groupProducts.push(product);
+      groups.set(groupName, groupProducts);
+    }
+    return [...groups]
+      .map(([name, products]) => ({
+        name,
+        products: products.toSorted((left, right) =>
+          left.name.localeCompare(right.name, "vi"),
+        ),
+      }))
+      .toSorted((left, right) => left.name.localeCompare(right.name, "vi"));
+  }, [visibleProducts]);
   const legacyCount = data.products.filter(
     (product) => product.productMode !== "composed",
   ).length;
+  const profitEstimate = useMemo(
+    () =>
+      calculateWeightedProductProfitEstimate({
+        products: data.products.map((product) => ({
+          ...product,
+          ingredientItems: (product.ingredientItems ?? []).flatMap((item) => {
+            if (item.source !== "batch" || !item.batchId) return [item];
+            const batch = batchesById.get(String(item.batchId));
+            return [
+              item,
+              ...(batch?.ingredients ?? []).map((batchIngredient) => {
+                const ingredient = ingredientsById.get(
+                  String(batchIngredient.ingredientId ?? ""),
+                );
+                return {
+                  ingredientCode: ingredient?.code,
+                  itemName:
+                    batchIngredient.ingredientName || ingredient?.name || "",
+                };
+              }),
+            ];
+          }),
+          fullCost:
+            Number(product.fullCost ?? 0) +
+            (includeSterilizationCost ? sterilizationCost(product) : 0),
+        })),
+        toppingRanking: data.toppingRanking.ranking,
+      }),
+    [
+      batchesById,
+      data.products,
+      data.toppingRanking.ranking,
+      includeSterilizationCost,
+      ingredientsById,
+    ],
+  );
 
-  const columns: ColumnsType<ProductRecord> = [
-    { title: "Mã SP", dataIndex: "code" },
-    {
-      title: "Sản phẩm",
-      dataIndex: "name",
-      render: (value, record) => (
-        <Space size={6} wrap>
-          <Text strong>{String(value)}</Text>
-          <Tag color={record.productMode === "composed" ? "green" : "warning"}>
-            {record.productMode === "composed" ? "Đã chuẩn hóa" : "Dữ liệu cũ"}
-          </Tag>
-        </Space>
-      ),
-    },
-    {
-      title: "Nguyên liệu & topping",
-      key: "ingredientItems",
-      render: (_, record) =>
-        productIngredientSummary(record) ||
-        record.recipeName ||
-        record.recipeCode ||
-        "Chưa chọn",
-    },
-    {
-      title: "Giá bán",
-      dataIndex: "sellingPrice",
-      align: "right",
-      render: (value) => (
-        <Text style={{ color: token.colorPrimary }}>
-          {formatVnd(Number(value))}
-        </Text>
-      ),
-    },
-    ...(includeSterilizationCost
-      ? [
-          {
-            title: "Phí tiệt trùng",
-            key: "sterilizationCost",
-            align: "right" as const,
-            render: (_: unknown, record: ProductRecord) =>
-              formatVnd(sterilizationCost(record)),
-          },
-        ]
-      : []),
-    {
-      title: "Full cost",
-      dataIndex: "fullCost",
-      align: "right",
-      render: (value, record) => {
-        const displayedCost =
-          Number(value ?? 0) +
-          (includeSterilizationCost ? sterilizationCost(record) : 0);
-        return (
-          <Text type="warning" strong>
-            {formatVnd(displayedCost)}
-          </Text>
-        );
-      },
-    },
-    {
-      title: "Lãi gộp/SP",
-      key: "profit",
-      align: "right",
-      render: (_, record) => (
-        <Text type="success">
-          {formatVnd(
-            Number(record.sellingPrice ?? 0) -
-              Number(record.fullCost ?? 0) -
-              (includeSterilizationCost ? sterilizationCost(record) : 0),
-          )}
-        </Text>
-      ),
-    },
-    {
-      title: "",
-      fixed: "right",
-      render: (_, record) => (
-        <Space size={2}>
-          <Button
-            type="text"
-            icon={<EditOutlined />}
-            aria-label={`Sửa ${record.name}`}
-            onClick={() => openEditor(record)}
-          />
-          <Popconfirm
-            title="Xóa sản phẩm này?"
-            okText="Xóa"
-            cancelText="Hủy"
-            okButtonProps={{ danger: true }}
-            onConfirm={() => removeProduct(record)}
-          >
-            <Button
-              type="text"
-              danger
-              icon={<DeleteOutlined />}
-              aria-label={`Xóa ${record.name}`}
-            />
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
-
-  function openEditor(product?: ProductRecord) {
-    setEditing(product ?? null);
+  function openEditor(
+    product?: ProductRecord,
+    mode: "edit" | "duplicate" = "edit",
+  ) {
+    const isDuplicate = mode === "duplicate";
+    setEditing(isDuplicate ? null : product ?? null);
+    setDuplicatingFrom(isDuplicate ? product ?? null : null);
     const savedIngredientItems = product?.ingredientItems?.length
       ? product.ingredientItems.map((item) => ({
           itemKey:
@@ -553,6 +652,7 @@ export function ProductOnboardingWorkspace() {
       product
         ? {
             name: product.name,
+            groupName: normalizeProductGroupName(product.groupName),
             sellingPrice: product.sellingPrice,
             ingredientItems: savedIngredientItems.length
               ? savedIngredientItems
@@ -575,6 +675,7 @@ export function ProductOnboardingWorkspace() {
             note: product.note,
           }
         : {
+            groupName: DEFAULT_PRODUCT_GROUP,
             ingredientItems: [{ quantity: 1, unit: "g" }],
             packagingItems: [
               { source: "existing", quantity: 1, openingPackageCount: 1 },
@@ -588,6 +689,7 @@ export function ProductOnboardingWorkspace() {
   function closeEditor() {
     setDrawerOpen(false);
     setEditing(null);
+    setDuplicatingFrom(null);
     form.resetFields();
   }
 
@@ -794,6 +896,7 @@ export function ProductOnboardingWorkspace() {
           products: visibleProducts.map((product) => ({
             code: product.code,
             name: product.name,
+            groupName: normalizeProductGroupName(product.groupName),
             productMode: product.productMode,
             recipeCode: product.milkBatchCode ?? product.recipeCode,
             recipeName: product.milkBatchName ?? product.recipeName,
@@ -872,6 +975,7 @@ export function ProductOnboardingWorkspace() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: formValues.name,
+            groupName: formValues.groupName,
             sellingPrice: formValues.sellingPrice,
             ingredientItems: (formValues.ingredientItems ?? []).map((item) => {
               const [source, id] = String(item.itemKey ?? "").split(":");
@@ -969,16 +1073,92 @@ export function ProductOnboardingWorkspace() {
         />
       ) : null}
 
+      <Card className="surface-card product-profit-estimate-card">
+        <div className="product-profit-estimate-heading">
+          <div>
+            <Text strong>Ước tính vốn và lãi trung bình</Text>
+            <Text type="secondary">
+              Topping nhập nhiều hơn được tính với trọng số cao hơn.
+            </Text>
+          </div>
+          <Space size={8}>
+            <Tag color="cyan">Theo lượng topping nhập</Tag>
+            <Tooltip title="Mỗi topping được gán trọng số theo tổng kg đã nhập, kể cả khi nguyên liệu đi qua mẻ chuẩn bị. Nếu một topping có nhiều size, trọng số được chia đều cho các size rồi mới tính tổng cost / tổng giá bán.">
+              <InfoCircleOutlined aria-label="Giải thích cách tính trung bình" />
+            </Tooltip>
+          </Space>
+        </div>
+
+        {profitEstimate ? (
+          <>
+            <div className="product-profit-estimate-grid">
+              <div className="product-profit-estimate-metric is-cost">
+                <Text type="secondary">Vốn trung bình</Text>
+                <strong>{formatNumber(profitEstimate.costPercent)}%</strong>
+                <Text type="secondary">
+                  {formatVnd(profitEstimate.averageFullCost)} / {formatVnd(profitEstimate.averageSellingPrice)} doanh thu
+                </Text>
+              </div>
+              <div className="product-profit-estimate-metric is-profit">
+                <Text type="secondary">Lãi gộp ước tính</Text>
+                <strong>{formatNumber(profitEstimate.grossMarginPercent)}%</strong>
+                <Text type="secondary">
+                  Khoảng {formatVnd(profitEstimate.averageGrossProfit)}/sản phẩm
+                </Text>
+              </div>
+              <div className="product-profit-estimate-metric is-coverage">
+                <Text type="secondary">Độ phủ dữ liệu nhập</Text>
+                <strong>{formatNumber(profitEstimate.purchaseCoveragePercent)}%</strong>
+                <Text type="secondary">
+                  {formatNumber(profitEstimate.matchedPurchaseKg)} / {formatNumber(profitEstimate.totalPurchaseKg)} kg · {profitEstimate.matchedProductCount} sản phẩm
+                </Text>
+              </div>
+            </div>
+            <Text className="product-profit-estimate-note" type="secondary">
+              Đây là lãi gộp ước tính từ full cost, chưa phải lãi ròng thực tế. Kết quả sẽ sát hơn khi lượng nhập topping phản ánh đúng tỷ lệ món bán ra.
+              {includeSterilizationCost ? " Đã cộng phí tiệt trùng vào cost." : ""}
+            </Text>
+            {profitEstimate.unmatchedToppingNames.length > 0 ? (
+              <Alert
+                type="info"
+                showIcon
+                title={`${profitEstimate.unmatchedToppingNames.length} topping đã nhập chưa khớp sản phẩm`}
+                description={profitEstimate.unmatchedToppingNames.join(", ")}
+              />
+            ) : null}
+          </>
+        ) : (
+          <Alert
+            type="info"
+            showIcon
+            title="Chưa đủ dữ liệu để ước tính theo trọng số"
+            description="Cần có ít nhất một lần nhập topping theo kg/g và một sản phẩm dùng đúng topping đó."
+          />
+        )}
+      </Card>
+
       <Card className="surface-card table-card">
         <div className="table-toolbar">
-          <Input
-            allowClear
-            prefix={<SearchOutlined />}
-            placeholder="Tìm mã, tên, nguyên liệu hoặc topping…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            style={{ width: 340 }}
-          />
+          <Space wrap>
+            <Input
+              allowClear
+              prefix={<SearchOutlined />}
+              placeholder="Tìm mã, tên, nhóm, nguyên liệu hoặc topping…"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              style={{ width: 340 }}
+            />
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="Lọc theo nhóm"
+              value={groupFilter}
+              options={groupOptions}
+              onChange={setGroupFilter}
+              style={{ minWidth: 190 }}
+            />
+          </Space>
           <Space size={16} wrap className="product-toolbar-actions">
             <Checkbox
               checked={includeSterilizationCost}
@@ -1004,71 +1184,64 @@ export function ProductOnboardingWorkspace() {
             </Button>
           </Space>
         </div>
-        <Table
-          className="product-desktop-table"
-          size="small"
-          rowKey={(record) => recordId(record) || record.code}
-          columns={columns}
-          dataSource={visibleProducts}
-          pagination={{ defaultPageSize: 50, showSizeChanger: false }}
-          scroll={{ x: "max-content" }}
-        />
-        <ul className="product-mobile-list">
-          {visibleProducts.map((product) => (
-            <li
-              className="product-mobile-card"
-              key={recordId(product) || product.code}
-            >
-              <div className="product-mobile-heading">
-                <div>
-                  <Text strong>{product.name}</Text>
-                  <Text type="secondary">{product.code}</Text>
-                </div>
-                <Tag color={product.productMode === "composed" ? "green" : "warning"}>
-                  {product.productMode === "composed" ? "Đã chuẩn hóa" : "Dữ liệu cũ"}
-                </Tag>
-              </div>
-              <div className="product-mobile-formula">
-                <Text>
-                  {productIngredientSummary(product) || "Chưa chọn nguyên liệu"}
-                </Text>
-              </div>
-              <dl className="product-mobile-metrics">
-                <div>
-                  <dt>Giá bán</dt>
-                  <dd>{formatVnd(product.sellingPrice)}</dd>
-                </div>
-                <div>
-                  <dt>Full cost</dt>
-                  <dd>{formatVnd(Number(product.fullCost ?? 0))}</dd>
-                </div>
-                <div>
-                  <dt>Lãi gộp</dt>
-                  <dd>
-                    {formatVnd(
-                      product.sellingPrice - Number(product.fullCost ?? 0),
-                    )}
-                  </dd>
-                </div>
-              </dl>
-              <Button
-                type="text"
-                className="product-mobile-edit"
-                icon={<EditOutlined />}
-                onClick={() => openEditor(product)}
-              >
-                {product.productMode === "composed" ? "Sửa sản phẩm" : "Chuẩn hóa"}
-                <RightOutlined />
-              </Button>
-            </li>
-          ))}
-        </ul>
+        {visibleProductGroups.length === 0 ? (
+          <Empty
+            className="product-catalog-empty"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="Không có sản phẩm phù hợp"
+          />
+        ) : (
+          <div className="product-group-list">
+            {visibleProductGroups.map((group, groupIndex) => {
+              const headingId = `product-group-${groupIndex}`;
+              return (
+                <section
+                  className="product-group-section"
+                  aria-labelledby={headingId}
+                  key={group.name}
+                >
+                  <div className="product-group-heading">
+                    <div>
+                      <Text id={headingId} strong>
+                        {group.name}
+                      </Text>
+                      <Text type="secondary">
+                        Sản phẩm trong cùng nhóm được chốt và thống kê chung.
+                      </Text>
+                    </div>
+                    <Tag color="blue">{group.products.length} sản phẩm</Tag>
+                  </div>
+                  <div className="product-card-grid">
+                    {group.products.map((product) => (
+                      <ProductCatalogCard
+                        key={recordId(product) || product.code}
+                        product={product}
+                        includeSterilizationCost={includeSterilizationCost}
+                        onEdit={openEditor}
+                        onDuplicate={(record) =>
+                          openEditor(record, "duplicate")
+                        }
+                        onRemove={removeProduct}
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        )}
       </Card>
 
       <Drawer
         className="product-onboarding-drawer"
         open={drawerOpen}
-        title={editing ? "Chỉnh sửa sản phẩm" : "Thêm sản phẩm"}
+        title={
+          editing
+            ? "Chỉnh sửa sản phẩm"
+            : duplicatingFrom
+              ? "Nhân bản sản phẩm"
+              : "Thêm sản phẩm"
+        }
         placement="right"
         size="large"
         onClose={closeEditor}
@@ -1081,12 +1254,21 @@ export function ProductOnboardingWorkspace() {
             <Space>
               <Button onClick={closeEditor}>Hủy</Button>
               <Button type="primary" loading={saving} onClick={() => form.submit()}>
-                Lưu sản phẩm
+                {duplicatingFrom ? "Tạo bản sao" : "Lưu sản phẩm"}
               </Button>
             </Space>
           </div>
         }
       >
+        {duplicatingFrom ? (
+          <Alert
+            type="info"
+            showIcon
+            title={`Đang nhân bản “${duplicatingFrom.name}”`}
+            description="Toàn bộ nhóm, nguyên liệu, bao bì, giá bán và ghi chú đã được sao chép. Hãy chỉnh lại phần cần thay đổi rồi tạo bản sao."
+            style={{ marginBottom: 16 }}
+          />
+        ) : null}
         {editing && editing.productMode !== "composed" ? (
           <Alert
             type="warning"
@@ -1105,7 +1287,7 @@ export function ProductOnboardingWorkspace() {
               <span>1</span>
               <div>
                 <Text strong>Thông tin sản phẩm</Text>
-                <Text type="secondary">Tên, giá bán và trạng thái của sản phẩm.</Text>
+                <Text type="secondary">Tên, nhóm thống kê, giá bán và trạng thái của sản phẩm.</Text>
               </div>
             </div>
             <div className="purchase-form-grid product-info-grid">
@@ -1115,6 +1297,25 @@ export function ProductOnboardingWorkspace() {
                 rules={[{ required: true, message: "Nhập tên sản phẩm" }]}
               >
                 <Input placeholder="Ví dụ: Tuyết Trân Châu - M" />
+              </Form.Item>
+              <Form.Item
+                name="groupName"
+                label="Nhóm sản phẩm"
+                rules={[
+                  { required: true, message: "Nhập nhóm sản phẩm" },
+                  { max: 80, message: "Tên nhóm tối đa 80 ký tự" },
+                ]}
+                extra="Nhóm mới được lưu vào danh mục sau khi lưu sản phẩm và sẽ xuất hiện để chọn nhanh lần sau."
+              >
+                <AutoComplete
+                  options={groupOptions}
+                  placeholder="Ví dụ: Bánh mì, Đồ ăn vặt"
+                  filterOption={(inputValue, option) =>
+                    String(option?.value ?? "")
+                      .toLocaleLowerCase("vi")
+                      .includes(inputValue.toLocaleLowerCase("vi"))
+                  }
+                />
               </Form.Item>
               <Form.Item
                 name="sellingPrice"

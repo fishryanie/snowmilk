@@ -10,6 +10,7 @@ import {
   type PurchaseQuantityRecord,
 } from "@/lib/calculations/purchases";
 import { convertQuantity } from "@/lib/calculations/units";
+import { findFreshMilkBottleProduct } from "@/lib/fresh-milk-product";
 import { connectMongo } from "@/lib/mongodb";
 import {
   isVietnamDateKey,
@@ -20,7 +21,7 @@ import { Ingredient } from "@/models/Ingredient";
 import { InventorySnapshot } from "@/models/InventorySnapshot";
 import { MilkBatch } from "@/models/MilkBatch";
 import { Purchase } from "@/models/Purchase";
-import { ProductSize } from "@/models/Size";
+import { Product } from "@/models/Product";
 
 const inventoryInputSchema = z
   .object({
@@ -79,7 +80,7 @@ async function inventoryContext(date: string) {
     ingredients,
     purchases,
     batches,
-    sizes,
+    products,
     savedSnapshot,
     previousSnapshot,
     recentSnapshots,
@@ -96,7 +97,9 @@ async function inventoryContext(date: string) {
         "_id code name actualLiters costPerLiter totalCost cookedAt createdAt",
       )
       .lean(),
-    ProductSize.find({ isActive: true }).select("milkMl").lean(),
+    Product.find({ isActive: true, milkMl: { $gt: 0 } })
+      .select("_id code name productMode sellingPrice milkMl")
+      .lean(),
     InventorySnapshot.findOne({ snapshotDate: boundary }).lean(),
     InventorySnapshot.findOne({ snapshotDate: { $lt: boundary } })
       .sort({ snapshotDate: -1 })
@@ -233,10 +236,22 @@ async function inventoryContext(date: string) {
     };
   });
 
+  const freshMilkBottleProduct = findFreshMilkBottleProduct(products);
+  const milkVolumes = [
+    ...new Set(
+      products.flatMap((product) => {
+        const milkMl = Number(product.milkMl ?? 0);
+        return String(product._id) !==
+          String(freshMilkBottleProduct?._id ?? "") && milkMl > 0
+          ? [milkMl]
+          : [];
+      }),
+    ),
+  ];
   const averageMilkMlPerCup =
-    sizes.length > 0
-      ? sizes.reduce((total, size) => total + Number(size.milkMl ?? 0), 0) /
-        sizes.length
+    milkVolumes.length > 0
+      ? milkVolumes.reduce((total, milkMl) => total + milkMl, 0) /
+        milkVolumes.length
       : 0;
   const previousEstimatedCups = Number(previousSnapshot?.estimatedCups ?? 0);
   const calculation = calculateInventory({

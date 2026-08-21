@@ -4,7 +4,6 @@ import {
   AppstoreOutlined,
   BarChartOutlined,
   CalculatorOutlined,
-  ColumnWidthOutlined,
   DollarOutlined,
   ExperimentOutlined,
   LineChartOutlined,
@@ -127,12 +126,6 @@ const navigationGroups: NavigationGroup[] = [
         pageTitle: 'Danh mục hàng hóa',
         permission: 'inventory:read',
         v2Only: true,
-      },
-      {
-        key: '/sizes',
-        icon: <ColumnWidthOutlined />,
-        label: 'Biến thể & size',
-        permission: 'catalog:write',
       },
       {
         key: '/batches',

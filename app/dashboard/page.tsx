@@ -61,6 +61,11 @@ type DashboardData = Omit<typeof workbookDashboard, "health"> & {
     lastSaleDate: string | null;
     lastInventoryDate: string | null;
   };
+  groups?: Array<{
+    name: string;
+    quantity: number;
+    revenue: number;
+  }>;
 };
 
 type MetricTitleProps = {
@@ -858,6 +863,31 @@ export default function DashboardPage() {
             }
             style={{ marginTop: 16 }}
           />
+        </Card>
+        <Card
+          className="surface-card"
+          title="Doanh thu theo nhóm sản phẩm"
+          extra={<Tag>{data.groups?.length ?? 0} nhóm</Tag>}
+        >
+          {data.groups?.length ? (
+            data.groups.map((group) => (
+              <div className="summary-row" key={group.name}>
+                <span>
+                  <Text strong>{group.name}</Text>
+                  <br />
+                  <Text type="secondary">{formatNumber(group.quantity)} sản phẩm</Text>
+                </span>
+                <Text strong>{formatVnd(group.revenue)}</Text>
+              </div>
+            ))
+          ) : (
+            <Alert
+              type="info"
+              showIcon
+              title="Chưa có doanh thu theo nhóm"
+              description="Nhóm sẽ xuất hiện sau khi chốt ngày có nhập số lượng sản phẩm."
+            />
+          )}
         </Card>
       </div>
     </div>

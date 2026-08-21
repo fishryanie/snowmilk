@@ -8,7 +8,8 @@ export const runtime = "nodejs";
 const productSchema = z.object({
   code: z.string().trim().min(1).max(80),
   name: z.string().trim().min(1).max(240),
-  productMode: z.enum(["legacy", "recipe"]).optional(),
+  groupName: z.string().trim().min(1).max(80).optional(),
+  productMode: z.enum(["legacy", "recipe", "composed"]).optional(),
   recipeCode: z.string().trim().max(120).optional(),
   recipeName: z.string().trim().max(240).optional(),
   milkMl: z.number().finite().nonnegative().optional(),

@@ -7,6 +7,7 @@ import {
   calculatePreparationUsageCost,
   normalizedPreparationCostSource,
 } from "@/lib/calculations/preparation-batch";
+import { calculateToppingRanking } from "@/lib/calculations/topping-ranking";
 import { convertQuantity } from "@/lib/calculations/units";
 import {
   ingredientCodePrefix,
@@ -15,12 +16,19 @@ import {
 } from "@/lib/ingredient-code";
 import { connectMongo } from "@/lib/mongodb";
 import { DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE } from "@/lib/purchase-funding";
+import {
+  DEFAULT_PRODUCT_GROUP,
+  normalizeProductGroupName,
+  productGroupBusinessLineCode,
+} from "@/lib/product-groups";
 import { resolveSettingValue } from "@/lib/settings";
 import type { ProductOnboardingInput } from "@/lib/validators/product-onboarding";
+import { vietnamDateKey, vietnamDayBoundary } from "@/lib/vietnam-date";
 import { Equipment } from "@/models/Equipment";
 import { Ingredient } from "@/models/Ingredient";
 import { MilkBatch } from "@/models/MilkBatch";
 import { Product } from "@/models/Product";
+import { ProductGroup } from "@/models/ProductGroup";
 import { Purchase } from "@/models/Purchase";
 import { Setting } from "@/models/Setting";
 
@@ -45,6 +53,23 @@ async function nextProductCode() {
     return Number.isFinite(number) ? Math.max(current, number) : current;
   }, 0);
   return `SP-${String(max + 1).padStart(3, "0")}`;
+}
+
+async function canonicalProductGroupName(value: unknown) {
+  const groupName = normalizeProductGroupName(value);
+  const code = productGroupBusinessLineCode(groupName);
+  const group = await ProductGroup.findOneAndUpdate(
+    { code },
+    {
+      $set: { isActive: true },
+      $setOnInsert: {
+        code,
+        name: groupName,
+      },
+    },
+    { upsert: true, returnDocument: "after", runValidators: true },
+  ).lean();
+  return normalizeProductGroupName(group?.name ?? groupName);
 }
 
 async function createIngredientWithCode(
@@ -408,7 +433,10 @@ async function resolveIngredientUsage(
 }
 
 async function buildProductPayload(input: ProductOnboardingInput) {
-  const preparation = await resolveIngredientUsage(input.ingredientItems);
+  const [preparation, groupName] = await Promise.all([
+    resolveIngredientUsage(input.ingredientItems),
+    canonicalProductGroupName(input.groupName),
+  ]);
   let packagingResult: Awaited<ReturnType<typeof resolvePackaging>> | null =
     null;
   try {
@@ -441,6 +469,7 @@ async function buildProductPayload(input: ProductOnboardingInput) {
     return {
       payload: {
         name: input.name,
+        groupName,
         productMode: "composed",
         milkBatchId: preparation.primaryMilk?.batchId ?? null,
         milkBatchCode: preparation.primaryMilk?.batchCode ?? "",
@@ -482,13 +511,47 @@ async function buildProductPayload(input: ProductOnboardingInput) {
 
 export async function loadProductOnboardingData() {
   await connectMongo();
-  const [products, batches, ingredients, settings] = await Promise.all([
-    Product.find().sort({ createdAt: -1 }).lean(),
-    MilkBatch.find().sort({ createdAt: -1 }).lean(),
-    Ingredient.find({ isActive: true }).sort({ name: 1 }).lean(),
-    costSettings(),
-  ]);
-  return { products, batches, ingredients, costSettings: settings };
+  const now = new Date();
+  const asOfDate = vietnamDateKey(now);
+  const [products, groups, batches, ingredients, purchases, settings] =
+    await Promise.all([
+      Product.find().sort({ createdAt: -1 }).lean(),
+      ProductGroup.find({ isActive: true }).sort({ name: 1 }).lean(),
+      MilkBatch.find().sort({ createdAt: -1 }).lean(),
+      Ingredient.find({ isActive: true }).sort({ name: 1 }).lean(),
+      Purchase.find({
+        category: "Topping",
+        purchaseDate: { $lte: vietnamDayBoundary(asOfDate, true) },
+      })
+        .select(
+          "itemCode itemName category costUnit convertedQuantity purchaseDate",
+        )
+        .lean(),
+      costSettings(),
+    ]);
+  const toppingRanking = calculateToppingRanking({
+    ingredients,
+    purchases,
+    asOfDate,
+    updatedAt: now,
+  });
+  const groupNames = new Set<string>([DEFAULT_PRODUCT_GROUP]);
+  for (const group of groups) {
+    groupNames.add(normalizeProductGroupName(group.name));
+  }
+  for (const product of products) {
+    groupNames.add(normalizeProductGroupName(product.groupName));
+  }
+  return {
+    products,
+    groups: [...groupNames].toSorted((left, right) =>
+      left.localeCompare(right, "vi"),
+    ),
+    batches,
+    ingredients,
+    toppingRanking,
+    costSettings: settings,
+  };
 }
 
 export async function createOnboardedProduct(input: ProductOnboardingInput) {

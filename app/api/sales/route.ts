@@ -1,33 +1,29 @@
 import { apiError, apiSuccess, errorMessage } from "@/lib/api-response";
 import {
-  buildDailySaleAssumptions,
+  buildDailySaleAssumptionsFromProducts,
   calculateDailySaleEstimateFromRevenue,
   deriveDailyRevenueSplit,
+  isSnowMilkRevenueEstimateProduct,
 } from "@/lib/calculations/daily-sales";
+import { calculateDailyCountedProducts } from "@/lib/calculations/daily-counted-products";
 import { findFreshMilkBottleProduct } from "@/lib/fresh-milk-product";
 import { connectMongo } from "@/lib/mongodb";
+import { normalizeProductGroupName } from "@/lib/product-groups";
 import { Equipment } from "@/models/Equipment";
 import { MilkBatch } from "@/models/MilkBatch";
 import { Product } from "@/models/Product";
 import { Sale } from "@/models/Sale";
 import { Setting } from "@/models/Setting";
-import { ProductSize } from "@/models/Size";
 import { vietnamDayBoundary } from "@/lib/vietnam-date";
 import { dailySaleSchema } from "@/lib/validators/sales";
 
 const DAILY_PAYMENT_METHOD = "Khác";
 
 async function dailySaleContext(selectedBatchId?: string) {
-  const [sizes, products, settings, depreciation, batches] = await Promise.all([
-    ProductSize.find({
-      code: { $in: ["M", "L"] },
-      isActive: true,
-    })
-      .select("code name milkMl sellingPrice")
-      .lean(),
+  const [products, settings, depreciation, batches] = await Promise.all([
     Product.find({ isActive: true })
       .select(
-        "code name productMode sizeName sellingPrice milkCost toppingCost packagingCost hasCostWarning",
+        "code name groupName productMode sizeName sellingPrice milkMl milkCost toppingCost packagingCost allocatedFixedCost fullCost hasCostWarning",
       )
       .lean(),
     Setting.find({
@@ -60,33 +56,42 @@ async function dailySaleContext(selectedBatchId?: string) {
     expectedCups > 0
       ? (monthlyFixedCost + monthlyDepreciation) / expectedCups
       : 0;
-  const orderedSizes = ["M", "L"].flatMap((code) => {
-    const size = sizes.find((item) => item.code === code);
-    return size
+  const freshMilkBottleProduct = findFreshMilkBottleProduct(products);
+  const countedProducts = products.flatMap((product) =>
+    ["recipe", "composed"].includes(String(product.productMode ?? "")) &&
+    String(product._id) !== String(freshMilkBottleProduct?._id ?? "")
       ? [
           {
-            code: size.code,
-            name: size.name,
-            milkMl: Number(size.milkMl ?? 0),
-            sellingPrice: Number(size.sellingPrice ?? 0),
+            id: String(product._id),
+            code: String(product.code),
+            name: String(product.name),
+            groupName: normalizeProductGroupName(product.groupName),
+            sellingPrice: Number(product.sellingPrice ?? 0),
+            fullCost: Number(product.fullCost ?? 0),
+            allocatedFixedCost: Number(product.allocatedFixedCost ?? 0),
           },
         ]
-      : [];
-  });
-
-  const assumptions = buildDailySaleAssumptions(
-    orderedSizes,
-    products.map((product) => ({
-      sizeName: product.sizeName,
-      milkCost: Number(product.milkCost ?? 0),
-      toppingCost: Number(product.toppingCost ?? 0),
-      packagingCost: Number(product.packagingCost ?? 0),
-      hasCostWarning: product.hasCostWarning,
-    })),
+      : [],
+  );
+  const assumptions = buildDailySaleAssumptionsFromProducts(
+    products.flatMap((product) =>
+      isSnowMilkRevenueEstimateProduct(product) &&
+      String(product._id) !== String(freshMilkBottleProduct?._id ?? "")
+        ? [
+            {
+              milkMl: Number(product.milkMl ?? 0),
+              sellingPrice: Number(product.sellingPrice ?? 0),
+              milkCost: Number(product.milkCost ?? 0),
+              toppingCost: Number(product.toppingCost ?? 0),
+              packagingCost: Number(product.packagingCost ?? 0),
+              hasCostWarning: product.hasCostWarning,
+            },
+          ]
+        : [],
+    ),
     settingsByKey.get("overhead_bien_doi") ?? 0.05,
     fixedCostPerCup,
   );
-  const freshMilkBottleProduct = findFreshMilkBottleProduct(products);
   const selectedBatch = selectedBatchId
     ? batches.find((batch) => String(batch._id) === selectedBatchId)
     : undefined;
@@ -110,6 +115,7 @@ async function dailySaleContext(selectedBatchId?: string) {
           sellingPrice: Number(freshMilkBottleProduct.sellingPrice ?? 0),
         }
       : null,
+    countedProducts,
     assumptions:
       selectedBatch
         ? assumptions.map((assumption) => ({
@@ -160,6 +166,7 @@ export async function POST(request: Request) {
       overwrite,
       batchId,
       freshMilkBottleCount,
+      productQuantities,
       cashReceived,
       bankTransferReceived,
       ...input
@@ -169,23 +176,36 @@ export async function POST(request: Request) {
     const freshMilkBottleUnitPrice = Number(
       context.freshMilkProduct?.sellingPrice ?? 0,
     );
+    const unknownProduct = productQuantities.find(
+      ({ productId }) =>
+        !context.countedProducts.some((product) => product.id === productId),
+    );
+    if (unknownProduct) {
+      return apiError(
+        "Danh sách món đã thay đổi. Hãy tải lại trang rồi chốt ngày lần nữa.",
+        409,
+      );
+    }
+    const countedProductSales = calculateDailyCountedProducts(
+      context.countedProducts,
+      productQuantities,
+    );
     if (freshMilkBottleCount > 0 && freshMilkBottleUnitPrice <= 0) {
       return apiError(
         "Chưa tìm thấy sản phẩm sữa tươi đóng chai đang hoạt động có giá bán hợp lệ.",
         422,
       );
     }
-    const {
-      snowMilkRevenue,
-      freshMilkRevenue,
-    } = deriveDailyRevenueSplit(
+    const { freshMilkRevenue } = deriveDailyRevenueSplit(
       totalRevenue,
       freshMilkBottleCount,
       freshMilkBottleUnitPrice,
     );
+    const snowMilkRevenue =
+      totalRevenue - freshMilkRevenue - countedProductSales.revenue;
     if (snowMilkRevenue < 0) {
       return apiError(
-        `Tiền bán ${freshMilkBottleCount} chai (${freshMilkBottleCount} × ${freshMilkBottleUnitPrice.toLocaleString("vi-VN")}đ) đang lớn hơn tổng tiền cuối ngày.`,
+        "Doanh thu theo số lượng sản phẩm đang lớn hơn tổng tiền cuối ngày.",
         422,
       );
     }
@@ -207,9 +227,9 @@ export async function POST(request: Request) {
         422,
       );
     }
-    if (snowMilkRevenue > 0 && assumptions.length !== 2) {
+    if (snowMilkRevenue > 0 && assumptions.length === 0) {
       return apiError(
-        "Chưa có đủ Size M và Size L đang hoạt động trong danh mục Size.",
+        "Danh mục sữa tuyết chưa có dung tích và giá bán hợp lệ để ước tính từ doanh thu.",
         422,
       );
     }
@@ -217,12 +237,32 @@ export async function POST(request: Request) {
       snowMilkRevenue,
       assumptions,
     );
+    const estimatedProfit = totals.estimatedProfit + countedProductSales.profit;
+    // Keep the legacy two-way revenue split balanced for existing dashboard and
+    // migration consumers; item detail below preserves the counted-product share.
+    const legacySnowMilkRevenue =
+      snowMilkRevenue + countedProductSales.revenue;
+    const combinedTotals = {
+      ...totals,
+      totalVariableCost:
+        totals.totalVariableCost + countedProductSales.variableCost,
+      contributionProfit:
+        totals.contributionProfit + countedProductSales.contributionProfit,
+      allocatedFixedCost:
+        totals.allocatedFixedCost + countedProductSales.allocatedFixedCost,
+      estimatedProfit,
+      estimatedProfitLow:
+        totals.estimatedProfitLow + countedProductSales.profit,
+      estimatedProfitHigh:
+        totals.estimatedProfitHigh + countedProductSales.profit,
+      estimatedMargin: netRevenue > 0 ? estimatedProfit / netRevenue : 0,
+    };
     const missingCost = totals.sizeSummaries.find(
       (summary) => summary.quantity > 0 && summary.sampleCount === 0,
     );
     if (missingCost) {
       return apiError(
-        `Chưa có sản phẩm ${missingCost.sizeName} với cost hợp lệ để ước tính.`,
+        `Chưa có sản phẩm quy cách ${missingCost.sizeName} với cost hợp lệ để ước tính.`,
         422,
       );
     }
@@ -249,7 +289,7 @@ export async function POST(request: Request) {
       ? { _id: existing._id }
       : {
           saleDate,
-          batchName: costBasis?.name ?? "Chỉ bán sữa tươi",
+          batchName: costBasis?.name ?? "Không bán sữa tuyết",
           paymentMethod: DAILY_PAYMENT_METHOD,
         };
 
@@ -265,13 +305,24 @@ export async function POST(request: Request) {
                 batchCode: costBasis.code,
                 batchName: costBasis.name,
               }
-            : { batchName: "Chỉ bán sữa tươi" }),
+            : { batchName: "Không bán sữa tuyết" }),
           paymentMethod: DAILY_PAYMENT_METHOD,
-          items: [],
-          ...totals,
+          items: countedProductSales.items.map((item) => ({
+            productId: item.productId,
+            productCode: item.productCode,
+            productName: item.productName,
+            groupName: item.groupName,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            unitVariableCost: item.unitVariableCost,
+            revenue: item.revenue,
+            variableCost: item.variableCost,
+            contributionProfit: item.contributionProfit,
+          })),
+          ...combinedTotals,
           grossRevenue: netRevenue,
           netRevenue,
-          snowMilkRevenue,
+          snowMilkRevenue: legacySnowMilkRevenue,
           freshMilkRevenue,
           freshMilkBottleCount,
           freshMilkBottleUnitPrice,
@@ -280,8 +331,8 @@ export async function POST(request: Request) {
           cupCountSource: "estimated",
           estimationMethod:
             snowMilkRevenue > 0 && costBasis
-              ? `Doanh thu sữa tươi được tính tự động: ${freshMilkBottleCount} chai × ${freshMilkBottleUnitPrice.toLocaleString("vi-VN")}đ. Phần còn lại là doanh thu sữa tuyết; số ly Size M/L và lượng sữa nền được ước tính theo mẻ ${costBasis.code} - ${costBasis.name}.`
-              : `Ngày chỉ bán sữa tươi; doanh thu được tính tự động từ ${freshMilkBottleCount} chai × ${freshMilkBottleUnitPrice.toLocaleString("vi-VN")}đ.`,
+              ? `Doanh thu sữa tươi và các món nhập số lượng được tách theo giá bán. Phần còn lại là doanh thu sữa tuyết kiểu cũ; số ly theo dung tích và lượng sữa nền được ước tính theo mẻ ${costBasis.code} - ${costBasis.name}.`
+              : "Ngày không bán sữa tuyết; doanh thu được tách theo số lượng sản phẩm và giá bán hiện tại.",
           note: input.note,
         },
         ...(costBasis

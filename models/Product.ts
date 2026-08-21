@@ -1,4 +1,5 @@
 import mongoose, { Schema } from "mongoose";
+import { DEFAULT_PRODUCT_GROUP } from "@/lib/product-groups";
 import { schemaOptions, traceFields } from "./helpers";
 
 const ProductPackagingItemSchema = new Schema(
@@ -41,6 +42,14 @@ const ProductSchema = new Schema(
   {
     code: { type: String, required: true, trim: true, unique: true },
     name: { type: String, required: true, trim: true },
+    groupName: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 80,
+      default: DEFAULT_PRODUCT_GROUP,
+      index: true,
+    },
     toppingIngredientId: { type: Schema.Types.ObjectId, ref: "Ingredient" },
     sizeId: { type: Schema.Types.ObjectId, ref: "ProductSize" },
     milkBatchId: { type: Schema.Types.ObjectId, ref: "MilkBatch" },
@@ -85,7 +94,8 @@ if (
   process.env.NODE_ENV !== "production" &&
   cachedProductModel &&
   (!cachedProductModel.schema.path("recipeId") ||
-    !cachedProductModel.schema.path("ingredientItems"))
+    !cachedProductModel.schema.path("ingredientItems") ||
+    !cachedProductModel.schema.path("groupName"))
 ) {
   mongoose.deleteModel("Product");
 }

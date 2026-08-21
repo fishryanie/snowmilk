@@ -5,9 +5,11 @@ import {
 } from "@/lib/business-profile";
 
 describe("BusinessProfile", () => {
-  test("uses the approved Bếp Nhà Nè identity by default", () => {
+  test("uses the approved Ủa ngon! identity by default", () => {
     const profile = normalizeBusinessProfile();
-    expect(profile.displayName).toBe("Bếp Nhà Nè");
+    expect(profile.displayName).toBe("Ủa ngon!");
+    expect(profile.wordmark).toBe("Ủa ngon!");
+    expect(profile.logoUrl).toBe("/ua-ngon-logo.png");
     expect(profile.tagline).toBe(
       "làm ở nhà, ngon thiệt nè.",
     );
@@ -17,6 +19,18 @@ describe("BusinessProfile", () => {
       green: "#25845d",
       ink: "#17323a",
     });
+  });
+
+  test("upgrades the persisted legacy name and logo", () => {
+    const profile = normalizeBusinessProfile({
+      displayName: "Bếp Nhà Nè",
+      wordmark: "Bếp Nhà Nè",
+      logoUrl: "/snowmilk-logo-transparent.png",
+    });
+
+    expect(profile.displayName).toBe("Ủa ngon!");
+    expect(profile.wordmark).toBe("Ủa ngon!");
+    expect(profile.logoUrl).toBe("/ua-ngon-logo.png");
   });
 
   test("keeps missing colors from the safe fallback", () => {

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { DEFAULT_PRODUCT_GROUP } from "@/lib/product-groups";
 import { productOnboardingSchema } from "./product-onboarding";
 
 const preparedIngredientId = "64b000000000000000000001";
@@ -42,12 +43,14 @@ describe("product onboarding validator", () => {
       expect(parsed.data.ingredientItems).toHaveLength(2);
       expect(parsed.data.packagingItems[0]).toMatchObject({ packageCount: 1 });
       expect(parsed.data.isActive).toBe(true);
+      expect(parsed.data.groupName).toBe(DEFAULT_PRODUCT_GROUP);
     }
   });
 
   test("accepts a product made only from a dry imported topping", () => {
     const parsed = productOnboardingSchema.safeParse({
       name: "Hũ dâu sấy",
+      groupName: "Đồ ăn vặt",
       sellingPrice: 42_000,
       ingredientItems: [
         {
@@ -63,6 +66,9 @@ describe("product onboarding validator", () => {
     });
 
     expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.groupName).toBe("Đồ ăn vặt");
+    }
   });
 
   test("rejects a product without ingredients", () => {

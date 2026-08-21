@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildDailySaleAssumptionsFromProducts,
   calculateDailySaleEstimate,
   calculateDailySaleEstimateFromRevenue,
   deriveDailyRevenueSplit,
   estimateSizeQuantitiesFromRevenue,
+  isSnowMilkRevenueEstimateProduct,
   type DailySaleAssumption,
 } from "./daily-sales";
 
@@ -39,6 +41,90 @@ const assumptions: DailySaleAssumption[] = [
 ];
 
 describe("daily sales estimated only from revenue", () => {
+  test("uses current snow-milk recipes for revenue-only estimation", () => {
+    expect(
+      isSnowMilkRevenueEstimateProduct({
+        groupName: "Sữa tuyết",
+        productMode: "recipe",
+      }),
+    ).toBe(true);
+    expect(
+      isSnowMilkRevenueEstimateProduct({
+        groupName: "Sữa tươi",
+        productMode: "composed",
+      }),
+    ).toBe(false);
+    expect(
+      isSnowMilkRevenueEstimateProduct({ productMode: "legacy" }),
+    ).toBe(true);
+    expect(
+      isSnowMilkRevenueEstimateProduct({ productMode: "recipe" }),
+    ).toBe(false);
+  });
+
+  test("builds legacy estimation groups from product milk volume", () => {
+    const result = buildDailySaleAssumptionsFromProducts(
+      [
+        {
+          milkMl: 350,
+          sellingPrice: 35_000,
+          milkCost: 10_000,
+          toppingCost: 2_000,
+          packagingCost: 1_000,
+        },
+        {
+          milkMl: 350,
+          sellingPrice: 35_000,
+          milkCost: 12_000,
+          toppingCost: 4_000,
+          packagingCost: 1_200,
+        },
+        {
+          milkMl: 550,
+          sellingPrice: 40_000,
+          milkCost: 18_000,
+          toppingCost: 3_000,
+          packagingCost: 1_500,
+        },
+      ],
+      0.05,
+      100,
+    );
+
+    expect(result.map((item) => item.sizeCode)).toEqual(["350ml", "550ml"]);
+    expect(result[0]).toMatchObject({
+      sizeName: "350 ml",
+      referenceSellingPrice: 35_000,
+      milkCostPerCup: 11_000,
+      toppingCostPerCup: 3_000,
+      packagingCostPerCup: 1_100,
+      sampleCount: 2,
+    });
+  });
+
+  test("keeps a volume group visible when all of its product costs are blocked", () => {
+    const [result] = buildDailySaleAssumptionsFromProducts(
+      [
+        {
+          milkMl: 350,
+          sellingPrice: 35_000,
+          milkCost: 10_000,
+          toppingCost: 2_000,
+          packagingCost: 1_000,
+          hasCostWarning: true,
+        },
+      ],
+      0.05,
+      100,
+    );
+
+    expect(result).toMatchObject({
+      sizeCode: "350ml",
+      referenceSellingPrice: 35_000,
+      sampleCount: 0,
+    });
+  });
+
   test("derives product revenue from total cash and fresh-milk bottles", () => {
     expect(deriveDailyRevenueSplit(6_230_000, 23, 20_000)).toEqual({
       totalRevenue: 6_230_000,

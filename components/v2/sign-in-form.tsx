@@ -2,7 +2,7 @@
 
 import { LockOutlined, MailOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Form, Input, Typography } from "antd";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { authClient } from "@/lib/auth-client";
 
 type Credentials = {
@@ -14,10 +14,12 @@ export function SignInForm({
   displayName,
   wordmark,
   tagline,
+  logoUrl,
 }: {
   displayName: string;
   wordmark: string;
   tagline: string;
+  logoUrl?: string;
 }) {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -25,27 +27,41 @@ export function SignInForm({
   async function submit(values: Credentials) {
     setError("");
     setSubmitting(true);
-    const destination =
-      new URLSearchParams(window.location.search).get("next") || "/dashboard";
-    const result = await authClient.signIn.email({
-      email: values.email,
-      password: values.password,
-      callbackURL: destination,
-    });
-    setSubmitting(false);
-    if (result.error) {
-      setError("Email hoặc mật khẩu chưa đúng.");
-      return;
+    try {
+      const destination =
+        new URLSearchParams(window.location.search).get("next") || "/dashboard";
+      const result = await authClient.signIn.email({
+        email: values.email,
+        password: values.password,
+        callbackURL: destination,
+      });
+      if (result.error) {
+        setError("Email hoặc mật khẩu chưa đúng.");
+        return;
+      }
+      window.location.assign(destination);
+    } catch {
+      setError("Không thể đăng nhập lúc này. Hãy thử lại.");
+    } finally {
+      setSubmitting(false);
     }
-    window.location.assign(destination);
   }
 
   return (
     <main className="auth-page">
       <Card className="auth-card" bordered={false}>
-        <div className="auth-wordmark" aria-label={displayName}>
-          {wordmark}
-        </div>
+        {logoUrl ? (
+          <div
+            className="auth-logo"
+            role="img"
+            aria-label={`Logo ${displayName}`}
+            style={{ "--auth-logo-url": `url("${logoUrl}")` } as CSSProperties}
+          />
+        ) : (
+          <div className="auth-wordmark" aria-label={displayName}>
+            {wordmark}
+          </div>
+        )}
         <Typography.Paragraph className="auth-tagline">
           {tagline}
         </Typography.Paragraph>

@@ -1,4 +1,5 @@
 import mongoose, { Schema } from "mongoose";
+import { DEFAULT_PRODUCT_GROUP } from "@/lib/product-groups";
 import { schemaOptions, traceFields } from "./helpers";
 
 const SaleItemSchema = new Schema(
@@ -6,6 +7,12 @@ const SaleItemSchema = new Schema(
     productId: { type: Schema.Types.ObjectId, ref: "Product" },
     productCode: { type: String, required: true },
     productName: { type: String, required: true },
+    groupName: {
+      type: String,
+      required: true,
+      trim: true,
+      default: DEFAULT_PRODUCT_GROUP,
+    },
     sizeName: String,
     quantity: { type: Number, min: 0, required: true },
     unitPrice: { type: Number, min: 0, required: true },
@@ -110,6 +117,9 @@ const cachedSaleModel = mongoose.models.Sale;
 const cachedCupCountSourcePath = cachedSaleModel?.schema.path(
   "cupCountSource",
 ) as { enumValues?: string[] } | undefined;
+const cachedSaleItemsPath = cachedSaleModel?.schema.path("items") as
+  | { schema?: { path: (name: string) => unknown } }
+  | undefined;
 
 if (
   process.env.NODE_ENV !== "production" &&
@@ -120,6 +130,7 @@ if (
     !cachedSaleModel.schema.path("freshMilkRevenue") ||
     !cachedSaleModel.schema.path("freshMilkBottleCount") ||
     !cachedSaleModel.schema.path("freshMilkBottleUnitPrice") ||
+    !cachedSaleItemsPath?.schema?.path("groupName") ||
     !cachedCupCountSourcePath?.enumValues?.includes("actual-total"))
 ) {
   mongoose.deleteModel("Sale");

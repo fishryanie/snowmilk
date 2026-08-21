@@ -23,6 +23,29 @@ describe("daily sale revenue validation", () => {
     ).toBe(true);
   });
 
+  test("accepts quantities for newly added products", () => {
+    const result = dailySaleSchema.safeParse({
+      ...baseSale,
+      productQuantities: [
+        { productId: "507f1f77bcf86cd799439012", quantity: 3 },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  test("rejects duplicate product quantities", () => {
+    expect(
+      dailySaleSchema.safeParse({
+        ...baseSale,
+        productQuantities: [
+          { productId: "507f1f77bcf86cd799439012", quantity: 1 },
+          { productId: "507f1f77bcf86cd799439012", quantity: 2 },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
   test("rejects a zero payment total", () => {
     expect(
       dailySaleSchema.safeParse({

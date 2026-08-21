@@ -30,6 +30,10 @@ import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/common/page-header";
 import { RouteSkeleton } from "@/components/common/route-skeleton";
 import {
+  calculateDailyCountedProducts,
+  type DailyCountedProduct,
+} from "@/lib/calculations/daily-counted-products";
+import {
   calculateDailySaleEstimateFromRevenue,
   deriveDailyRevenueSplit,
   type DailySaleAssumption,
@@ -40,6 +44,7 @@ import {
   formatVndInput,
   parseVndInput,
 } from "@/lib/formatters";
+import { normalizeProductGroupName } from "@/lib/product-groups";
 import { useApiData } from "@/hooks/use-api-data";
 import { workbookBatches } from "@/lib/workbook-snapshot";
 
@@ -57,6 +62,15 @@ type SaleHistory = {
   freshMilkRevenue?: number;
   freshMilkBottleCount?: number;
   freshMilkBottleUnitPrice?: number;
+  items?: Array<{
+    productId?: string;
+    productCode: string;
+    productName: string;
+    groupName?: string;
+    quantity: number;
+    unitPrice: number;
+    revenue: number;
+  }>;
   cashReceived?: number | null;
   bankTransferReceived?: number | null;
   totalVariableCost: number;
@@ -88,12 +102,23 @@ type SalesData = {
     name: string;
     sellingPrice: number;
   } | null;
+  countedProducts: DailyCountedProduct[];
+};
+
+type SalesQuantityProduct = {
+  kind: "fresh-milk" | "counted";
+  id: string;
+  code: string;
+  name: string;
+  groupName: string;
+  sellingPrice: number;
+  unit: "chai" | "món";
 };
 
 const fallbackAssumptions: DailySaleAssumption[] = [
   {
-    sizeCode: "M",
-    sizeName: "Size M",
+    sizeCode: "400ml",
+    sizeName: "400 ml",
     milkMl: 400,
     referenceSellingPrice: 35_000,
     milkCostPerCup: 11_862.08333,
@@ -106,8 +131,8 @@ const fallbackAssumptions: DailySaleAssumption[] = [
     sampleCount: 2,
   },
   {
-    sizeCode: "L",
-    sizeName: "Size L",
+    sizeCode: "550ml",
+    sizeName: "550 ml",
     milkMl: 550,
     referenceSellingPrice: 40_000,
     milkCostPerCup: 16_310.36458,
@@ -133,10 +158,19 @@ function freshMilkRevenueFor(record: SaleHistory) {
   return record.freshMilkRevenue ?? 0;
 }
 
+function countedProductRevenueFor(record: SaleHistory) {
+  return (record.items ?? []).reduce(
+    (sum, item) => sum + Number(item.revenue ?? item.quantity * item.unitPrice),
+    0,
+  );
+}
+
 function snowMilkRevenueFor(record: SaleHistory) {
-  return (
-    record.snowMilkRevenue ??
-    Math.max(0, record.netRevenue - freshMilkRevenueFor(record))
+  return Math.max(
+    0,
+    (record.snowMilkRevenue ??
+      record.netRevenue - freshMilkRevenueFor(record)) -
+      countedProductRevenueFor(record),
   );
 }
 
@@ -155,12 +189,16 @@ export default function SalesPage() {
       id: batchRecordId(batch),
     })),
     freshMilkProduct: null,
+    countedProducts: [],
   });
   const [saleDate, setSaleDate] = useState(() => dayjs());
   const [selectedBatchId, setSelectedBatchId] = useState("");
   const [freshMilkBottleCount, setFreshMilkBottleCount] = useState<
     number | null
   >(null);
+  const [productQuantities, setProductQuantities] = useState<
+    Record<string, number>
+  >({});
   const [cashReceived, setCashReceived] = useState<number | null>(null);
   const [bankTransferReceived, setBankTransferReceived] = useState<
     number | null
@@ -173,12 +211,73 @@ export default function SalesPage() {
     cashReceived !== null || bankTransferReceived !== null;
   const netRevenueValue =
     (cashReceived ?? 0) + (bankTransferReceived ?? 0);
+  const countedProductSales = useMemo(
+    () =>
+      calculateDailyCountedProducts(
+        data.countedProducts,
+        Object.entries(productQuantities).map(([productId, quantity]) => ({
+          productId,
+          quantity,
+        })),
+      ),
+    [data.countedProducts, productQuantities],
+  );
+  const salesProductGroups = useMemo(() => {
+    const groups = new Map<string, SalesQuantityProduct[]>();
+    for (const product of data.countedProducts) {
+      const groupName = normalizeProductGroupName(product.groupName);
+      const group = groups.get(groupName) ?? [];
+      group.push({
+        kind: "counted",
+        id: product.id,
+        code: product.code,
+        name: product.name,
+        groupName,
+        sellingPrice: product.sellingPrice,
+        unit: groupName === "Sữa tươi" ? "chai" : "món",
+      });
+      groups.set(groupName, group);
+    }
+
+    if (data.freshMilkProduct) {
+      const groupName = "Sữa tươi";
+      const group = groups.get(groupName) ?? [];
+      group.unshift({
+        kind: "fresh-milk",
+        ...data.freshMilkProduct,
+        groupName,
+        unit: "chai",
+      });
+      groups.set(groupName, group);
+    }
+
+    return [...groups].map(([name, products]) => ({ name, products }));
+  }, [data.countedProducts, data.freshMilkProduct]);
+  const countedProductGroupSales = useMemo(() => {
+    const groups = new Map<
+      string,
+      { name: string; revenue: number; items: typeof countedProductSales.items }
+    >();
+    for (const item of countedProductSales.items) {
+      const groupName = normalizeProductGroupName(item.groupName);
+      const group = groups.get(groupName) ?? {
+        name: groupName,
+        revenue: 0,
+        items: [],
+      };
+      group.revenue += item.revenue;
+      group.items.push(item);
+      groups.set(groupName, group);
+    }
+    return [...groups.values()];
+  }, [countedProductSales]);
   const revenueSplit = deriveDailyRevenueSplit(
     netRevenueValue,
     freshMilkBottleCount ?? 0,
     freshMilkBottleUnitPrice,
   );
-  const { snowMilkRevenue: snowMilkRevenueValue } = revenueSplit;
+  const snowMilkRevenueValue =
+    revenueSplit.snowMilkRevenue - countedProductSales.revenue;
   const { freshMilkRevenue: freshMilkRevenueValue } = revenueSplit;
   const revenueSplitIsValid = snowMilkRevenueValue >= 0;
   const defaultBatchId = useMemo(() => {
@@ -222,12 +321,21 @@ export default function SalesPage() {
       ),
     [snowMilkRevenueValue, selectedAssumptions],
   );
+  const estimatedProfitValue =
+    estimate.estimatedProfit + countedProductSales.profit;
+  const estimatedProfitLowValue =
+    estimate.estimatedProfitLow + countedProductSales.profit;
+  const estimatedProfitHighValue =
+    estimate.estimatedProfitHigh + countedProductSales.profit;
+  const estimatedMarginValue =
+    netRevenueValue > 0 ? estimatedProfitValue / netRevenueValue : 0;
 
   const canSubmit =
     (snowMilkRevenueValue === 0 ||
       (Boolean(selectedBatch) && (selectedBatch?.costPerMl ?? 0) > 0)) &&
     ((freshMilkBottleCount ?? 0) === 0 ||
       freshMilkBottleUnitPrice > 0) &&
+    countedProductSales.items.every((item) => item.unitPrice > 0) &&
     revenueSplitIsValid &&
     hasPaymentBreakdown &&
     netRevenueValue > 0;
@@ -235,6 +343,7 @@ export default function SalesPage() {
   function clearForm() {
     setSaleDate(dayjs());
     setFreshMilkBottleCount(null);
+    setProductQuantities({});
     setCashReceived(null);
     setBankTransferReceived(null);
     setNote("");
@@ -259,7 +368,7 @@ export default function SalesPage() {
     }
     if (!revenueSplitIsValid) {
       message.warning(
-        "Tiền bán sữa tươi đang lớn hơn tổng tiền cuối ngày.",
+        "Doanh thu theo số lượng sản phẩm đang lớn hơn tổng tiền cuối ngày.",
       );
       return;
     }
@@ -280,6 +389,10 @@ export default function SalesPage() {
           saleDate: saleDate.format("YYYY-MM-DD"),
           ...(snowMilkRevenueValue > 0 ? { batchId: activeBatchId } : {}),
           freshMilkBottleCount: freshMilkBottleCount ?? 0,
+          productQuantities: Object.entries(productQuantities).flatMap(
+            ([productId, quantity]) =>
+              quantity > 0 ? [{ productId, quantity }] : [],
+          ),
           cashReceived: cashReceived ?? 0,
           bankTransferReceived: bankTransferReceived ?? 0,
           note,
@@ -339,6 +452,15 @@ export default function SalesPage() {
     );
     setSelectedBatchId(matchingBatch ? batchRecordId(matchingBatch) : "");
     setFreshMilkBottleCount(record.freshMilkBottleCount ?? 0);
+    setProductQuantities(
+      Object.fromEntries(
+        (record.items ?? []).flatMap((item) =>
+          item.productId
+            ? [[String(item.productId), Number(item.quantity ?? 0)]]
+            : [],
+        ),
+      ),
+    );
     const hasSavedPaymentBreakdown =
       record.cashReceived != null || record.bankTransferReceived != null;
     setCashReceived(
@@ -359,7 +481,7 @@ export default function SalesPage() {
     <div className="page-wrap sales-page">
       <PageHeader
         title="Chốt doanh thu"
-        description="Chỉ nhập tiền mặt, chuyển khoản và số chai sữa tươi đã bán; hệ thống tự cộng tổng và tách doanh thu."
+        description="Nhập tiền mặt và chuyển khoản là chính; số lượng sản phẩm chỉ cần nhập khi bạn đếm được."
         actions={
           <Button
             className="sales-header-submit"
@@ -432,47 +554,9 @@ export default function SalesPage() {
             <div className="sales-section-heading">
               <span className="workflow-step">2</span>
               <div>
-                <Text strong>Nhập số liệu đếm cuối ngày</Text>
-                <Text type="secondary">
-                  Nhập số chai sữa tươi đã bán (nếu có).
-                </Text>
-              </div>
-            </div>
-            <div className="sales-revenue-grid">
-              <label
-                className="sales-field"
-                style={{ gridColumn: "1 / -1" }}
-              >
-                <span className="sales-payment-label">
-                  <ShoppingOutlined /> Số chai sữa tươi đã bán
-                </span>
-                <InputNumber
-                  aria-label="Số chai sữa tươi đã bán"
-                  min={0}
-                  precision={0}
-                  step={1}
-                  value={freshMilkBottleCount}
-                  onChange={(value) =>
-                    setFreshMilkBottleCount(
-                      value === null ? null : Number(value),
-                    )
-                  }
-                  placeholder="0 chai"
-                  inputMode="numeric"
-                  addonAfter="chai"
-                  style={{ width: "100%" }}
-                />
-              </label>
-            </div>
-          </section>
-
-          <section className="sales-form-section">
-            <div className="sales-section-heading">
-              <span className="workflow-step">3</span>
-              <div>
                 <Text strong>Nhập tiền thực nhận</Text>
                 <Text type="secondary">
-                  Tổng doanh thu sẽ tự động bằng tiền mặt cộng chuyển khoản.
+                  Tiền mặt cộng chuyển khoản là tổng doanh thu cuối ngày.
                 </Text>
               </div>
             </div>
@@ -530,6 +614,106 @@ export default function SalesPage() {
             ) : null}
           </section>
 
+          <section className="sales-form-section">
+            <div className="sales-section-heading">
+              <span className="workflow-step">3</span>
+              <div>
+                <Text strong>Số lượng đếm được (không bắt buộc)</Text>
+                <Text type="secondary">
+                  Không nhớ topping sữa tuyết thì để trống; hệ thống xem là 0.
+                </Text>
+              </div>
+            </div>
+            <div className="sales-revenue-grid">
+              {salesProductGroups.map((group) => {
+                const fields = (
+                  <div className="sales-counted-group-fields">
+                    {group.products.map((product) => (
+                      <label
+                        className="sales-field"
+                        key={`${product.kind}-${product.id}`}
+                      >
+                        <span className="sales-payment-label">
+                          <ShoppingOutlined /> {product.name} ({product.code})
+                        </span>
+                        <InputNumber
+                          aria-label={`Số lượng ${product.name} đã bán`}
+                          min={0}
+                          precision={0}
+                          step={1}
+                          value={
+                            product.kind === "fresh-milk"
+                              ? freshMilkBottleCount
+                              : (productQuantities[product.id] ?? null)
+                          }
+                          onChange={(value) => {
+                            const quantity =
+                              value === null ? null : Number(value);
+                            if (product.kind === "fresh-milk") {
+                              setFreshMilkBottleCount(quantity);
+                              return;
+                            }
+                            setProductQuantities((current) => ({
+                              ...current,
+                              [product.id]: quantity ?? 0,
+                            }));
+                          }}
+                          placeholder="0"
+                          inputMode="numeric"
+                          suffix={
+                            <span className="sales-input-unit">{product.unit}</span>
+                          }
+                          style={{ width: "100%" }}
+                        />
+                        <Text type="secondary">
+                          {formatVnd(product.sellingPrice)} / {product.unit}
+                        </Text>
+                      </label>
+                    ))}
+                  </div>
+                );
+
+                if (group.name === "Sữa tuyết") {
+                  return (
+                    <details
+                      className="sales-counted-group sales-counted-group-optional"
+                      key={group.name}
+                    >
+                      <summary className="sales-counted-group-summary">
+                        <span className="sales-counted-group-summary-copy">
+                          <Text strong>{group.name}</Text>
+                          <Text type="secondary">
+                            Không cần nhập topping; doanh thu lấy từ phần tiền còn
+                            lại.
+                          </Text>
+                        </span>
+                        <span className="sales-counted-group-summary-meta">
+                          <Tag>Không bắt buộc</Tag>
+                          <Tag>{group.products.length} sản phẩm</Tag>
+                          <RightOutlined
+                            className="sales-counted-group-chevron"
+                            aria-hidden="true"
+                          />
+                        </span>
+                      </summary>
+                      {fields}
+                    </details>
+                  );
+                }
+
+                return (
+                  <section className="sales-counted-group" key={group.name}>
+                    <div className="sales-counted-group-heading">
+                      <Text strong>{group.name}</Text>
+                      <Tag>{group.products.length} sản phẩm</Tag>
+                    </div>
+                    {fields}
+                  </section>
+                );
+              })}
+            </div>
+          </section>
+
           <details className="sales-optional-note">
             <summary>Thêm ghi chú (không bắt buộc)</summary>
             <div className="daily-sales-note">
@@ -549,15 +733,15 @@ export default function SalesPage() {
           <div className="sales-profit-hero">
             <DollarOutlined />
             <div>
-              <Text type="secondary">Lợi nhuận sữa tuyết ước tính</Text>
+              <Text type="secondary">Lợi nhuận ước tính</Text>
               <Title
                 level={3}
-                type={estimate.estimatedProfit < 0 ? "danger" : "success"}
+                type={estimatedProfitValue < 0 ? "danger" : "success"}
               >
-                {formatVnd(estimate.estimatedProfit)}
+                {formatVnd(estimatedProfitValue)}
               </Title>
               <Text type="secondary">
-                Biên lợi nhuận {(estimate.estimatedMargin * 100).toFixed(1)}%
+                Biên lợi nhuận {(estimatedMarginValue * 100).toFixed(1)}%
               </Text>
             </div>
           </div>
@@ -580,6 +764,23 @@ export default function SalesPage() {
               {formatVnd(freshMilkBottleUnitPrice)})
             </Text>
           </div>
+          {countedProductGroupSales.map((group) => (
+            <div className="sales-summary-group" key={group.name}>
+              <div className="summary-row sales-summary-group-total">
+                <Text strong>{group.name}</Text>
+                <Text strong>{formatVnd(group.revenue)}</Text>
+              </div>
+              {group.items.map((item) => (
+                <div className="summary-row" key={item.productId}>
+                  <Text type="secondary">{item.productName}</Text>
+                  <Text>
+                    {formatVnd(item.revenue)} ({item.quantity} ×{" "}
+                    {formatVnd(item.unitPrice)})
+                  </Text>
+                </div>
+              ))}
+            </div>
+          ))}
           <div className="summary-row">
             <Text type="secondary">Số chai sữa tươi</Text>
             <Text>{freshMilkBottleCount ?? 0} chai</Text>
@@ -623,12 +824,28 @@ export default function SalesPage() {
             </div>
             <div className="summary-row">
               <Text type="secondary">Cố định + khấu hao</Text>
-              <Text>{formatVnd(estimate.allocatedFixedCost)}</Text>
+              <Text>
+                {formatVnd(
+                  estimate.allocatedFixedCost +
+                    countedProductSales.allocatedFixedCost,
+                )}
+              </Text>
             </div>
+            {countedProductSales.items.length > 0 ? (
+              <div className="summary-row">
+                <Text type="secondary">Full cost món nhập số lượng</Text>
+                <Text>
+                  {formatVnd(
+                    countedProductSales.variableCost +
+                      countedProductSales.allocatedFixedCost,
+                  )}
+                </Text>
+              </div>
+            ) : null}
             <Descriptions size="small" column={1} style={{ marginTop: 8 }}>
               <Descriptions.Item label="Khoảng lợi nhuận">
-                {formatVnd(estimate.estimatedProfitLow)} –{" "}
-                {formatVnd(estimate.estimatedProfitHigh)}
+                {formatVnd(estimatedProfitLowValue)} –{" "}
+                {formatVnd(estimatedProfitHighValue)}
               </Descriptions.Item>
             </Descriptions>
           </details>
@@ -672,6 +889,26 @@ export default function SalesPage() {
               title: "Sữa tươi",
               align: "right",
               render: (_, record) => formatVnd(freshMilkRevenueFor(record)),
+            },
+            {
+              title: "Món khác",
+              align: "right",
+              render: (_, record) =>
+                record.items?.length ? (
+                  <Space direction="vertical" size={0} align="end">
+                    {record.items.map((item) => (
+                      <Space key={`${item.productCode}-${item.productName}`} size={4}>
+                        <Tag>{normalizeProductGroupName(item.groupName)}</Tag>
+                        <Text>{item.productName}: {item.quantity}</Text>
+                      </Space>
+                    ))}
+                    <Text type="secondary">
+                      {formatVnd(countedProductRevenueFor(record))}
+                    </Text>
+                  </Space>
+                ) : (
+                  "—"
+                ),
             },
             {
               title: "Số chai",
@@ -759,6 +996,14 @@ export default function SalesPage() {
                     Số chai{" "}
                     <strong>{record.freshMilkBottleCount ?? 0} chai</strong>
                   </span>
+                  {(record.items ?? []).map((item) => (
+                    <span key={`${item.productCode}-${item.productName}`}>
+                      {normalizeProductGroupName(item.groupName)} · {item.productName}{" "}
+                      <strong>
+                        {item.quantity} món · {formatVnd(item.revenue)}
+                      </strong>
+                    </span>
+                  ))}
                   <span>
                     Tiền mặt <strong>{formatVnd(record.cashReceived ?? 0)}</strong>
                   </span>
@@ -808,4 +1053,3 @@ export default function SalesPage() {
     </div>
   );
 }
-

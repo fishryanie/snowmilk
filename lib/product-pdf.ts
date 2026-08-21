@@ -11,7 +11,8 @@ import { formatDate, formatNumber } from "@/lib/formatters";
 export type ProductPdfRecord = {
   code: string;
   name: string;
-  productMode?: "legacy" | "recipe";
+  groupName?: string;
+  productMode?: "legacy" | "recipe" | "composed";
   recipeCode?: string;
   recipeName?: string;
   milkMl?: number;
@@ -197,7 +198,7 @@ function rowValues(
   return {
     index: String(index + 1),
     code: record.code || "-",
-    name: `${record.name || "-"}\n${record.productMode === "recipe" ? "Luồng mới" : "Dữ liệu cũ"}`,
+    name: `${record.name || "-"}\n${record.groupName || (record.productMode === "recipe" ? "Luồng mới" : "Dữ liệu cũ")}`,
     recipe: record.recipeName || record.recipeCode || "Mẻ sữa mới nhất",
     volume: `${formatNumber(Number(record.milkMl ?? 0))} ml`,
     sellingPrice: currency(Number(record.sellingPrice ?? 0)),

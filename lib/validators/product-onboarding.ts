@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_PRODUCT_GROUP } from "@/lib/product-groups";
 
 const objectId = z
   .string()
@@ -49,6 +50,13 @@ const newPackagingSchema = z.strictObject({
 
 export const productOnboardingSchema = z.strictObject({
   name: requiredText,
+  groupName: z
+    .string()
+    .trim()
+    .min(1, "Hãy nhập nhóm sản phẩm")
+    .max(80, "Tên nhóm tối đa 80 ký tự")
+    .optional()
+    .default(DEFAULT_PRODUCT_GROUP),
   sellingPrice: nonNegative,
   ingredientItems: z
     .array(

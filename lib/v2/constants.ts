@@ -2,7 +2,7 @@ export const MIGRATION_VERSION = "bep-nha-ne-v2.2026-08-12.1";
 
 export const DEFAULT_ORGANIZATION = {
   code: "BEP_NHA_NE",
-  name: "Bếp Nhà Nè",
+  name: "Ủa ngon!",
   tagline: "làm ở nhà, ngon thiệt nè.",
   timeZone: "Asia/Ho_Chi_Minh",
   currency: "VND",

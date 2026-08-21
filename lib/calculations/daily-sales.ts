@@ -1,17 +1,28 @@
-export type SizeDefinition = {
-  code: string;
-  name: string;
-  milkMl: number;
-  sellingPrice: number;
-};
+import { normalizeProductGroupName } from "../product-groups";
 
 export type ProductCostSample = {
-  sizeName?: string;
+  milkMl: number;
+  sellingPrice: number;
   milkCost: number;
   toppingCost: number;
   packagingCost: number;
   hasCostWarning?: boolean;
 };
+
+type DailySaleProductCandidate = {
+  groupName?: unknown;
+  productMode?: string | null;
+};
+
+export function isSnowMilkRevenueEstimateProduct(
+  product: DailySaleProductCandidate,
+) {
+  if (typeof product.groupName === "string" && product.groupName.trim()) {
+    return normalizeProductGroupName(product.groupName) === "Sữa tuyết";
+  }
+
+  return !["recipe", "composed"].includes(String(product.productMode ?? ""));
+}
 
 export type DailySaleAssumption = {
   sizeCode: string;
@@ -98,42 +109,55 @@ function positive(value: number) {
   return Number.isFinite(value) && value > 0;
 }
 
-export function buildDailySaleAssumptions(
-  sizes: SizeDefinition[],
+export function buildDailySaleAssumptionsFromProducts(
   products: ProductCostSample[],
   overheadRate: number,
   fixedCostPerCup: number,
 ) {
-  return sizes.map<DailySaleAssumption>((size) => {
-    const samples = products.filter(
-      (product) =>
-        product.sizeName === size.name &&
-        !product.hasCostWarning &&
-        nonNegative(product.milkCost) &&
-        nonNegative(product.toppingCost) &&
-        nonNegative(product.packagingCost),
-    );
-    const toppingCosts = samples.map((product) => product.toppingCost);
+  const productsByMilkMl = new Map<number, ProductCostSample[]>();
+  for (const product of products) {
+    if (!positive(product.milkMl)) continue;
+    const milkMl = Math.round(product.milkMl * 1_000) / 1_000;
+    productsByMilkMl.set(milkMl, [
+      ...(productsByMilkMl.get(milkMl) ?? []),
+      product,
+    ]);
+  }
 
-    return {
-      sizeCode: size.code,
-      sizeName: size.name,
-      milkMl: size.milkMl,
-      referenceSellingPrice: size.sellingPrice,
-      milkCostPerCup: median(samples.map((product) => product.milkCost)),
-      packagingCostPerCup: median(
-        samples.map((product) => product.packagingCost),
-      ),
-      toppingCostPerCup: median(toppingCosts),
-      toppingCostLowPerCup:
-        toppingCosts.length > 0 ? Math.min(...toppingCosts) : 0,
-      toppingCostHighPerCup:
-        toppingCosts.length > 0 ? Math.max(...toppingCosts) : 0,
-      overheadRate: Math.max(0, overheadRate),
-      fixedCostPerCup: Math.max(0, fixedCostPerCup),
-      sampleCount: samples.length,
-    };
-  });
+  return [...productsByMilkMl.entries()]
+    .toSorted(([left], [right]) => left - right)
+    .map<DailySaleAssumption>(([milkMl, productsInGroup]) => {
+      const samples = productsInGroup.filter(
+        (product) =>
+          !product.hasCostWarning &&
+          nonNegative(product.milkCost) &&
+          nonNegative(product.toppingCost) &&
+          nonNegative(product.packagingCost),
+      );
+      const toppingCosts = samples.map((product) => product.toppingCost);
+      const sellingPrices = productsInGroup.flatMap((product) =>
+        positive(product.sellingPrice) ? [product.sellingPrice] : [],
+      );
+
+      return {
+        sizeCode: `${milkMl}ml`,
+        sizeName: `${milkMl} ml`,
+        milkMl,
+        referenceSellingPrice: median(sellingPrices),
+        milkCostPerCup: median(samples.map((product) => product.milkCost)),
+        packagingCostPerCup: median(
+          samples.map((product) => product.packagingCost),
+        ),
+        toppingCostPerCup: median(toppingCosts),
+        toppingCostLowPerCup:
+          toppingCosts.length > 0 ? Math.min(...toppingCosts) : 0,
+        toppingCostHighPerCup:
+          toppingCosts.length > 0 ? Math.max(...toppingCosts) : 0,
+        overheadRate: Math.max(0, overheadRate),
+        fixedCostPerCup: Math.max(0, fixedCostPerCup),
+        sampleCount: samples.length,
+      };
+    });
 }
 
 function variableCostPerCup(

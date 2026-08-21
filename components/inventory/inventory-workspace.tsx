@@ -27,7 +27,7 @@ import { RouteSkeleton } from '@/components/common/route-skeleton';
 import { useApiData } from '@/hooks/use-api-data';
 import { calculateInventory, type InventoryIngredientLine, type InventoryMilkBatchLine } from '@/lib/calculations/inventory';
 import { formatDate, formatNumber, formatVnd } from '@/lib/formatters';
-import { workbookBatches, workbookIngredients, workbookSizes } from '@/lib/workbook-snapshot';
+import { workbookBatches, workbookIngredients, workbookProducts } from '@/lib/workbook-snapshot';
 
 const { Paragraph, Text, Title } = Typography;
 const { TextArea } = Input;
@@ -63,7 +63,10 @@ type SaveEnvelope = {
 };
 
 function fallbackContext(snapshotDate: string): InventoryContext {
-  const averageMilkMlPerCup = workbookSizes.reduce((total, size) => total + size.milkMl, 0) / workbookSizes.length;
+  const milkVolumes = [...new Set(workbookProducts.map((product) => product.milkMl))];
+  const averageMilkMlPerCup =
+    milkVolumes.reduce((total, milkMl) => total + milkMl, 0) /
+    milkVolumes.length;
   const ingredients: InventoryIngredientLine[] = workbookIngredients.map(item => ({
     itemKey: item.id,
     itemCode: item.code,

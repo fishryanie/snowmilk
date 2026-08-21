@@ -13,5 +13,9 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     display_override: ['standalone', 'fullscreen'],
     background_color: profile.brandColors.cream,
     theme_color: profile.brandColors.terracotta,
+    icons: [
+      { src: '/icon.png', sizes: '512x512', type: 'image/png' },
+      { src: '/apple-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
   };
 }

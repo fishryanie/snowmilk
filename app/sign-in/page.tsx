@@ -8,6 +8,7 @@ export default async function SignInPage() {
       displayName={profile.displayName}
       wordmark={profile.wordmark}
       tagline={profile.tagline}
+      logoUrl={profile.logoUrl}
     />
   );
 }

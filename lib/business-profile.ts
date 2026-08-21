@@ -17,11 +17,12 @@ export type BusinessProfile = {
 };
 
 export const DEFAULT_BUSINESS_PROFILE: Readonly<BusinessProfile> = {
-  displayName: "Bếp Nhà Nè",
-  wordmark: "Bếp Nhà Nè",
+  displayName: "Ủa ngon!",
+  wordmark: "Ủa ngon!",
   tagline: "làm ở nhà, ngon thiệt nè.",
   description:
-    "Quản lý bán hàng, sản xuất, kho và tài chính cho Bếp Nhà Nè",
+    "Quản lý bán hàng, sản xuất, kho và tài chính cho Ủa ngon!",
+  logoUrl: "/ua-ngon-logo.png",
   timezone: "Asia/Ho_Chi_Minh",
   currency: "VND",
   locale: "vi-VN",
@@ -32,6 +33,14 @@ export const DEFAULT_BUSINESS_PROFILE: Readonly<BusinessProfile> = {
     ink: "#17323a",
   },
 };
+
+const DEPRECATED_BUSINESS_NAMES = new Set(["bếp nhà nè"]);
+const DEPRECATED_LOGO_URLS = new Set([
+  "/logo.png",
+  "/snowmilk-logo-transparent.png",
+  "/snowmilk-app-icon-transparent-192.png",
+  "/snowmilk-app-icon-transparent-512.png",
+]);
 
 const DEPRECATED_BROWN_BRAND_COLORS = {
   cream: new Set(["#fff8ed", "#fffdf8"]),
@@ -56,6 +65,20 @@ function replaceDeprecatedBrandColor(
     : fallback;
 }
 
+function replaceDeprecatedBrandText(value: string | undefined, fallback: string) {
+  const normalizedValue = value?.trim().toLocaleLowerCase("vi-VN");
+  return normalizedValue && !DEPRECATED_BUSINESS_NAMES.has(normalizedValue)
+    ? value!.trim()
+    : fallback;
+}
+
+function replaceDeprecatedLogo(value: string | undefined) {
+  const normalizedValue = value?.trim();
+  return normalizedValue && !DEPRECATED_LOGO_URLS.has(normalizedValue)
+    ? normalizedValue
+    : DEFAULT_BUSINESS_PROFILE.logoUrl;
+}
+
 type ProfileDocument = Omit<Partial<BusinessProfile>, "brandColors"> & {
   brandColors?: Partial<BusinessProfile["brandColors"]>;
 };
@@ -66,12 +89,15 @@ export function normalizeBusinessProfile(
   return {
     ...DEFAULT_BUSINESS_PROFILE,
     ...profile,
-    displayName:
-      profile?.displayName?.trim() || DEFAULT_BUSINESS_PROFILE.displayName,
-    wordmark:
-      profile?.wordmark?.trim() ||
-      profile?.displayName?.trim() ||
+    displayName: replaceDeprecatedBrandText(
+      profile?.displayName,
+      DEFAULT_BUSINESS_PROFILE.displayName,
+    ),
+    wordmark: replaceDeprecatedBrandText(
+      profile?.wordmark ?? profile?.displayName,
       DEFAULT_BUSINESS_PROFILE.wordmark,
+    ),
+    logoUrl: replaceDeprecatedLogo(profile?.logoUrl),
     tagline: profile?.tagline?.trim() || DEFAULT_BUSINESS_PROFILE.tagline,
     description:
       profile?.description?.trim() || DEFAULT_BUSINESS_PROFILE.description,

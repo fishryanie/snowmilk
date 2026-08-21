@@ -170,7 +170,8 @@ body::before {
   border-color: rgb(255 255 255 / 42%);
   background-image: var(--brand-logo-url);
   background-position: center;
-  background-size: cover;
+  background-repeat: no-repeat;
+  background-size: contain;
 }
 
 .brand-copy {
@@ -1784,6 +1785,100 @@ body::before {
   font-weight: 720;
 }
 
+.sales-input-unit {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.sales-counted-group {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dce7ef;
+  border-radius: 14px;
+  background: #f8fbfc;
+}
+
+.sales-counted-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sales-counted-group-optional {
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.sales-counted-group-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  list-style: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.sales-counted-group-summary::-webkit-details-marker {
+  display: none;
+}
+
+.sales-counted-group-summary-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.sales-counted-group-summary-copy > .ant-typography-secondary {
+  font-size: 12px;
+}
+
+.sales-counted-group-summary-meta {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.sales-counted-group-summary-meta > .ant-tag {
+  margin-inline-end: 0;
+}
+
+.sales-counted-group-chevron {
+  color: var(--muted);
+  transition: transform 160ms ease;
+}
+
+.sales-counted-group-optional[open] .sales-counted-group-chevron {
+  transform: rotate(90deg);
+}
+
+.sales-counted-group-optional > .sales-counted-group-fields {
+  padding: 0 14px 14px;
+}
+
+.sales-counted-group-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+
+.sales-summary-group {
+  display: grid;
+  gap: 2px;
+  padding-block: 4px;
+}
+
+.sales-summary-group-total {
+  border-bottom: 1px dashed #d8e3ea;
+}
+
 .sales-optional-note,
 .sales-cost-details {
   border-radius: 12px;
@@ -2325,6 +2420,11 @@ body::before {
   .table-toolbar > .ant-space > .ant-space-item,
   .table-toolbar > .ant-space .ant-btn {
     width: 100%;
+  }
+
+  .table-toolbar > .ant-space .ant-input-affix-wrapper,
+  .table-toolbar > .ant-space .ant-select {
+    width: 100% !important;
   }
 
   .table-toolbar .ant-input-affix-wrapper,
@@ -3094,6 +3194,10 @@ body::before {
   .sales-payment-grid {
     grid-template-columns: 1fr;
     gap: 12px;
+  }
+
+  .sales-counted-group-fields {
+    grid-template-columns: 1fr;
   }
 
   .sales-form-section {
@@ -5335,6 +5439,224 @@ body::before {
   display: none;
 }
 
+.product-group-list {
+  display: grid;
+  gap: 20px;
+  margin-top: 18px;
+}
+
+.product-group-section {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #d4e4e7;
+  border-radius: 18px;
+  background: #f4f9fa;
+}
+
+.product-group-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.product-group-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.product-group-heading > div > .ant-typography:first-child {
+  color: var(--brand-strong);
+  font-size: 17px;
+}
+
+.product-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.product-catalog-card.ant-card {
+  height: 100%;
+  overflow: hidden;
+  border-color: #d5e3e6;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(23 50 58 / 6%);
+}
+
+.product-catalog-card.ant-card > .ant-card-body {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+}
+
+.product-catalog-heading {
+  display: grid;
+  gap: 9px;
+}
+
+.product-catalog-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.product-catalog-copy > .ant-typography:first-child {
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.product-catalog-formula {
+  display: grid;
+  min-height: 58px;
+  gap: 3px;
+  align-content: start;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f3f7f8;
+}
+
+.product-catalog-formula > .ant-typography:last-child {
+  line-height: 1.45;
+}
+
+.product-catalog-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  padding: 12px 0;
+  border-block: 1px solid var(--line);
+}
+
+.product-catalog-metrics > div {
+  min-width: 0;
+  padding: 0 10px;
+  border-inline-start: 1px solid var(--line);
+}
+
+.product-catalog-metrics > div:first-child {
+  padding-inline-start: 0;
+  border-inline-start: 0;
+}
+
+.product-catalog-metrics > div:last-child {
+  padding-inline-end: 0;
+}
+
+.product-catalog-metrics dt {
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.product-catalog-metrics dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-catalog-metrics dd.is-positive {
+  color: var(--success);
+}
+
+.product-catalog-metrics dd.is-negative {
+  color: var(--danger);
+}
+
+.product-catalog-actions.ant-space {
+  width: 100%;
+  margin-top: auto;
+}
+
+.product-catalog-empty {
+  margin: 44px 0 28px;
+}
+
+.product-onboarding-page > .product-profit-estimate-card {
+  margin-block-end: 28px !important;
+  overflow: hidden;
+}
+
+.product-profit-estimate-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.product-profit-estimate-heading > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.product-profit-estimate-heading .anticon {
+  color: var(--muted);
+  cursor: help;
+}
+
+.product-profit-estimate-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.product-profit-estimate-metric {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #f8fbfa;
+}
+
+.product-profit-estimate-metric > strong {
+  color: var(--ink);
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+}
+
+.product-profit-estimate-metric.is-cost {
+  border-color: rgb(210 132 31 / 22%);
+  background: rgb(210 132 31 / 5%);
+}
+
+.product-profit-estimate-metric.is-cost > strong {
+  color: #bd6b08;
+}
+
+.product-profit-estimate-metric.is-profit {
+  border-color: rgb(31 138 94 / 22%);
+  background: rgb(31 138 94 / 5%);
+}
+
+.product-profit-estimate-metric.is-profit > strong {
+  color: var(--success);
+}
+
+.product-profit-estimate-metric.is-coverage > strong {
+  color: var(--brand-strong);
+}
+
+.product-profit-estimate-note.ant-typography {
+  display: block;
+  margin: 12px 0 0;
+  font-size: 12px;
+}
+
+.product-profit-estimate-note + .ant-alert {
+  margin-top: 12px;
+}
+
 .product-onboarding-drawer .ant-drawer-body {
   background: #eef4f2;
 }
@@ -5384,7 +5706,7 @@ body::before {
 }
 
 .product-info-grid {
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) 112px;
+  grid-template-columns: minmax(0, 1.3fr) minmax(170px, 0.9fr) minmax(0, 0.85fr) 112px;
   align-items: start;
 }
 
@@ -5569,7 +5891,65 @@ body::before {
   color: var(--brand-strong);
 }
 
+@media (max-width: 1100px) {
+  .product-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 768px) {
+  .product-onboarding-page > .product-profit-estimate-card {
+    margin-block-end: 18px !important;
+  }
+
+  .product-group-list {
+    gap: 14px;
+  }
+
+  .product-group-section {
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .product-group-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .product-group-heading > .ant-tag {
+    width: fit-content;
+  }
+
+  .product-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .product-profit-estimate-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .product-profit-estimate-heading > .ant-space {
+    justify-content: space-between;
+  }
+
+  .product-profit-estimate-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .product-profit-estimate-metric {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .product-profit-estimate-metric > strong {
+    grid-row: 1 / 3;
+    grid-column: 2;
+    font-size: 27px;
+  }
+
   .product-desktop-table {
     display: none;
   }
@@ -6598,6 +6978,16 @@ body::before {
   font-weight: 750;
   letter-spacing: -0.055em;
   line-height: 1;
+}
+
+.auth-logo {
+  width: min(290px, 82vw);
+  aspect-ratio: 1385 / 1136;
+  margin: -8px auto 4px;
+  background-image: var(--auth-logo-url);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
 }
 
 .auth-tagline.ant-typography {
