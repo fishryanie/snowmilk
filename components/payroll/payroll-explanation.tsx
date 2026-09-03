@@ -33,6 +33,8 @@ export type PayrollExplanationData = {
   companyFundedOutflow: number;
   outstandingOwnerCapital: number;
   workingCapitalReserve: number;
+  reserveFunds: Array<{ name: string; amount: number }>;
+  reserveFundsTotal: number;
   previouslySettledPools: number;
   distributablePool: number;
   allocatedTotal: number;
@@ -48,8 +50,8 @@ const HELP_META: Record<PayrollHelpTopic, { title: string; tooltip: string }> = 
     tooltip: "Doanh thu trừ các khoản đã chi bằng tiền tiệm.",
   },
   "working-capital": {
-    title: "Vì sao phải giữ vốn xoay vòng?",
-    tooltip: "Khoản cố định 10 triệu không được đưa vào quỹ chia.",
+    title: "Vì sao phải giữ các quỹ dự phòng?",
+    tooltip: "Các quỹ cấu hình theo tháng không được đưa vào quỹ chia.",
   },
   "distributable-pool": {
     title: "Quỹ có thể chia được tính thế nào?",
@@ -132,12 +134,21 @@ function ExplanationContent({
     return (
       <>
         <Paragraph>
-          Tiệm luôn giữ lại khoản này để nhập hàng và vận hành. Khoản
-          này không chia cho nhân sự, kể cả khi tháng đó bán tốt.
+          Tiệm giữ lại các quỹ đã cấu hình cho tháng này trước khi tính phần
+          có thể chia. Các khoản này không chia cho nhân sự, kể cả khi tháng
+          đó bán tốt.
         </Paragraph>
+        <div className="payroll-help-calculation-list">
+          {data.reserveFunds.map((fund) => (
+            <div key={fund.name}>
+              <span>{fund.name}</span>
+              <strong>{formatVnd(fund.amount)}</strong>
+            </div>
+          ))}
+        </div>
         <FormulaBox>
-          <Text type="secondary">Mức giữ cố định</Text>
-          <strong>{formatVnd(data.workingCapitalReserve)}</strong>
+          <Text type="secondary">Tổng các quỹ giữ lại</Text>
+          <strong>{formatVnd(data.reserveFundsTotal)}</strong>
         </FormulaBox>
       </>
     );
@@ -148,15 +159,16 @@ function ExplanationContent({
       <>
         <Paragraph>
           Quỹ tháng {data.periodLabel} chỉ lấy phần tiền sạch còn lại sau khi
-          chừa đủ khoản tiền cá nhân có thể claim, quỹ các tháng trước và vốn xoay vòng.
+          chừa đủ khoản tiền cá nhân có thể claim, quỹ các tháng trước và các
+          quỹ dự phòng được cấu hình cho tháng.
         </Paragraph>
         <FormulaBox>
           <Text type="secondary">
-            Tiền tiệm − Tiền cá nhân chưa claim − Quỹ tháng trước − Vốn xoay vòng
+            Tiền tiệm − Tiền cá nhân chưa claim − Quỹ tháng trước − Các quỹ giữ lại
           </Text>
           <strong>
             {formatVnd(data.businessCashBalance)} − {formatVnd(data.outstandingOwnerCapital)} −{" "}
-            {formatVnd(data.previouslySettledPools)} − {formatVnd(data.workingCapitalReserve)} ={" "}
+            {formatVnd(data.previouslySettledPools)} − {formatVnd(data.reserveFundsTotal)} ={" "}
             {formatVnd(data.distributablePool)}
           </strong>
         </FormulaBox>

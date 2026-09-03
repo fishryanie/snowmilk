@@ -21,6 +21,20 @@ const PayrollAllocationSchema = new Schema(
   { _id: false },
 );
 
+const PayrollReserveFundSchema = new Schema(
+  {
+    id: { type: String, required: true, trim: true },
+    name: { type: String, required: true, trim: true },
+    mode: {
+      type: String,
+      enum: ["fixed", "monthly"],
+      required: true,
+    },
+    amount: { type: Number, required: true, min: 0 },
+  },
+  { _id: false },
+);
+
 const PayrollPeriodSettlementSchema = new Schema(
   {
     period: {
@@ -40,6 +54,15 @@ const PayrollPeriodSettlementSchema = new Schema(
     businessCashBalance: { type: Number, required: true },
     outstandingOwnerCapital: { type: Number, required: true, min: 0 },
     workingCapitalReserve: { type: Number, required: true, min: 0 },
+    reserveFunds: {
+      type: [PayrollReserveFundSchema],
+      default: [],
+    },
+    reserveContributions: {
+      type: [PayrollReserveFundSchema],
+      default: [],
+    },
+    reserveFundsTotal: { type: Number, required: true, min: 0, default: 0 },
     distributablePool: { type: Number, required: true, min: 0 },
     allocatedTotal: { type: Number, required: true, min: 0 },
     unallocatedPool: { type: Number, required: true, min: 0 },
@@ -58,7 +81,9 @@ if (
   process.env.NODE_ENV !== "production" &&
   cachedPayrollPeriodSettlement &&
   (!cachedPayrollPeriodSettlement.schema.path("businessCashBalance") ||
-    !cachedPayrollPeriodSettlement.schema.path("outstandingOwnerCapital"))
+    !cachedPayrollPeriodSettlement.schema.path("outstandingOwnerCapital") ||
+    !cachedPayrollPeriodSettlement.schema.path("reserveFunds") ||
+    !cachedPayrollPeriodSettlement.schema.path("reserveContributions"))
 ) {
   mongoose.deleteModel("PayrollPeriodSettlement");
 }

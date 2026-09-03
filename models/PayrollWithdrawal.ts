@@ -1,6 +1,20 @@
 import mongoose, { Schema } from "mongoose";
 import { schemaOptions } from "./helpers";
 
+const PayrollReserveFundSchema = new Schema(
+  {
+    id: { type: String, required: true, trim: true },
+    name: { type: String, required: true, trim: true },
+    mode: {
+      type: String,
+      enum: ["fixed", "monthly"],
+      required: true,
+    },
+    amount: { type: Number, required: true, min: 0 },
+  },
+  { _id: false },
+);
+
 const PayrollPayslipSnapshotSchema = new Schema(
   {
     calculationVersion: { type: String, required: true, trim: true },
@@ -15,6 +29,12 @@ const PayrollPayslipSnapshotSchema = new Schema(
     outstandingOwnerCapital: { type: Number, required: true, min: 0 },
     previouslySettledPools: { type: Number, required: true, min: 0 },
     workingCapitalReserve: { type: Number, required: true, min: 0 },
+    reserveFunds: {
+      type: [PayrollReserveFundSchema],
+      required: false,
+      default: undefined,
+    },
+    reserveFundsTotal: { type: Number, required: false, min: 0 },
     distributablePool: { type: Number, required: true, min: 0 },
     allocatedTotal: { type: Number, required: true, min: 0 },
     unallocatedPool: { type: Number, required: true, min: 0 },
@@ -66,7 +86,8 @@ const cachedPayrollWithdrawal = mongoose.models.PayrollWithdrawal;
 if (
   process.env.NODE_ENV !== "production" &&
   cachedPayrollWithdrawal &&
-  !cachedPayrollWithdrawal.schema.path("payslipSnapshot")
+  (!cachedPayrollWithdrawal.schema.path("payslipSnapshot") ||
+    !cachedPayrollWithdrawal.schema.path("payslipSnapshot.reserveFunds"))
 ) {
   mongoose.deleteModel("PayrollWithdrawal");
 }

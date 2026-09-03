@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 import { apiError, errorMessage } from "@/lib/api-response";
-import { loadBusinessProfile } from "@/lib/business-profile.server";
 import { connectMongo } from "@/lib/mongodb";
 import {
   createPayrollPayslipSnapshot,
@@ -36,6 +35,8 @@ type SettlementRecord = {
   businessCashBalance?: number;
   outstandingOwnerCapital?: number;
   workingCapitalReserve: number;
+  reserveFunds?: Array<{ name: string; amount: number }>;
+  reserveFundsTotal?: number;
   distributablePool: number;
   allocatedTotal: number;
   unallocatedPool: number;
@@ -97,20 +98,16 @@ export async function GET(_request: Request, context: Context) {
       });
     }
 
-    const businessProfile = await loadBusinessProfile();
-    const pdf = await createPayrollPayslipPdf(
-      {
-        id: String(withdrawal._id),
-        employeeName: withdrawal.employeeName,
-        period: withdrawal.period,
-        withdrawalDate: withdrawal.withdrawalDate,
-        amount: Number(withdrawal.amount),
-        sharePercentSnapshot: Number(withdrawal.sharePercentSnapshot),
-        note: withdrawal.note,
-        snapshot,
-      },
-      { businessProfile },
-    );
+    const pdf = await createPayrollPayslipPdf({
+      id: String(withdrawal._id),
+      employeeName: withdrawal.employeeName,
+      period: withdrawal.period,
+      withdrawalDate: withdrawal.withdrawalDate,
+      amount: Number(withdrawal.amount),
+      sharePercentSnapshot: Number(withdrawal.sharePercentSnapshot),
+      note: withdrawal.note,
+      snapshot,
+    });
     const filename = `phieu-luong-${withdrawal.period}-${String(withdrawal._id).slice(-8)}.pdf`;
     return new Response(new Uint8Array(pdf), {
       headers: {

@@ -2,10 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import PDFDocument from "pdfkit";
 import { formatDate, formatNumber } from "@/lib/formatters";
-import {
-  DEFAULT_BUSINESS_PROFILE,
-  type BusinessProfile,
-} from "@/lib/business-profile";
+import { DEFAULT_BUSINESS_PROFILE } from "@/lib/business-profile";
 import type { PayrollPayslipSnapshot } from "@/lib/payroll-payslip";
 
 export type PayrollPayslipPdfData = {
@@ -56,27 +53,19 @@ function pdfFontPath() {
 
 function sectionTitle(
   doc: PDFKit.PDFDocument,
-  number: string,
   title: string,
   y: number,
 ) {
   doc
-    .roundedRect(PAGE_MARGIN, y, 22, 22, 6)
-    .fill(BRAND_COLOR)
-    .fillColor("#ffffff")
+    .roundedRect(PAGE_MARGIN, y, CONTENT_WIDTH, 30, 8)
+    .fill("#f4f8f8")
+    .fillColor(BRAND_COLOR)
     .fontSize(9)
-    .text(number, PAGE_MARGIN, y + 6, {
-      width: 22,
-      align: "center",
-      lineBreak: false,
-    })
-    .fillColor(INK_COLOR)
-    .fontSize(11)
-    .text(title, PAGE_MARGIN + 32, y + 5, {
-      width: CONTENT_WIDTH - 32,
+    .text(title, PAGE_MARGIN + 12, y + 10, {
+      width: CONTENT_WIDTH - 24,
       lineBreak: false,
     });
-  return y + 31;
+  return y + 39;
 }
 
 function calculationRow(
@@ -85,13 +74,11 @@ function calculationRow(
     label,
     value,
     y,
-    operator = "",
     total = false,
   }: {
     label: string;
     value: number;
     y: number;
-    operator?: string;
     total?: boolean;
   },
 ) {
@@ -106,22 +93,16 @@ function calculationRow(
   }
 
   doc
-    .fillColor(total ? BRAND_COLOR : MUTED_COLOR)
-    .fontSize(total ? 10 : 9)
-    .text(operator, PAGE_MARGIN, y + 1, {
-      width: 18,
-      align: "center",
-      lineBreak: false,
-    })
     .fillColor(total ? INK_COLOR : MUTED_COLOR)
-    .text(label, PAGE_MARGIN + 24, y + 1, {
+    .fontSize(total ? 10 : 9)
+    .text(label, PAGE_MARGIN + 12, y + 1, {
       width: 300,
       lineBreak: false,
     })
     .fillColor(total ? BRAND_COLOR : INK_COLOR)
     .fontSize(total ? 11 : 9.5)
-    .text(currency(value), PAGE_MARGIN + 326, y, {
-      width: CONTENT_WIDTH - 326,
+    .text(currency(value), PAGE_MARGIN + 324, y, {
+      width: CONTENT_WIDTH - 336,
       align: "right",
       lineBreak: false,
     });
@@ -129,10 +110,50 @@ function calculationRow(
   return y + (total ? 22 : 19);
 }
 
+function salaryFormulaRow(
+  doc: PDFKit.PDFDocument,
+  {
+    distributablePool,
+    sharePercent,
+    entitlement,
+    y,
+  }: {
+    distributablePool: number;
+    sharePercent: number;
+    entitlement: number;
+    y: number;
+  },
+) {
+  doc
+    .roundedRect(PAGE_MARGIN, y, CONTENT_WIDTH, 48, 8)
+    .fill("#f8fbfa")
+    .fillColor(MUTED_COLOR)
+    .fontSize(8)
+    .text("Công thức tính lương", PAGE_MARGIN + 12, y + 8, {
+      width: 180,
+      lineBreak: false,
+    })
+    .fillColor(INK_COLOR)
+    .fontSize(10)
+    .text(
+      `${currency(distributablePool)} × ${formatNumber(sharePercent)}%`,
+      PAGE_MARGIN + 12,
+      y + 26,
+      { width: 280, lineBreak: false },
+    )
+    .fillColor(BRAND_COLOR)
+    .fontSize(11)
+    .text(`= ${currency(entitlement)}`, PAGE_MARGIN + 300, y + 25, {
+      width: CONTENT_WIDTH - 312,
+      align: "right",
+      lineBreak: false,
+    });
+  return y + 58;
+}
+
 function addHeader(
   doc: PDFKit.PDFDocument,
   data: PayrollPayslipPdfData,
-  businessName: string,
 ) {
   const reference = data.id.slice(-8).toUpperCase();
   const statusLabel = data.isPreview
@@ -141,30 +162,34 @@ function addHeader(
   const dateLabel = data.isPreview ? "Ngày xem" : "Ngày lập";
   doc
     .fillColor(BRAND_COLOR)
-    .fontSize(16)
-    .text(businessName, PAGE_MARGIN, 38, {
+    .fontSize(18)
+    .text("PHIẾU LƯƠNG", PAGE_MARGIN, 38, {
       width: 300,
       lineBreak: false,
-    })
-    .fillColor(INK_COLOR)
-    .fontSize(9.5)
-    .text("PHIẾU LƯƠNG / PAYSLIP", PAGE_MARGIN, 64, {
+    });
+  doc
+    .fillColor(MUTED_COLOR)
+    .fontSize(8.5)
+    .text(`Kỳ lương: ${periodLabel(data.period)}`, PAGE_MARGIN, 65, {
       width: 300,
       lineBreak: false,
-    })
+    });
+  doc
     .fillColor(data.isPreview ? "#b56b17" : MUTED_COLOR)
     .fontSize(8.5)
     .text(statusLabel, 320, 43, {
       width: 233,
       align: "right",
       lineBreak: false,
-    })
+    });
+  doc
     .fillColor(MUTED_COLOR)
     .text(`${dateLabel}: ${formatDate(new Date())}`, 340, 60, {
       width: 213,
       align: "right",
       lineBreak: false,
-    })
+    });
+  doc
     .moveTo(PAGE_MARGIN, 92)
     .lineTo(PAGE_MARGIN + CONTENT_WIDTH, 92)
     .strokeColor(BRAND_COLOR)
@@ -178,67 +203,38 @@ function addEmployeeSummary(
   y: number,
 ) {
   doc
-    .roundedRect(PAGE_MARGIN, y, CONTENT_WIDTH, 76, 12)
+    .roundedRect(PAGE_MARGIN, y, CONTENT_WIDTH, 72, 10)
     .fill(LIGHT_COLOR);
 
   const columns = [
     ["Nhân sự", data.employeeName],
     ["Vai trò", data.snapshot.employeeRole || "-"],
-    ["Tháng lương", periodLabel(data.period)],
     [
       data.isPreview ? "Ngày dự kiến chi" : "Ngày chi",
       formatDate(data.withdrawalDate),
     ],
+    ["Tỷ lệ được nhận", `${formatNumber(data.sharePercentSnapshot)}%`],
   ];
-  const widths = [148, 148, 105, 110];
+  const widths = [160, 115, 130, 106];
   let x = PAGE_MARGIN;
   columns.forEach(([label, value], index) => {
     doc
       .fillColor(MUTED_COLOR)
       .fontSize(8)
-      .text(label, x + 12, y + 15, {
+      .text(label, x + 12, y + 14, {
         width: widths[index] - 20,
         lineBreak: false,
       })
       .fillColor(INK_COLOR)
       .fontSize(9.5)
-      .text(value, x + 12, y + 37, {
+      .text(value, x + 12, y + 35, {
         width: widths[index] - 20,
         height: 28,
         ellipsis: true,
       });
     x += widths[index];
   });
-  return y + 84;
-}
-
-function addNetPay(
-  doc: PDFKit.PDFDocument,
-  data: PayrollPayslipPdfData,
-  y: number,
-) {
-  doc
-    .roundedRect(PAGE_MARGIN, y, CONTENT_WIDTH, 62, 12)
-    .fill(BRAND_COLOR)
-    .fillColor("#d9efea")
-    .fontSize(8.5)
-    .text(
-      data.isPreview ? "SỐ TIỀN DỰ KIẾN NHẬN" : "SỐ TIỀN THỰC NHẬN",
-      PAGE_MARGIN + 16,
-      y + 14,
-      {
-        width: 200,
-        lineBreak: false,
-      },
-    )
-    .fillColor("#ffffff")
-    .fontSize(20)
-    .text(currency(data.amount), PAGE_MARGIN + 210, y + 20, {
-      width: CONTENT_WIDTH - 226,
-      align: "right",
-      lineBreak: false,
-    });
-  return y + 70;
+  return y + 80;
 }
 
 function addExplanation(
@@ -247,83 +243,34 @@ function addExplanation(
   y: number,
 ) {
   const snapshot = data.snapshot;
-  y = sectionTitle(doc, "1", "Nguồn hình thành tiền tiệm", y);
-  y = calculationRow(doc, {
-    label: "Doanh thu bán hàng lũy kế",
-    value: snapshot.cumulativeRevenue,
-    operator: "+",
-    y,
-  });
-  y = calculationRow(doc, {
-    label: "Các khoản đã chi từ tiền tiệm",
-    value: snapshot.companyFundedOutflow,
-    operator: "-",
-    y,
-  });
+  y = sectionTitle(doc, "CƠ SỞ TÍNH LƯƠNG", y);
   y = calculationRow(doc, {
     label: "Số dư tiền tiệm",
     value: snapshot.businessCashBalance,
-    total: true,
-    y,
-  });
-
-  y += 5;
-  y = sectionTitle(doc, "2", `Cách xác định quỹ có thể chia tháng ${periodLabel(data.period)}`, y);
-  y = calculationRow(doc, {
-    label: "Số dư tiền tiệm",
-    value: snapshot.businessCashBalance,
-    operator: "+",
     y,
   });
   y = calculationRow(doc, {
-    label: "Tiền cá nhân chưa hoàn lại",
+    label: "Trừ tiền cá nhân chưa hoàn",
     value: snapshot.outstandingOwnerCapital,
-    operator: "-",
     y,
   });
   y = calculationRow(doc, {
-    label: "Quỹ lương đã chốt các tháng trước",
+    label: "Trừ quỹ lương đã chốt kỳ trước",
     value: snapshot.previouslySettledPools,
-    operator: "-",
     y,
   });
   y = calculationRow(doc, {
-    label: "Vốn xoay vòng tiệm giữ lại",
-    value: snapshot.workingCapitalReserve,
-    operator: "-",
+    label: "Trừ các quỹ tiệm giữ lại",
+    value: snapshot.reserveFundsTotal ?? snapshot.workingCapitalReserve,
     y,
   });
   y = calculationRow(doc, {
-    label: "Quỹ có thể chia của tháng",
+    label: "Quỹ lương có thể chia",
     value: snapshot.distributablePool,
     total: true,
     y,
   });
-
-  y += 5;
-  y = sectionTitle(doc, "3", "Cách tính phần được lãnh", y);
-  doc
-    .roundedRect(PAGE_MARGIN, y, CONTENT_WIDTH, 48, 9)
-    .fill("#f8fbfa")
-    .strokeColor(LINE_COLOR)
-    .lineWidth(0.7)
-    .stroke()
-    .fillColor(MUTED_COLOR)
-    .fontSize(9)
-    .text(
-      `${currency(snapshot.distributablePool)} × ${formatNumber(data.sharePercentSnapshot)}%`,
-      PAGE_MARGIN + 14,
-      y + 17,
-      { width: 290, lineBreak: false },
-    )
-    .fillColor(BRAND_COLOR)
-    .fontSize(12)
-    .text(`= ${currency(snapshot.employeeEntitlement)}`, PAGE_MARGIN + 310, y + 15, {
-      width: CONTENT_WIDTH - 324,
-      align: "right",
-      lineBreak: false,
-    });
-  return y + 62;
+  return y + 12;
 }
 
 function addReconciliation(
@@ -331,30 +278,29 @@ function addReconciliation(
   data: PayrollPayslipPdfData,
   y: number,
 ) {
-  y = sectionTitle(
-    doc,
-    "4",
-    data.isPreview
-      ? "Đối chiếu số dự kiến nhận"
-      : "Đối chiếu số thực nhận",
-    y,
+  const additionalAmount = Math.max(
+    0,
+    data.amount - data.snapshot.employeeEntitlement,
   );
-  y = calculationRow(doc, {
-    label: "Phần được lãnh theo tỷ lệ",
-    value: data.snapshot.employeeEntitlement,
-    operator: "+",
+  const deductionAmount = Math.max(
+    0,
+    data.snapshot.employeeEntitlement - data.amount,
+  );
+  y = sectionTitle(doc, "CHI TIẾT THANH TOÁN", y);
+  y = salaryFormulaRow(doc, {
+    distributablePool: data.snapshot.distributablePool,
+    sharePercent: data.sharePercentSnapshot,
+    entitlement: data.snapshot.employeeEntitlement,
     y,
   });
   y = calculationRow(doc, {
     label: "Khoản cộng thêm",
-    value: 0,
-    operator: "+",
+    value: additionalAmount,
     y,
   });
   y = calculationRow(doc, {
     label: "Khấu trừ",
-    value: 0,
-    operator: "-",
+    value: deductionAmount,
     y,
   });
   y = calculationRow(doc, {
@@ -372,33 +318,26 @@ function addNotesAndSignatures(
   y: number,
 ) {
   const note = data.note?.trim();
-  doc
-    .fillColor(MUTED_COLOR)
-    .fontSize(7.8)
-    .text(
-      "Giải thích nguồn tiền: số dư tiệm chỉ trừ các khoản được ghi nhận chi từ nguồn doanh thu bán hàng và các khoản hoàn tiền cá nhân; tiền cá nhân chưa hoàn, quỹ tháng trước và vốn xoay vòng không được chia lại.",
-      PAGE_MARGIN,
-      y,
-      { width: CONTENT_WIDTH, lineGap: 2 },
-    );
-  y += 29;
-
   if (note) {
     doc
+      .roundedRect(PAGE_MARGIN, y, CONTENT_WIDTH, 38, 8)
+      .fill("#f8fbfa")
       .fillColor(MUTED_COLOR)
       .fontSize(8)
-      .text("Ghi chú:", PAGE_MARGIN, y, { width: 48, lineBreak: false })
+      .text("Ghi chú", PAGE_MARGIN + 12, y + 9, {
+        width: 48,
+        lineBreak: false,
+      })
       .fillColor(INK_COLOR)
-      .text(note, PAGE_MARGIN + 50, y, {
-        width: CONTENT_WIDTH - 50,
-        height: 28,
+      .text(note, PAGE_MARGIN + 68, y + 9, {
+        width: CONTENT_WIDTH - 80,
+        height: 22,
         ellipsis: true,
       });
-    y += 27;
-  } else {
-    y += 8;
+    y += 50;
   }
 
+  y += 20;
   const signatureWidth = CONTENT_WIDTH / 2;
   ["Người lập phiếu", "Người nhận tiền"].forEach((label, index) => {
     const x = PAGE_MARGIN + signatureWidth * index;
@@ -411,18 +350,18 @@ function addNotesAndSignatures(
       .text("(Ký và ghi rõ họ tên)", x, y + 15, {
         width: signatureWidth,
         align: "center",
-      });
+      })
+      .moveTo(x + 45, y + 66)
+      .lineTo(x + signatureWidth - 45, y + 66)
+      .strokeColor(LINE_COLOR)
+      .lineWidth(0.7)
+      .stroke();
   });
 }
 
 export async function createPayrollPayslipPdf(
   data: PayrollPayslipPdfData,
-  options: {
-    businessProfile?: Pick<BusinessProfile, "displayName" | "wordmark">;
-  } = {},
 ) {
-  const businessProfile = options.businessProfile ?? DEFAULT_BUSINESS_PROFILE;
-  const businessName = businessProfile.wordmark.toUpperCase();
   return await new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
@@ -435,7 +374,7 @@ export async function createPayrollPayslipPdf(
       },
       info: {
         Title: `${data.isPreview ? "Bản xem trước phiếu lương" : "Phiếu lương"} ${periodLabel(data.period)} - ${data.employeeName}`,
-        Author: businessProfile.displayName,
+        Author: "Phiếu lương",
         Subject: "Diễn giải nguồn tiền và cách tính lương",
       },
     });
@@ -445,9 +384,8 @@ export async function createPayrollPayslipPdf(
     doc.on("error", reject);
 
     doc.registerFont("Geist", pdfFontPath()).font("Geist");
-    addHeader(doc, data, businessName);
+    addHeader(doc, data);
     let y = addEmployeeSummary(doc, data, 108);
-    y = addNetPay(doc, data, y);
     y = addExplanation(doc, data, y);
     y = addReconciliation(doc, data, y);
     addNotesAndSignatures(doc, data, y + 7);
@@ -457,8 +395,8 @@ export async function createPayrollPayslipPdf(
       .fontSize(7.5)
       .text(
         data.isPreview
-          ? "Bản xem trước từ số liệu đã chốt - Chưa ghi nhận chi lương"
-          : `Phiếu được tạo từ số liệu đã chốt tại thời điểm chi lương · PL-${data.id.slice(-8).toUpperCase()}`,
+          ? "Bản xem trước - Chưa ghi nhận chi lương"
+          : "Phiếu được tạo từ dữ liệu lương đã chốt",
         PAGE_MARGIN,
         doc.page.height - 18,
         {

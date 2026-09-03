@@ -38,6 +38,9 @@ type PurchaseRecord = {
   itemCode?: string;
   itemName?: string;
   category?: string;
+  purchaseUnit?: string;
+  packageCount?: number;
+  actualPackagePrice?: number;
   totalAmount?: number;
   fundingSource?: string | null;
 };
@@ -48,6 +51,8 @@ type EquipmentRecord = {
   code?: string;
   name?: string;
   category?: string;
+  quantity?: number;
+  unitPrice?: number;
   totalAmount?: number;
   fundingSource?: string | null;
 };
@@ -102,11 +107,13 @@ async function buildClaimContext() {
         .lean<SaleRecord[]>(),
       Purchase.find({})
         .select(
-          "purchaseDate itemCode itemName category totalAmount fundingSource",
+          "purchaseDate itemCode itemName category purchaseUnit packageCount actualPackagePrice totalAmount fundingSource",
         )
         .lean<PurchaseRecord[]>(),
       Equipment.find({})
-        .select("purchaseDate code name category totalAmount fundingSource")
+        .select(
+          "purchaseDate code name category quantity unitPrice totalAmount fundingSource",
+        )
         .lean<EquipmentRecord[]>(),
       Expense.find(paidExpenseFilter)
         .select("amount fundingSource")
@@ -190,6 +197,10 @@ async function buildClaimContext() {
     .filter(isOwnerFundedInvestment)
     .map((purchase) => {
       const sourceId = String(purchase._id);
+      const amount = safeAmount(purchase.totalAmount);
+      const quantity = safeAmount(purchase.packageCount) || 1;
+      const unitPrice =
+        safeAmount(purchase.actualPackagePrice) || amount / quantity;
       return {
         key: divestmentClaimKey("purchase", sourceId),
         sourceType: "purchase",
@@ -198,13 +209,19 @@ async function buildClaimContext() {
         name: String(purchase.itemName ?? "Phiếu nhập hàng"),
         category: String(purchase.category ?? ""),
         purchaseDate: dateIso(purchase.purchaseDate),
-        amount: safeAmount(purchase.totalAmount),
+        quantity,
+        unit: String(purchase.purchaseUnit ?? "gói"),
+        unitPrice,
+        amount,
       };
     });
   const equipmentItems: ClaimableInvestment[] = equipment
     .filter(isOwnerFundedInvestment)
     .map((item) => {
       const sourceId = String(item._id);
+      const amount = safeAmount(item.totalAmount);
+      const quantity = safeAmount(item.quantity) || 1;
+      const unitPrice = safeAmount(item.unitPrice) || amount / quantity;
       return {
         key: divestmentClaimKey("equipment", sourceId),
         sourceType: "equipment",
@@ -213,7 +230,10 @@ async function buildClaimContext() {
         name: String(item.name ?? "Tài sản"),
         category: String(item.category ?? ""),
         purchaseDate: dateIso(item.purchaseDate),
-        amount: safeAmount(item.totalAmount),
+        quantity,
+        unit: "món",
+        unitPrice,
+        amount,
       };
     });
   const unclaimedItems = [...purchaseItems, ...equipmentItems]

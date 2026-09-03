@@ -17,6 +17,9 @@ export type ClaimableInvestment = {
   name: string;
   category: string;
   purchaseDate: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
   amount: number;
 };
 

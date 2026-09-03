@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 import { apiError, errorMessage } from "@/lib/api-response";
-import { loadBusinessProfile } from "@/lib/business-profile.server";
 import { connectMongo } from "@/lib/mongodb";
 import { createPayrollPayslipSnapshot } from "@/lib/payroll-payslip";
 import { createPayrollPayslipPdf } from "@/lib/payroll-payslip-pdf";
@@ -89,21 +88,17 @@ export async function POST(request: Request) {
         0,
       ),
     });
-    const businessProfile = await loadBusinessProfile();
-    const pdf = await createPayrollPayslipPdf(
-      {
-        id: `preview-${parsed.data.employeeId}`,
-        employeeName: allocation.employeeName || employee.name,
-        period: parsed.data.period,
-        withdrawalDate: parsed.data.withdrawalDate,
-        amount: Math.round(allocation.amount),
-        sharePercentSnapshot: Number(allocation.sharePercent),
-        note: parsed.data.note,
-        snapshot,
-        isPreview: true,
-      },
-      { businessProfile },
-    );
+    const pdf = await createPayrollPayslipPdf({
+      id: `preview-${parsed.data.employeeId}`,
+      employeeName: allocation.employeeName || employee.name,
+      period: parsed.data.period,
+      withdrawalDate: parsed.data.withdrawalDate,
+      amount: Math.round(allocation.amount),
+      sharePercentSnapshot: Number(allocation.sharePercent),
+      note: parsed.data.note,
+      snapshot,
+      isPreview: true,
+    });
 
     return new Response(new Uint8Array(pdf), {
       headers: {

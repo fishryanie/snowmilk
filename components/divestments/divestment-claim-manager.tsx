@@ -3,6 +3,7 @@
 import {
   DeleteOutlined,
   DownloadOutlined,
+  FilePdfOutlined,
   PlusOutlined,
   SearchOutlined,
   ShoppingCartOutlined,
@@ -36,7 +37,7 @@ import type {
   ClaimableInvestment,
   DivestmentClaimSnapshot,
 } from "@/lib/divestment-claims";
-import { formatDate, formatVnd } from "@/lib/formatters";
+import { formatDate, formatNumber, formatVnd } from "@/lib/formatters";
 
 const { Text } = Typography;
 
@@ -87,6 +88,7 @@ export function DivestmentClaimManager({
   const [form] = Form.useForm<ClaimForm>();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [suggestionQuery, setSuggestionQuery] = useState("");
   const [suggestionSourceFilter, setSuggestionSourceFilter] =
@@ -320,6 +322,61 @@ export function DivestmentClaimManager({
     }
   }
 
+  async function exportSelectedPdf() {
+    if (selectedItems.length === 0) {
+      message.warning("Vui lòng chọn ít nhất một khoản để xuất PDF.");
+      return;
+    }
+
+    setExportingPdf(true);
+    try {
+      const claimDate =
+        form.getFieldValue("withdrawalDate")?.toISOString() ??
+        new Date().toISOString();
+      const response = await fetch("/api/export/divestment-claims/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          claimDate,
+          records: selectedItems.map((item) => ({
+            sourceType: item.sourceType,
+            code: item.code,
+            name: item.name,
+            category: item.category,
+            purchaseDate: item.purchaseDate,
+            quantity: item.quantity,
+            unit: item.unit,
+            unitPrice: item.unitPrice,
+            amount: item.amount,
+          })),
+        }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as
+          | { message?: string }
+          | null;
+        throw new Error(body?.message ?? "Không thể tạo file PDF");
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = "bao-cao-khoan-claim-da-chon.pdf";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      message.success(`Đã tải PDF ${selectedItems.length} khoản đã chọn`);
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : "Không thể tạo file PDF",
+      );
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   async function removeRecord(id: string) {
     try {
       const response = await fetch(`/api/divestments/${id}`, {
@@ -492,8 +549,16 @@ export function DivestmentClaimManager({
         placement="right"
         size="large"
         footer={
-          <Space>
+          <Space wrap>
             <Button onClick={resetDrawer}>Hủy</Button>
+            <Button
+              icon={<FilePdfOutlined />}
+              loading={exportingPdf}
+              disabled={selectedKeys.length === 0}
+              onClick={exportSelectedPdf}
+            >
+              Xuất PDF mục đã chọn
+            </Button>
             <Button
               type="primary"
               loading={saving}
@@ -625,7 +690,12 @@ export function DivestmentClaimManager({
                           </Tag>
                         </span>
                         <Text type="secondary">
-                          {[item.code, item.category, formatDate(item.purchaseDate)]
+                          {[
+                            item.code,
+                            item.category,
+                            formatDate(item.purchaseDate),
+                            `${formatNumber(item.quantity)} ${item.unit} × ${formatVnd(item.unitPrice)}`,
+                          ]
                             .filter(Boolean)
                             .join(" · ")}
                         </Text>

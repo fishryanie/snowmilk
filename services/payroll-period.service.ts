@@ -1,6 +1,12 @@
 import {
+  advancePayrollReserveFunds,
   calculatePeriodDistribution,
-  PAYROLL_WORKING_CAPITAL_RESERVE,
+  DEFAULT_PAYROLL_RESERVE_FUNDS,
+  normalizePayrollReserveFunds,
+  PAYROLL_RESERVE_SETTING_PREFIX,
+  PAYROLL_WORKING_CAPITAL_FUND_ID,
+  totalPayrollReserveFunds,
+  type PayrollReserveFund,
   type PayrollShareInput,
 } from "@/lib/payroll";
 import { DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE } from "@/lib/purchase-funding";
@@ -14,6 +20,7 @@ import { PayrollPeriodSettlement } from "@/models/PayrollPeriodSettlement";
 import { PayrollWithdrawal } from "@/models/PayrollWithdrawal";
 import { Purchase } from "@/models/Purchase";
 import { Sale } from "@/models/Sale";
+import { Setting } from "@/models/Setting";
 
 type SaleRecord = {
   saleDate: Date;
@@ -76,10 +83,18 @@ type SettlementRecord = {
   businessCashBalance?: number;
   outstandingOwnerCapital?: number;
   workingCapitalReserve: number;
+  reserveFunds?: PayrollReserveFund[];
+  reserveContributions?: PayrollReserveFund[];
+  reserveFundsTotal?: number;
   distributablePool: number;
   allocatedTotal: number;
   unallocatedPool: number;
   allocations: AllocationRecord[];
+};
+
+type PayrollReserveSettingRecord = {
+  key: string;
+  value?: unknown;
 };
 
 type PeriodLedger = {
@@ -140,6 +155,22 @@ function settlementDto(
   settlement: SettlementRecord,
   isClosed: boolean,
 ) {
+  const legacyReserveFunds: PayrollReserveFund[] = [
+    {
+      id: PAYROLL_WORKING_CAPITAL_FUND_ID,
+      name: "Quỹ vốn xoay vòng",
+      mode: "fixed",
+      amount: settlement.workingCapitalReserve,
+    },
+  ];
+  const reserveFunds = normalizePayrollReserveFunds(
+    settlement.reserveFunds,
+    legacyReserveFunds,
+  );
+  const reserveFundsTotal = Number.isFinite(settlement.reserveFundsTotal)
+    ? Math.max(0, Number(settlement.reserveFundsTotal))
+    : totalPayrollReserveFunds(reserveFunds);
+
   return {
     period: settlement.period,
     isClosed,
@@ -158,6 +189,12 @@ function settlementDto(
     outstandingOwnerCapital:
       settlement.outstandingOwnerCapital ?? 0,
     workingCapitalReserve: settlement.workingCapitalReserve,
+    reserveFunds,
+    reserveContributions: normalizePayrollReserveFunds(
+      settlement.reserveContributions,
+      reserveFunds,
+    ),
+    reserveFundsTotal,
     distributablePool: settlement.distributablePool,
     allocatedTotal: settlement.allocatedTotal,
     unallocatedPool: settlement.unallocatedPool,
@@ -181,6 +218,7 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
     employees,
     existingSettlements,
     payrollWithdrawals,
+    payrollReserveSettings,
   ] = await Promise.all([
     Sale.find({})
       .select("saleDate entryMode netRevenue")
@@ -208,6 +246,11 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
     PayrollWithdrawal.find({})
       .select("period")
       .lean<WithdrawalRecord[]>(),
+    Setting.find({
+      key: { $regex: `^${PAYROLL_RESERVE_SETTING_PREFIX}\\d{4}-(0[1-9]|1[0-2])$` },
+    })
+      .select("key value")
+      .lean<PayrollReserveSettingRecord[]>(),
   ]);
 
   const dailySummaryDates = new Set<string>();
@@ -343,6 +386,9 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
     ...sourcePeriods,
     ...employeePeriods,
     ...existingSettlements.map((settlement) => settlement.period),
+    ...payrollReserveSettings.map((setting) =>
+      setting.key.slice(PAYROLL_RESERVE_SETTING_PREFIX.length),
+    ),
   ];
   const startPeriod = allKnownPeriods.toSorted()[0] ?? currentPeriod;
   const periods = periodSequence(startPeriod, currentPeriod);
@@ -361,6 +407,16 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
   const periodsWithWithdrawals = new Set(
     payrollWithdrawals.map((withdrawal) => withdrawal.period),
   );
+  const reserveFundsByPeriod = new Map(
+    payrollReserveSettings.map((setting) => [
+      setting.key.slice(PAYROLL_RESERVE_SETTING_PREFIX.length),
+      normalizePayrollReserveFunds(setting.value),
+    ]),
+  );
+  let activeReserveContributions = normalizePayrollReserveFunds(
+    DEFAULT_PAYROLL_RESERVE_FUNDS,
+  );
+  let reserveFundBalances: PayrollReserveFund[] = [];
   const summaries = [];
 
   for (const period of periods) {
@@ -378,12 +434,20 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
     const isClosed = period < currentPeriod;
     const existing = existingByPeriod.get(period);
     const hasWithdrawals = periodsWithWithdrawals.has(period);
+    activeReserveContributions =
+      reserveFundsByPeriod.get(period) ?? activeReserveContributions;
+    reserveFundBalances = advancePayrollReserveFunds(
+      reserveFundBalances,
+      activeReserveContributions,
+    );
 
     const hasOwnerCapitalSnapshot =
       Number.isFinite(existing?.businessCashBalance) &&
       Number.isFinite(existing?.outstandingOwnerCapital);
     if (isClosed && existing && hasWithdrawals) {
-      summaries.push(settlementDto(existing, true));
+      const lockedSettlement = settlementDto(existing, true);
+      reserveFundBalances = lockedSettlement.reserveFunds;
+      summaries.push(lockedSettlement);
       previouslySettledPools += existing.distributablePool;
       continue;
     }
@@ -400,12 +464,17 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
         });
       }
     }
-    const workingCapitalReserve = PAYROLL_WORKING_CAPITAL_RESERVE;
+    const reserveFunds = reserveFundBalances;
+    const reserveFundsTotal = totalPayrollReserveFunds(reserveFunds);
+    const workingCapitalReserve =
+      reserveFunds.find(
+        (fund) => fund.id === PAYROLL_WORKING_CAPITAL_FUND_ID,
+      )?.amount ?? 0;
     const distribution = calculatePeriodDistribution({
       businessCashBalance,
       outstandingOwnerCapital,
       previouslySettledPools,
-      workingCapitalReserve,
+      reserveFundsTotal,
       shares,
     });
     const computed: SettlementRecord = {
@@ -420,6 +489,9 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
       businessCashBalance,
       outstandingOwnerCapital,
       workingCapitalReserve,
+      reserveFunds,
+      reserveContributions: activeReserveContributions,
+      reserveFundsTotal,
       ...distribution,
     };
 
@@ -454,6 +526,11 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
         existing.outstandingOwnerCapital ===
           computed.outstandingOwnerCapital &&
         existing.workingCapitalReserve === computed.workingCapitalReserve &&
+        JSON.stringify(existing.reserveFunds ?? []) ===
+          JSON.stringify(computed.reserveFunds ?? []) &&
+        JSON.stringify(existing.reserveContributions ?? []) ===
+          JSON.stringify(computed.reserveContributions ?? []) &&
+        existing.reserveFundsTotal === computed.reserveFundsTotal &&
         existing.distributablePool === computed.distributablePool &&
         existing.allocatedTotal === computed.allocatedTotal &&
         existing.unallocatedPool === computed.unallocatedPool &&

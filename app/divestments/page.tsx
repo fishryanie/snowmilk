@@ -50,6 +50,9 @@ const fallbackHistoryItems: ClaimableInvestment[] = workbookPurchases
     name: item.itemName,
     category: item.category,
     purchaseDate: item.purchaseDate,
+    quantity: item.packageCount,
+    unit: "gói",
+    unitPrice: item.actualPackagePrice,
     amount: item.totalAmount,
   }));
 const fallbackBusinessCash = calculateBusinessCashBalance(

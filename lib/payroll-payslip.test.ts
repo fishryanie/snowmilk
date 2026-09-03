@@ -3,6 +3,10 @@ import {
   createPayrollPayslipSnapshot,
   PAYROLL_CALCULATION_VERSION,
 } from "./payroll-payslip";
+import {
+  PAYROLL_RISK_RESERVE_FUND_ID,
+  PAYROLL_WORKING_CAPITAL_FUND_ID,
+} from "./payroll";
 import { payrollPayslipPreviewSchema } from "./validators/payroll";
 
 describe("payroll payslip snapshot", () => {
@@ -17,13 +21,18 @@ describe("payroll payslip snapshot", () => {
         businessCashBalance: 58_000_000,
         outstandingOwnerCapital: 3_000_000,
         workingCapitalReserve: 10_000_000,
-        distributablePool: 40_000_000,
-        allocatedTotal: 36_000_000,
-        unallocatedPool: 4_000_000,
+        reserveFunds: [
+          { name: "Quỹ vốn xoay vòng", amount: 10_000_000 },
+          { name: "Quỹ dự phòng rủi ro", amount: 10_000_000 },
+        ],
+        reserveFundsTotal: 20_000_000,
+        distributablePool: 30_000_000,
+        allocatedTotal: 27_000_000,
+        unallocatedPool: 3_000_000,
       },
       allocation: {
         role: "Quản lý cửa hàng",
-        amount: 8_000_000,
+        amount: 6_000_000,
       },
       previouslySettledPools: 5_000_000,
     });
@@ -41,10 +50,25 @@ describe("payroll payslip snapshot", () => {
       outstandingOwnerCapital: 3_000_000,
       previouslySettledPools: 5_000_000,
       workingCapitalReserve: 10_000_000,
-      distributablePool: 40_000_000,
-      allocatedTotal: 36_000_000,
-      unallocatedPool: 4_000_000,
-      employeeEntitlement: 8_000_000,
+      reserveFunds: [
+        {
+          id: PAYROLL_WORKING_CAPITAL_FUND_ID,
+          name: "Quỹ vốn xoay vòng",
+          mode: "fixed",
+          amount: 10_000_000,
+        },
+        {
+          id: PAYROLL_RISK_RESERVE_FUND_ID,
+          name: "Quỹ dự phòng rủi ro",
+          mode: "monthly",
+          amount: 10_000_000,
+        },
+      ],
+      reserveFundsTotal: 20_000_000,
+      distributablePool: 30_000_000,
+      allocatedTotal: 27_000_000,
+      unallocatedPool: 3_000_000,
+      employeeEntitlement: 6_000_000,
     });
   });
 
@@ -72,6 +96,15 @@ describe("payroll payslip snapshot", () => {
     expect(snapshot.periodRevenue).toBe(0);
     expect(snapshot.periodPurchaseTotal).toBe(0);
     expect(snapshot.employeeEntitlement).toBe(0);
+    expect(snapshot.reserveFunds).toEqual([
+      {
+        id: PAYROLL_WORKING_CAPITAL_FUND_ID,
+        name: "Quỹ vốn xoay vòng",
+        mode: "fixed",
+        amount: 10_000_000,
+      },
+    ]);
+    expect(snapshot.reserveFundsTotal).toBe(10_000_000);
   });
 });
 

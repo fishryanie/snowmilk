@@ -33,7 +33,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import dayjs, { type Dayjs } from "dayjs";
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/common/page-header";
 import {
   PayrollPeriodHistory,
@@ -185,6 +185,36 @@ async function query<T>(url: string) {
   return body.data;
 }
 
+function readPdfAsDataUrl(blob: Blob) {
+  if (blob.type !== "application/pdf") {
+    throw new Error("Dữ liệu xem trước không phải là phiếu PDF");
+  }
+
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener(
+      "load",
+      () => {
+        if (typeof reader.result === "string") {
+          resolve(reader.result);
+          return;
+        }
+        reject(new Error("Không thể đọc bản xem trước phiếu lương"));
+      },
+      { once: true },
+    );
+    reader.addEventListener(
+      "error",
+      () =>
+        reject(
+          reader.error ?? new Error("Không thể đọc bản xem trước phiếu lương"),
+        ),
+      { once: true },
+    );
+    reader.readAsDataURL(blob);
+  });
+}
+
 export default function PayrollPage() {
   const { message } = App.useApp();
   const [month, setMonth] = useState(() => dayjs().startOf("month"));
@@ -205,13 +235,6 @@ export default function PayrollPage() {
   >(null);
   const [employeeForm] = Form.useForm<EmployeeFormValues>();
   const [withdrawalForm] = Form.useForm<WithdrawalFormValues>();
-
-  useEffect(
-    () => () => {
-      if (payslipPreviewUrl) URL.revokeObjectURL(payslipPreviewUrl);
-    },
-    [payslipPreviewUrl],
-  );
 
   const period = month.format("YYYY-MM");
   const rangeEnd = month.isSame(dayjs(), "month")
@@ -265,7 +288,8 @@ export default function PayrollPage() {
     (total, withdrawal) => total + withdrawal.amount,
     0,
   );
-  const operatingReserve = selectedPayrollPeriod?.workingCapitalReserve ?? 0;
+  const reserveFunds = selectedPayrollPeriod?.reserveFunds ?? [];
+  const operatingReserve = selectedPayrollPeriod?.reserveFundsTotal ?? 0;
   const periodBusinessCashBalance =
     selectedPayrollPeriod?.businessCashBalance ??
     dashboard.kpis.businessCashBalance;
@@ -332,6 +356,10 @@ export default function PayrollPage() {
       outstandingOwnerCapital,
     workingCapitalReserve:
       explainedPayrollPeriod?.workingCapitalReserve ?? operatingReserve,
+    reserveFunds:
+      explainedPayrollPeriod?.reserveFunds ?? reserveFunds,
+    reserveFundsTotal:
+      explainedPayrollPeriod?.reserveFundsTotal ?? operatingReserve,
     previouslySettledPools: explainedPreviouslySettledPools,
     distributablePool:
       explainedPayrollPeriod?.distributablePool ?? grossPayrollPool,
@@ -471,7 +499,7 @@ export default function PayrollPage() {
       }
 
       const blob = await response.blob();
-      setPayslipPreviewUrl(URL.createObjectURL(blob));
+      setPayslipPreviewUrl(await readPdfAsDataUrl(blob));
     } catch (error) {
       message.error(
         error instanceof Error
@@ -681,7 +709,7 @@ export default function PayrollPage() {
           <Statistic
             title={
               <PayrollHelpTitle
-                title="Vốn xoay vòng cần giữ"
+                title="Các quỹ cần giữ"
                 topic="working-capital"
                 onOpen={openHelp}
               />
@@ -690,7 +718,11 @@ export default function PayrollPage() {
             formatter={(value) => formatVnd(Number(value))}
             prefix={<SafetyCertificateOutlined />}
           />
-          <Text type="secondary">Mức cố định theo quy tắc của tiệm</Text>
+          <Text type="secondary">
+            {reserveFunds.length
+              ? reserveFunds.map((fund) => fund.name).join(" · ")
+              : "Cấu hình theo tháng trong mục Settings"}
+          </Text>
         </Card>
         <Card className="surface-card payroll-kpi-card payroll-kpi-share">
           <Statistic
@@ -1047,7 +1079,6 @@ export default function PayrollPage() {
             className="payroll-payslip-preview-frame"
             src={payslipPreviewUrl}
             title="Bản xem trước phiếu lương"
-            sandbox="allow-same-origin"
           />
         ) : null}
       </Modal>

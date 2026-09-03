@@ -1,13 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import {
+  advancePayrollReserveFunds,
   calculateEmployeeEntitlement,
   calculatePeriodDistribution,
   calculatePayrollSummary,
+  DEFAULT_PAYROLL_RESERVE_FUNDS,
+  normalizePayrollReserveFunds,
+  PAYROLL_RISK_RESERVE,
+  PAYROLL_RISK_RESERVE_FUND_ID,
   PAYROLL_WORKING_CAPITAL_RESERVE,
+  PAYROLL_WORKING_CAPITAL_FUND_ID,
+  totalPayrollReserveFunds,
 } from "./payroll";
 
 describe("payroll allocation", () => {
-  test("always keeps the fixed 10-million working-capital reserve", () => {
+  const defaultReserveTotal = totalPayrollReserveFunds(
+    DEFAULT_PAYROLL_RESERVE_FUNDS,
+  );
+
+  test("keeps both the working-capital and risk reserve by default", () => {
     expect(
       calculatePayrollSummary({
         businessCashBalance: 50_000_000,
@@ -15,11 +26,14 @@ describe("payroll allocation", () => {
         allocatedPercent: 100,
       }),
     ).toEqual({
-      operatingReserve: PAYROLL_WORKING_CAPITAL_RESERVE,
-      grossPayrollPool: 40_000_000,
-      availablePayrollPool: 40_000_000,
+      operatingReserve: defaultReserveTotal,
+      grossPayrollPool: 30_000_000,
+      availablePayrollPool: 30_000_000,
       unallocatedPool: 0,
     });
+    expect(defaultReserveTotal).toBe(
+      PAYROLL_WORKING_CAPITAL_RESERVE + PAYROLL_RISK_RESERVE,
+    );
   });
 
   test("never exposes cash when the operating reserve is not covered", () => {
@@ -40,22 +54,72 @@ describe("payroll allocation", () => {
       allocatedPercent: 70,
     });
 
-    expect(summary.availablePayrollPool).toBe(44_000_000);
-    expect(summary.unallocatedPool).toBe(15_000_000);
+    expect(summary.availablePayrollPool).toBe(34_000_000);
+    expect(summary.unallocatedPool).toBe(12_000_000);
     expect(calculateEmployeeEntitlement(summary.grossPayrollPool, 20)).toBe(
-      10_000_000,
+      8_000_000,
     );
   });
 
-  test("does not lower the fixed reserve when the cash balance is smaller", () => {
+  test("does not lower the configured reserves when the cash balance is smaller", () => {
     const summary = calculatePayrollSummary({
       businessCashBalance: 3_000_000,
       withdrawnTotal: 0,
       allocatedPercent: 100,
     });
 
-    expect(summary.operatingReserve).toBe(10_000_000);
+    expect(summary.operatingReserve).toBe(defaultReserveTotal);
     expect(summary.grossPayrollPool).toBe(0);
+  });
+
+  test("normalizes an extensible monthly reserve-fund list", () => {
+    const funds = normalizePayrollReserveFunds([
+      { name: " Quỹ vốn xoay vòng ", amount: 8_500_000.9 },
+      { name: "Quỹ sửa chữa", amount: 2_000_000 },
+      { name: "", amount: 999 },
+    ]);
+
+    expect(funds).toEqual([
+      {
+        id: PAYROLL_WORKING_CAPITAL_FUND_ID,
+        name: "Quỹ vốn xoay vòng",
+        mode: "fixed",
+        amount: 8_500_000,
+      },
+      {
+        id: "legacy-quy-sua-chua",
+        name: "Quỹ sửa chữa",
+        mode: "fixed",
+        amount: 2_000_000,
+      },
+    ]);
+    expect(totalPayrollReserveFunds(funds)).toBe(10_500_000);
+  });
+
+  test("adds the risk contribution once per period while fixed funds stay flat", () => {
+    const firstMonth = advancePayrollReserveFunds(
+      [],
+      DEFAULT_PAYROLL_RESERVE_FUNDS,
+    );
+    const secondMonth = advancePayrollReserveFunds(
+      firstMonth,
+      DEFAULT_PAYROLL_RESERVE_FUNDS,
+    );
+    const recalculatedSecondMonth = advancePayrollReserveFunds(
+      firstMonth,
+      DEFAULT_PAYROLL_RESERVE_FUNDS,
+    );
+
+    expect(
+      secondMonth.find(
+        (fund) => fund.id === PAYROLL_WORKING_CAPITAL_FUND_ID,
+      )?.amount,
+    ).toBe(PAYROLL_WORKING_CAPITAL_RESERVE);
+    expect(
+      secondMonth.find((fund) => fund.id === PAYROLL_RISK_RESERVE_FUND_ID)
+        ?.amount,
+    ).toBe(PAYROLL_RISK_RESERVE * 2);
+    expect(recalculatedSecondMonth).toEqual(secondMonth);
   });
 
   test("reserves unclaimed owner capital before closing a monthly pool", () => {
@@ -63,7 +127,7 @@ describe("payroll allocation", () => {
       businessCashBalance: 18_000_000,
       outstandingOwnerCapital: 2_000_000,
       previouslySettledPools: 1_000_000,
-      workingCapitalReserve: PAYROLL_WORKING_CAPITAL_RESERVE,
+      reserveFundsTotal: PAYROLL_WORKING_CAPITAL_RESERVE,
       shares: [
         {
           employeeId: "employee-1",
@@ -93,14 +157,14 @@ describe("payroll allocation", () => {
       businessCashBalance: 18_000_000,
       outstandingOwnerCapital: 2_000_000,
       previouslySettledPools: 1_000_000,
-      workingCapitalReserve: PAYROLL_WORKING_CAPITAL_RESERVE,
+      reserveFundsTotal: PAYROLL_WORKING_CAPITAL_RESERVE,
       shares: [],
     });
     const afterClaim = calculatePeriodDistribution({
       businessCashBalance: 16_000_000,
       outstandingOwnerCapital: 0,
       previouslySettledPools: 1_000_000,
-      workingCapitalReserve: PAYROLL_WORKING_CAPITAL_RESERVE,
+      reserveFundsTotal: PAYROLL_WORKING_CAPITAL_RESERVE,
       shares: [],
     });
 
@@ -114,7 +178,7 @@ describe("payroll allocation", () => {
       businessCashBalance: 21_767_000,
       outstandingOwnerCapital: 3_984_500,
       previouslySettledPools: 0,
-      workingCapitalReserve: PAYROLL_WORKING_CAPITAL_RESERVE,
+      reserveFundsTotal: PAYROLL_WORKING_CAPITAL_RESERVE,
       shares: [
         ["employee-1", 28],
         ["employee-2", 20],

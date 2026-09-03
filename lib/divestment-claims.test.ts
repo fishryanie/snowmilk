@@ -15,6 +15,9 @@ const history: ClaimableInvestment[] = [
     name: "Máy xay",
     category: "Máy móc",
     purchaseDate: "2026-07-20T00:00:00.000Z",
+    quantity: 1,
+    unit: "món",
+    unitPrice: 2_000_000,
     amount: 2_000_000,
   },
   {
@@ -25,6 +28,9 @@ const history: ClaimableInvestment[] = [
     name: "Sữa tươi",
     category: "Nguyên liệu",
     purchaseDate: "2026-07-21T00:00:00.000Z",
+    quantity: 10,
+    unit: "gói",
+    unitPrice: 50_000,
     amount: 500_000,
   },
 ];

@@ -84,11 +84,11 @@ Chứng từ gom các khoản tiệt trùng được thanh toán cùng lúc. Lư
 
 ### `payrollperiodsettlements`
 
-Snapshot quỹ lương sau khi tháng kết thúc: lưu kỳ `YYYY-MM`, ngày chốt, doanh thu/nhập hàng/chi phí/tài sản trong kỳ, số lũy kế, vốn xoay vòng, tổng tiền sạch được chia và snapshot tỷ lệ/số tiền của từng nhân sự. `period` là duy nhất; dữ liệu tháng hiện tại chỉ được tính tạm thời và chưa ghi collection.
+Snapshot quỹ lương sau khi tháng kết thúc: lưu kỳ `YYYY-MM`, ngày chốt, doanh thu/nhập hàng/chi phí/tài sản trong kỳ, số lũy kế, cấu hình khoản trích trong kỳ (`reserveContributions`), số dư từng quỹ sau khi trích (`reserveFunds`), tổng số dư quỹ giữ lại, tổng tiền sạch được chia và snapshot tỷ lệ/số tiền của từng nhân sự. `period` là duy nhất; dữ liệu tháng hiện tại chỉ được tính tạm thời và chưa ghi collection.
 
 ### `settings`
 
-Key-value cho các tham số từ sheet `Thiết lập`.
+Key-value cho các tham số từ sheet `Thiết lập` và cấu hình danh sách quỹ lương theo tháng với key `payroll_reserve_funds:YYYY-MM`. Mỗi quỹ có mã ổn định, tên, chế độ `fixed` hoặc `monthly`, và số tiền; tháng không có bản ghi riêng sẽ kế thừa cấu hình gần nhất.
 
 ### `importlogs`
 

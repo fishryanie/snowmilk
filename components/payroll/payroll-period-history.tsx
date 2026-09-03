@@ -42,6 +42,8 @@ export type PayrollPeriodSummary = {
   businessCashBalance: number;
   outstandingOwnerCapital: number;
   workingCapitalReserve: number;
+  reserveFunds: Array<{ name: string; amount: number }>;
+  reserveFundsTotal: number;
   distributablePool: number;
   allocatedTotal: number;
   unallocatedPool: number;
