@@ -4,6 +4,10 @@ import { calculateDivestmentSuggestion } from "@/lib/calculations/divestment-sug
 import { calculateBusinessCashBalance } from "@/lib/divestment-claims";
 import { calculateOwnerInvestmentTotal } from "@/lib/investment-total";
 import { connectMongo } from "@/lib/mongodb";
+import {
+  payrollPeriodEndDateKey,
+  summarizeClosedPayrollFunds,
+} from "@/lib/payroll";
 import { normalizeProductGroupName } from "@/lib/product-groups";
 import { Divestment } from "@/models/Divestment";
 import { Equipment } from "@/models/Equipment";
@@ -12,6 +16,7 @@ import { InventorySnapshot } from "@/models/InventorySnapshot";
 import { MilkBatch } from "@/models/MilkBatch";
 import { Product } from "@/models/Product";
 import { Purchase } from "@/models/Purchase";
+import { PayrollPeriodSettlement } from "@/models/PayrollPeriodSettlement";
 import { Sale } from "@/models/Sale";
 import { isExpensePaid } from "@/lib/expense-payment-status";
 import {
@@ -37,6 +42,8 @@ type DashboardDailySummary = {
   expenseTotal: number;
   cashExpenseTotal: number;
   equipmentTotal: number;
+  payrollTotal: number;
+  reserveFundTransferTotal: number;
 };
 
 type HealthIssue = {
@@ -59,6 +66,8 @@ function emptyDailySummary(date: string): DashboardDailySummary {
     expenseTotal: 0,
     cashExpenseTotal: 0,
     equipmentTotal: 0,
+    payrollTotal: 0,
+    reserveFundTransferTotal: 0,
   };
 }
 
@@ -84,6 +93,7 @@ export async function GET(request: Request) {
       purchases,
       expenses,
       equipment,
+      payrollSettlements,
       equipmentInvestment,
       purchaseInvestment,
       expenseInvestment,
@@ -106,6 +116,11 @@ export async function GET(request: Request) {
         Purchase.find({ purchaseDate: dateFilter }).lean(),
         Expense.find({ expenseDate: dateFilter }).lean(),
         Equipment.find({ purchaseDate: dateFilter }).lean(),
+        PayrollPeriodSettlement.find({})
+          .select(
+            "period allocatedTotal reserveFundsTotal workingCapitalReserve",
+          )
+          .lean(),
         Equipment.aggregate([
           { $group: { _id: null, total: { $sum: "$totalAmount" } } },
         ]),
@@ -365,6 +380,24 @@ export async function GET(request: Request) {
       },
       0,
     );
+    const closedPayrollFunds = summarizeClosedPayrollFunds(payrollSettlements);
+    const periodClosedFunds = closedPayrollFunds.movements.reduce(
+      (summary, movement) => {
+        const day = payrollPeriodEndDateKey(movement.period);
+        if (day < fromParam || day > toParam) return summary;
+        const daily = totals.daily.get(day) ?? emptyDailySummary(day);
+        daily.payrollTotal += movement.payrollTotal;
+        daily.reserveFundTransferTotal += movement.reserveFundTransferTotal;
+        totals.daily.set(day, daily);
+        summary.payrollTotal += movement.payrollTotal;
+        summary.reserveFundTransferTotal += movement.reserveFundTransferTotal;
+        return summary;
+      },
+      { payrollTotal: 0, reserveFundTransferTotal: 0 },
+    );
+    const payrollTotal = periodClosedFunds.payrollTotal;
+    const reserveFundTransferTotal =
+      periodClosedFunds.reserveFundTransferTotal;
     const investmentTotal = calculateOwnerInvestmentTotal({
       purchases: investmentPurchases.map((purchase) => ({
         id: String(purchase._id),
@@ -401,7 +434,12 @@ export async function GET(request: Request) {
     );
     const remainingCapital = capitalRecovery.remainingCapital;
     const estimatedProfit = totals.profit - expenseTotals.operating;
-    const cashOut = purchaseTotal + cashExpenseTotal + equipmentTotal;
+    const cashOut =
+      purchaseTotal +
+      cashExpenseTotal +
+      equipmentTotal +
+      payrollTotal +
+      reserveFundTransferTotal;
     const netCashFlow = totals.revenue - cashOut;
     const periodDays = Math.max(
       1,
@@ -411,7 +449,11 @@ export async function GET(request: Request) {
       .sort((a, b) => a.date.localeCompare(b.date))
       .map((item) => {
         const dailyCashOut =
-          item.purchaseTotal + item.cashExpenseTotal + item.equipmentTotal;
+          item.purchaseTotal +
+          item.cashExpenseTotal +
+          item.equipmentTotal +
+          item.payrollTotal +
+          item.reserveFundTransferTotal;
         return {
           ...item,
           cashIn: item.revenue,
@@ -440,15 +482,23 @@ export async function GET(request: Request) {
         );
       })
       .reduce((sum, sale) => sum + (sale.netRevenue ?? 0), 0);
+    const cumulativeSettledPayrollTotal =
+      closedPayrollFunds.settledPayrollTotal;
+    const cumulativeSeparatedReserveFundTotal =
+      closedPayrollFunds.separatedReserveFundTotal;
     const cumulativeCashOut =
       (equipmentInvestment[0]?.total ?? 0) +
       (purchaseInvestment[0]?.total ?? 0) +
-      (expenseInvestment[0]?.total ?? 0);
+      (expenseInvestment[0]?.total ?? 0) +
+      cumulativeSettledPayrollTotal +
+      cumulativeSeparatedReserveFundTotal;
     const businessCash = calculateBusinessCashBalance(
       cumulativeCashIn,
       salesFundedPurchaseInvestment[0]?.total ?? 0,
       salesFundedExpenseInvestment[0]?.total ?? 0,
       salesFundedEquipmentInvestment[0]?.total ?? 0,
+      cumulativeSettledPayrollTotal,
+      cumulativeSeparatedReserveFundTotal,
     );
     const divestmentSuggestion = calculateDivestmentSuggestion({
       cumulativeCashIn,
@@ -457,7 +507,11 @@ export async function GET(request: Request) {
       recordedCashBalance: businessCash.remainingBalance,
       remainingCapital,
       periodRevenue: totals.revenue,
-      periodOperatingCashOut: purchaseTotal + cashExpenseTotal,
+      periodOperatingCashOut:
+        purchaseTotal +
+        cashExpenseTotal +
+        payrollTotal +
+        reserveFundTransferTotal,
       periodDays,
       salesDays,
     });
@@ -618,6 +672,8 @@ export async function GET(request: Request) {
         expenseTotal,
         operatingExpenseTotal: expenseTotals.operating,
         cashExpenseTotal,
+        payrollTotal,
+        reserveFundTransferTotal,
         outstandingExpenseTotal: Math.max(0, expenseTotal - cashExpenseTotal),
         variableCost: totals.variableCost,
         allocatedFixedCost: totals.allocatedFixedCost,

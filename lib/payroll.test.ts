@@ -7,9 +7,11 @@ import {
   DEFAULT_PAYROLL_RESERVE_FUNDS,
   normalizePayrollReserveFunds,
   PAYROLL_RISK_RESERVE,
+  payrollPeriodEndDateKey,
   PAYROLL_RISK_RESERVE_FUND_ID,
   PAYROLL_WORKING_CAPITAL_RESERVE,
   PAYROLL_WORKING_CAPITAL_FUND_ID,
+  summarizeClosedPayrollFunds,
   totalPayrollReserveFunds,
 } from "./payroll";
 
@@ -17,6 +19,45 @@ describe("payroll allocation", () => {
   const defaultReserveTotal = totalPayrollReserveFunds(
     DEFAULT_PAYROLL_RESERVE_FUNDS,
   );
+
+  test("recognizes a closed payroll fund on the final day of its payroll month", () => {
+    expect(payrollPeriodEndDateKey("2026-08")).toBe("2026-08-31");
+    expect(payrollPeriodEndDateKey("2028-02")).toBe("2028-02-29");
+  });
+
+  test("separates salary and reserve funds once in their closing month", () => {
+    expect(
+      summarizeClosedPayrollFunds([
+        {
+          period: "2026-09",
+          allocatedTotal: 12_000_000,
+          reserveFundsTotal: 30_000_000,
+        },
+        {
+          period: "2026-08",
+          allocatedTotal: 18_000_000,
+          reserveFundsTotal: 20_000_000,
+        },
+      ]),
+    ).toEqual({
+      movements: [
+        {
+          period: "2026-08",
+          payrollTotal: 18_000_000,
+          reserveFundTransferTotal: 20_000_000,
+          reserveFundBalance: 20_000_000,
+        },
+        {
+          period: "2026-09",
+          payrollTotal: 12_000_000,
+          reserveFundTransferTotal: 10_000_000,
+          reserveFundBalance: 30_000_000,
+        },
+      ],
+      settledPayrollTotal: 30_000_000,
+      separatedReserveFundTotal: 30_000_000,
+    });
+  });
 
   test("keeps both the working-capital and risk reserve by default", () => {
     expect(

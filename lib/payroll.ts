@@ -36,6 +36,69 @@ export function payrollReserveSettingKey(period: string) {
   return `${PAYROLL_RESERVE_SETTING_PREFIX}${period}`;
 }
 
+export function payrollPeriodEndDateKey(period: string) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {
+    throw new Error(`Tháng lương không hợp lệ: ${period}.`);
+  }
+  const [year, month] = period.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return `${period}-${String(lastDay).padStart(2, "0")}`;
+}
+
+export type ClosedPayrollFundSnapshot = {
+  period: string;
+  allocatedTotal?: number | null;
+  reserveFundsTotal?: number | null;
+  workingCapitalReserve?: number | null;
+};
+
+export type ClosedPayrollFundMovement = {
+  period: string;
+  payrollTotal: number;
+  reserveFundTransferTotal: number;
+  reserveFundBalance: number;
+};
+
+function nonNegativeMoney(value: unknown) {
+  const amount = Number(value ?? 0);
+  return Number.isFinite(amount) ? Math.max(0, amount) : 0;
+}
+
+export function summarizeClosedPayrollFunds(
+  settlements: readonly ClosedPayrollFundSnapshot[],
+) {
+  let previousReserveFundBalance = 0;
+  let settledPayrollTotal = 0;
+
+  const movements: ClosedPayrollFundMovement[] = settlements
+    .toSorted((left, right) => left.period.localeCompare(right.period))
+    .map((settlement) => {
+      const payrollTotal = nonNegativeMoney(settlement.allocatedTotal);
+      const reserveFundBalance = nonNegativeMoney(
+        settlement.reserveFundsTotal ?? settlement.workingCapitalReserve,
+      );
+      const reserveFundTransferTotal = Math.max(
+        0,
+        reserveFundBalance - previousReserveFundBalance,
+      );
+      previousReserveFundBalance = reserveFundBalance;
+      settledPayrollTotal += payrollTotal;
+
+      return {
+        period: settlement.period,
+        payrollTotal,
+        reserveFundTransferTotal,
+        reserveFundBalance,
+      };
+    });
+
+  return {
+    movements,
+    settledPayrollTotal,
+    separatedReserveFundTotal: previousReserveFundBalance,
+  };
+}
+
 function legacyPayrollReserveFundId(name: string) {
   const normalized = name.trim().toLocaleLowerCase("vi");
   if (normalized === "quỹ vốn xoay vòng") {

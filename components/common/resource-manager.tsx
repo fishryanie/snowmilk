@@ -12,6 +12,7 @@ import {
 } from "@ant-design/icons";
 import {
   App,
+  AutoComplete,
   Button,
   Card,
   Checkbox,
@@ -36,7 +37,7 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
-import { useMemo, useState, type Key } from "react";
+import { useMemo, useRef, useState, type Key } from "react";
 import {
   formatDate,
   formatNumber,
@@ -58,6 +59,7 @@ export type ResourceField = {
     | "money"
     | "date"
     | "select"
+    | "combobox"
     | "radio"
     | "boolean"
     | "textarea"
@@ -157,7 +159,11 @@ function renderResourceValue(
   if (field.type === "boolean") {
     return value ? <Tag color="green">Có</Tag> : <Tag>Không</Tag>;
   }
-  if (field.type === "select" || field.type === "radio") {
+  if (
+    field.type === "select" ||
+    field.type === "combobox" ||
+    field.type === "radio"
+  ) {
     const option = field.options?.find((candidate) =>
       typeof candidate === "string"
         ? candidate === resolvedValue
@@ -210,7 +216,13 @@ function mobileFieldPriority(field: ResourceField) {
   if (field.type === "number") return 2;
   if (field.type === "boolean") return 3;
   if (field.type === "date") return 4;
-  if (field.type === "select" || field.type === "radio") return 5;
+  if (
+    field.type === "select" ||
+    field.type === "combobox" ||
+    field.type === "radio"
+  ) {
+    return 5;
+  }
   return 6;
 }
 
@@ -273,6 +285,7 @@ export function ResourceManager({
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [runningSelectionAction, setRunningSelectionAction] = useState(false);
+  const saveInFlightRef = useRef(false);
   const [form] = Form.useForm();
   const url = `/api/${resource}${query ? `?q=${encodeURIComponent(query)}` : ""}`;
   const { data, loading, usingFallback, setData } = useApiData<ResourceRecord[]>(
@@ -291,6 +304,7 @@ export function ResourceManager({
   const editorFields = fields.filter(
     (field) =>
       field.editable !== false &&
+      !field.hiddenInEditor &&
       matchesFieldCondition(field.visibleWhen, displayedValues),
   );
   const tableFields = fields.filter((field) => !field.hiddenInTable);
@@ -536,9 +550,18 @@ export function ResourceManager({
   }
 
   async function saveRecord(values: Record<string, unknown>) {
+    if (saveInFlightRef.current) return;
+    saveInFlightRef.current = true;
     setSaving(true);
     try {
-      const payload = { ...values };
+      const editableFieldKeys = new Set(
+        fields
+          .filter((field) => field.editable !== false && !field.hiddenInEditor)
+          .map((field) => field.key),
+      );
+      const payload = Object.fromEntries(
+        Object.entries(values).filter(([key]) => editableFieldKeys.has(key)),
+      );
       for (const field of fields) {
         if (field.type === "date" && payload[field.key]) {
           payload[field.key] = (
@@ -584,6 +607,7 @@ export function ResourceManager({
     } catch (error) {
       message.error(error instanceof Error ? error.message : "Không thể lưu dữ liệu");
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
   }
@@ -890,6 +914,7 @@ export function ResourceManager({
               <Button
                 type="primary"
                 loading={saving}
+                disabled={saving}
                 onClick={() => form.submit()}
               >
                 Lưu
@@ -1002,6 +1027,25 @@ export function ResourceManager({
                           field,
                           displayedValues,
                         )}
+                      />
+                    ) : field.type === "combobox" ? (
+                      <AutoComplete
+                        allowClear
+                        options={field.options?.map((option) =>
+                          typeof option === "string"
+                            ? { value: option, label: option }
+                            : option,
+                        )}
+                        filterOption={(inputValue, option) =>
+                          String(option?.label ?? option?.value ?? "")
+                            .toLocaleLowerCase("vi")
+                            .includes(inputValue.toLocaleLowerCase("vi"))
+                        }
+                        disabled={isResourceFieldDisabled(
+                          field,
+                          displayedValues,
+                        )}
+                        placeholder="Chọn gợi ý hoặc nhập mục mới"
                       />
                     ) : field.type === "radio" ? (
                       <Radio.Group

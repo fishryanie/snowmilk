@@ -36,6 +36,15 @@ describe("expense payment status validation", () => {
     expect(result.paymentStatus).toBe("unpaid");
   });
 
+  it("accepts a custom expense category", () => {
+    const result = resourceSchemas.expenses.parse({
+      ...baseExpense,
+      category: "Phí vệ sinh định kỳ",
+    });
+
+    expect(result.category).toBe("Phí vệ sinh định kỳ");
+  });
+
   it("rejects an unsupported payment status", () => {
     const result = resourceSchemas.expenses.safeParse({
       ...baseExpense,

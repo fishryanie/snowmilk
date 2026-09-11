@@ -46,14 +46,23 @@ describe("divestment claim selection", () => {
 
   test("subtracts every company-funded outflow from remaining business cash", () => {
     expect(
-      calculateBusinessCashBalance(5_720_000, 2_697_000, 250_000, 370_000),
+      calculateBusinessCashBalance(
+        5_720_000,
+        2_697_000,
+        250_000,
+        370_000,
+        900_000,
+        500_000,
+      ),
     ).toEqual({
       totalRevenue: 5_720_000,
       salesFundedPurchaseTotal: 2_697_000,
       salesFundedExpenseTotal: 250_000,
       salesFundedEquipmentTotal: 370_000,
-      totalCompanyFundedOutflow: 3_317_000,
-      remainingBalance: 2_403_000,
+      settledPayrollTotal: 900_000,
+      separatedReserveFundTotal: 500_000,
+      totalCompanyFundedOutflow: 4_717_000,
+      remainingBalance: 1_003_000,
     });
   });
 
@@ -63,6 +72,8 @@ describe("divestment claim selection", () => {
       salesFundedPurchaseTotal: 2_697_000,
       salesFundedExpenseTotal: 0,
       salesFundedEquipmentTotal: 0,
+      settledPayrollTotal: 0,
+      separatedReserveFundTotal: 0,
       totalCompanyFundedOutflow: 2_697_000,
       remainingBalance: 3_023_000,
     });

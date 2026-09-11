@@ -87,8 +87,9 @@ const fields = [
   {
     key: "category",
     label: "Nhóm chi phí",
-    type: "select" as const,
+    type: "combobox" as const,
     options: [...EXPENSE_CATEGORY_OPTIONS],
+    hint: "Chọn một nhóm gợi ý hoặc tự nhập nhóm chi phí mới.",
     disabledWhenPresent: "sourcePurchaseId",
     required: true,
   },
@@ -183,6 +184,7 @@ const fields = [
     key: "isRecurring",
     label: "Định kỳ",
     type: "boolean" as const,
+    defaultValue: false,
     booleanControl: "checkbox" as const,
     booleanLabel: "Đây là chi phí định kỳ",
   },

@@ -770,6 +770,7 @@ export async function recalculateIngredientAverages(
   filter: Record<string, unknown> = {},
   options: {
     normalizePurchaseUnits?: boolean;
+    reinterpretIncompatibleUnits?: boolean;
     recalculateProducts?: boolean;
   } = {},
 ) {
@@ -808,7 +809,17 @@ export async function recalculateIngredientAverages(
     const targetUnit =
       String(ingredient.costUnit ?? "").trim() ||
       String(history[0]?.costUnit ?? "").trim();
-    const summary = summarizePurchases(history, targetUnit);
+    const normalizedHistory =
+      options.normalizePurchaseUnits && targetUnit
+        ? history.map((purchase) => ({
+            ...purchase,
+            ...normalizePurchaseUnit(purchase, targetUnit, {
+              reinterpretIncompatibleUnit:
+                options.reinterpretIncompatibleUnits,
+            }),
+          }))
+        : history;
+    const summary = summarizePurchases(normalizedHistory, targetUnit);
     ingredientUpdates.push({
       updateOne: {
         filter: { _id: ingredient._id },
@@ -823,7 +834,10 @@ export async function recalculateIngredientAverages(
           updateOne: {
             filter: { _id: purchase._id },
             update: {
-              $set: normalizePurchaseUnit(purchase, targetUnit),
+              $set: normalizePurchaseUnit(purchase, targetUnit, {
+                reinterpretIncompatibleUnit:
+                  options.reinterpretIncompatibleUnits,
+              }),
             },
           },
         });
@@ -1219,7 +1233,11 @@ export async function updateResource(
         "Không thể bỏ đơn vị cost khi hàng hóa đã có lịch sử nhập.",
       );
     }
-    summarizePurchases(purchaseHistory, targetUnit);
+    for (const purchase of purchaseHistory) {
+      normalizePurchaseUnit(purchase, targetUnit, {
+        reinterpretIncompatibleUnit: true,
+      });
+    }
 
     const ingredient = await Ingredient.findByIdAndUpdate(
       id,
@@ -1232,7 +1250,10 @@ export async function updateResource(
     if (ingredient) {
       await recalculateIngredientAverages(
         { _id: ingredient._id },
-        { normalizePurchaseUnits: true },
+        {
+          normalizePurchaseUnits: true,
+          reinterpretIncompatibleUnits: true,
+        },
       );
       return Ingredient.findById(ingredient._id);
     }

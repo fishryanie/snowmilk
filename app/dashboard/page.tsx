@@ -48,6 +48,8 @@ type DashboardData = Omit<typeof workbookDashboard, "health"> & {
     operatingExpenseTotal?: number;
     cashExpenseTotal?: number;
     outstandingExpenseTotal?: number;
+    payrollTotal?: number;
+    reserveFundTransferTotal?: number;
   };
   health: {
     status: "ready" | "attention" | "setup-required";
@@ -246,10 +248,10 @@ export default function DashboardPage() {
       money: true,
       profit: true,
       description:
-        "Số tiền bán hàng còn lại sau khi trừ toàn bộ khoản nhập hàng, chi phí và tài sản được thanh toán bằng nguồn Tiền bán hàng.",
+        "Số tiền bán hàng còn lại sau khi trừ nhập hàng, chi phí, tài sản dùng Tiền bán hàng, quỹ lương và các quỹ đã tách của những tháng đã chốt.",
       formula:
-        "Doanh thu lũy kế − (Nhập hàng + Chi phí + Tài sản dùng Tiền bán hàng)",
-      note: "Đây là số lũy kế của toàn tiệm, không phụ thuộc khoảng ngày đang chọn trên dashboard.",
+        "Doanh thu lũy kế − (Nhập hàng + Chi phí + Tài sản dùng Tiền bán hàng + Quỹ lương đã chốt + Số dư các quỹ đã tách)",
+      note: "Quỹ lương và các quỹ khác được ghi nhận một lần ở tháng chốt. Ngày nhân sự nhận lương sau đó không bị trừ thêm.",
     },
     {
       label: "Chi phí mua hàng kỳ này",
@@ -502,7 +504,7 @@ export default function DashboardPage() {
               Kiểm soát dòng tiền
             </Title>
             <Text type="secondary">
-              Tiền thực thu và các khoản đã chi trong khoảng ngày đang chọn.
+              Doanh thu và các khoản được ghi nhận theo kỳ đang chọn.
             </Text>
           </div>
           <Tag color={data.kpis.netCashFlow >= 0 ? "success" : "error"}>
@@ -532,8 +534,8 @@ export default function DashboardPage() {
             <Statistic
               title={
                 <MetricTitle
-                  description="Toàn bộ khoản chi thực tế được ghi nhận trong kỳ cho nhập hàng, vận hành và mua thiết bị."
-                  formula="Tổng tiền ra = Nhập hàng + Chi phí vận hành + Mua thiết bị"
+                  description="Các khoản ghi nhận trong kỳ cho nhập hàng, vận hành, mua thiết bị, quỹ lương và phần tăng của các quỹ đã tách. Các quỹ được đưa về tháng chốt, không theo ngày nhận lương."
+                  formula="Tổng tiền ra = Nhập hàng + Chi phí vận hành + Mua thiết bị + Quỹ lương đã chốt + Phần chuyển vào các quỹ khác trong kỳ"
                   icon={<ArrowUpOutlined />}
                   label="Tổng tiền ra"
                 />
@@ -601,6 +603,16 @@ export default function DashboardPage() {
             <div className="summary-row">
               <Text type="secondary">Đầu tư thiết bị</Text>
               <Text strong>{formatVnd(data.kpis.equipmentTotal)}</Text>
+            </div>
+            <div className="summary-row">
+              <Text type="secondary">Quỹ lương đã chốt</Text>
+              <Text strong>{formatVnd(data.kpis.payrollTotal ?? 0)}</Text>
+            </div>
+            <div className="summary-row">
+              <Text type="secondary">Chuyển vào các quỹ đã tách</Text>
+              <Text strong>
+                {formatVnd(data.kpis.reserveFundTransferTotal ?? 0)}
+              </Text>
             </div>
           </Card>
           <Card

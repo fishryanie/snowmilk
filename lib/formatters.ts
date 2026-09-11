@@ -1,4 +1,5 @@
 import dayjs, { type ConfigType } from "dayjs";
+import { vietnamDateKey } from "@/lib/vietnam-date";
 
 export const formatVnd = (value: number | null | undefined) =>
   new Intl.NumberFormat("vi-VN", {
@@ -27,8 +28,12 @@ export const parseVndInput = (value: string | undefined) => {
   return digits ? Number(digits) : 0;
 };
 
-export const formatDate = (value: ConfigType) =>
-  value ? dayjs(value).format("DD/MM/YYYY") : "—";
+export const formatDate = (value: ConfigType) => {
+  if (!value) return "—";
+  const date = dayjs(value);
+  if (!date.isValid()) return "—";
+  return vietnamDateKey(date.toDate()).split("-").reverse().join("/");
+};
 
 export const toDateInput = (value: ConfigType) =>
   value ? dayjs(value).format("YYYY-MM-DD") : "";

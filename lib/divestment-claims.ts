@@ -39,6 +39,8 @@ export type BusinessCashBalance = {
   salesFundedPurchaseTotal: number;
   salesFundedExpenseTotal: number;
   salesFundedEquipmentTotal: number;
+  settledPayrollTotal: number;
+  separatedReserveFundTotal: number;
   totalCompanyFundedOutflow: number;
   remainingBalance: number;
 };
@@ -53,19 +55,29 @@ export function calculateBusinessCashBalance(
   salesFundedPurchaseTotal: number,
   salesFundedExpenseTotal = 0,
   salesFundedEquipmentTotal = 0,
+  settledPayrollTotal = 0,
+  separatedReserveFundTotal = 0,
 ): BusinessCashBalance {
   const revenue = safeNonNegativeAmount(totalRevenue);
   const purchaseTotal = safeNonNegativeAmount(salesFundedPurchaseTotal);
   const expenseTotal = safeNonNegativeAmount(salesFundedExpenseTotal);
   const equipmentTotal = safeNonNegativeAmount(salesFundedEquipmentTotal);
+  const payrollTotal = safeNonNegativeAmount(settledPayrollTotal);
+  const reserveFundTotal = safeNonNegativeAmount(separatedReserveFundTotal);
   const totalCompanyFundedOutflow =
-    purchaseTotal + expenseTotal + equipmentTotal;
+    purchaseTotal +
+    expenseTotal +
+    equipmentTotal +
+    payrollTotal +
+    reserveFundTotal;
 
   return {
     totalRevenue: revenue,
     salesFundedPurchaseTotal: purchaseTotal,
     salesFundedExpenseTotal: expenseTotal,
     salesFundedEquipmentTotal: equipmentTotal,
+    settledPayrollTotal: payrollTotal,
+    separatedReserveFundTotal: reserveFundTotal,
     totalCompanyFundedOutflow,
     remainingBalance: revenue - totalCompanyFundedOutflow,
   };

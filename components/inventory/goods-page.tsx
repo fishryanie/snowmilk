@@ -22,7 +22,12 @@ const fields = [
     label: "Quy cách/gói",
     type: "number" as const,
   },
-  { key: "costUnit", label: "Đơn vị cost" },
+  {
+    key: "costUnit",
+    label: "Đơn vị cost",
+    hint:
+      "Có thể sửa nhầm đơn vị ml ↔ g; số lượng trong các phiếu nhập cũ sẽ được giữ nguyên và đổi nhãn đơn vị.",
+  },
   {
     key: "referencePackagePrice",
     label: "Giá tham khảo",

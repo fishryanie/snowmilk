@@ -49,6 +49,37 @@ describe("purchase unit normalization", () => {
     });
   });
 
+  test("relabels incompatible historical units when correcting a data-entry mistake", () => {
+    expect(
+      normalizePurchaseUnit(
+        {
+          packageQuantity: 1_284,
+          convertedQuantity: 2_568,
+          costUnit: "ml",
+        },
+        "g",
+        { reinterpretIncompatibleUnit: true },
+      ),
+    ).toEqual({
+      costUnit: "g",
+      packageQuantity: 1_284,
+      convertedQuantity: 2_568,
+    });
+  });
+
+  test("still rejects incompatible units without explicit correction mode", () => {
+    expect(() =>
+      normalizePurchaseUnit(
+        {
+          packageQuantity: 1_284,
+          convertedQuantity: 1_284,
+          costUnit: "ml",
+        },
+        "g",
+      ),
+    ).toThrow("Không thể quy đổi");
+  });
+
   test("uses landed inventory cost when a purchase has processing fees", () => {
     expect(
       summarizePurchases(

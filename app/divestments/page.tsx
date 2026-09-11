@@ -212,7 +212,7 @@ export default function DivestmentsPage() {
         description={
           usingFallback
             ? "Chỉ có thể claim khi kết nối lại dữ liệu thật."
-            : `${formatVnd(context.businessCash.totalRevenue)} doanh thu − ${formatVnd(context.businessCash.totalCompanyFundedOutflow)} tổng tiền nhập hàng, chi phí và tài sản dùng Tiền bán hàng = ${formatVnd(context.businessCash.remainingBalance)} còn lại. Claim xong, nguồn tiền của phiếu nhập hoặc tài sản đã chọn sẽ đổi sang Tiền bán hàng.`
+            : `${formatVnd(context.businessCash.totalRevenue)} doanh thu − ${formatVnd(context.businessCash.totalCompanyFundedOutflow)} tổng tiền nhập hàng, chi phí, tài sản dùng Tiền bán hàng, quỹ lương đã chốt và số dư các quỹ đã tách = ${formatVnd(context.businessCash.remainingBalance)} còn lại. Ngày nhận lương không bị tính thêm lần nữa.`
         }
       />
 

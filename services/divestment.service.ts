@@ -17,7 +17,9 @@ import { Divestment } from "@/models/Divestment";
 import { Equipment } from "@/models/Equipment";
 import { Expense } from "@/models/Expense";
 import { paidExpenseFilter } from "@/lib/expense-payment-status";
+import { summarizeClosedPayrollFunds } from "@/lib/payroll";
 import { Purchase } from "@/models/Purchase";
+import { PayrollPeriodSettlement } from "@/models/PayrollPeriodSettlement";
 import { Sale } from "@/models/Sale";
 
 type ClaimInput = {
@@ -100,7 +102,7 @@ function dateIso(value: Date | string) {
 
 async function buildClaimContext() {
   await connectMongo();
-  const [sales, purchases, equipment, expenses, divestments] =
+  const [sales, purchases, equipment, expenses, payrollSettlements, divestments] =
     await Promise.all([
       Sale.find({})
         .select("saleDate entryMode netRevenue")
@@ -118,6 +120,18 @@ async function buildClaimContext() {
       Expense.find(paidExpenseFilter)
         .select("amount fundingSource")
         .lean<ExpenseRecord[]>(),
+      PayrollPeriodSettlement.find({})
+        .select(
+          "period allocatedTotal reserveFundsTotal workingCapitalReserve",
+        )
+        .lean<
+          Array<{
+            period: string;
+            allocatedTotal?: number;
+            reserveFundsTotal?: number;
+            workingCapitalReserve?: number;
+          }>
+        >(),
       Divestment.find({})
         .sort({ withdrawalDate: -1, createdAt: -1 })
         .lean<DivestmentRecord[]>(),
@@ -187,11 +201,14 @@ async function buildClaimContext() {
   const salesFundedEquipmentTotal = equipment
     .filter((item) => item.fundingSource === "sales_revenue")
     .reduce((sum, item) => sum + safeAmount(item.totalAmount), 0);
+  const closedPayrollFunds = summarizeClosedPayrollFunds(payrollSettlements);
   const businessCash = calculateBusinessCashBalance(
     totalRevenue,
     salesFundedPurchaseTotal,
     salesFundedExpenseTotal,
     salesFundedEquipmentTotal,
+    closedPayrollFunds.settledPayrollTotal,
+    closedPayrollFunds.separatedReserveFundTotal,
   );
   const purchaseItems: ClaimableInvestment[] = purchases
     .filter(isOwnerFundedInvestment)
