@@ -1,13 +1,12 @@
 import "server-only";
 import { receiptExtractionSchema } from "@/lib/validators/receipt";
 import { normalizeReceipt, receiptImageId, type ReceiptCatalogItem } from "@/lib/receipt";
+import { ReceiptScanError, receiptModelName, receiptProviderError } from "@/lib/receipt-provider";
 import { connectMongo } from "@/lib/mongodb";
 import { Ingredient } from "@/models/Ingredient";
 import { consumeReceiptScanBudget } from "./receipt-scan-budget";
 
-export class ReceiptScanError extends Error {
-  constructor(message: string, readonly status = 502) { super(message); }
-}
+export { ReceiptScanError } from "@/lib/receipt-provider";
 
 const instructions = `Bạn đọc hóa đơn nhập hàng Việt Nam, trả duy nhất json theo cấu trúc:
 {"purchaseDate":null,"supplier":null,"invoiceNumber":null,"totalAmount":null,"warnings":[],"lines":[{"itemName":"tên đọc được","ingredientId":null,"category":null,"purchaseUnit":null,"packageQuantity":null,"costUnit":null,"packageCount":null,"totalAmount":null,"warnings":[]}]}
@@ -19,8 +18,10 @@ packageQuantity là lượng quy đổi trong MỘT đơn vị mua, costUnit là
 Mỗi mặt hàng là một dòng riêng; không đưa tổng cộng, thanh toán, thuế, phí vận chuyển vào danh sách hàng. Không nhận dạng được hóa đơn hoặc không đọc được mặt hàng: lines rỗng, cảnh báo. Tối đa 40 dòng; nếu bill có hơn 40 dòng hoặc không nhìn thấy đầy đủ các dòng: lines rỗng, cảnh báo cần chia ảnh. Dữ liệu không rõ để null, cảnh báo bằng tiếng Việt.`;
 
 export async function scanReceipt(imageBase64: string, signal?: AbortSignal) {
-  const key = process.env.DEEPSEEK_API_KEY;
+  const key = process.env.DEEPSEEK_API_KEY?.trim();
   if (!key) throw new ReceiptScanError("Máy chủ chưa cấu hình DeepSeek để đọc bill.", 503);
+  // Validate before accessing MongoDB or consuming the paid scan budget.
+  const model = receiptModelName(process.env.DEEPSEEK_RECEIPT_MODEL);
   const receiptId = receiptImageId(imageBase64);
   await connectMongo();
   await consumeReceiptScanBudget();
@@ -38,7 +39,7 @@ export async function scanReceipt(imageBase64: string, signal?: AbortSignal) {
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60000)]) : AbortSignal.timeout(60000),
       body: JSON.stringify({
-        model: process.env.DEEPSEEK_RECEIPT_MODEL || "deepseek-flash",
+        model,
         thinking: { type: "disabled" }, response_format: { type: "json_object" }, max_tokens: 6000,
         messages: [
           { role: "system", content: instructions },
@@ -53,10 +54,9 @@ export async function scanReceipt(imageBase64: string, signal?: AbortSignal) {
     throw new ReceiptScanError("Đọc bill bị gián đoạn hoặc quá thời gian. Ảnh vẫn được giữ để thử lại.", 504);
   }
   if (!response.ok) {
-    if (response.status === 402) throw new ReceiptScanError("Tài khoản DeepSeek chưa đủ số dư. Hãy nạp tiền rồi đọc lại bill.", 503);
-    if (response.status === 401) throw new ReceiptScanError("API key DeepSeek trên máy chủ không hợp lệ.", 503);
-    if (response.status === 429) throw new ReceiptScanError("DeepSeek đang bận. Hãy thử đọc lại bill sau ít phút.", 429);
-    throw new ReceiptScanError("DeepSeek chưa đọc được bill. Hãy thử lại hoặc chọn ảnh rõ hơn.");
+    // Do not log the request body, bill image or API key.
+    console.error("Receipt scan provider rejected request", { provider: "deepseek", model, status: response.status });
+    throw receiptProviderError(response.status);
   }
   const result = await response.json().catch(() => null);
   const choice = result?.choices?.[0];

@@ -193,7 +193,7 @@ DEEPSEEK_API_KEY=
 DEEPSEEK_RECEIPT_MODEL=deepseek-flash
 ```
 
-Khi dùng Vercel, đặt các biến này trên project API và deploy các route mới. MongoDB cần Atlas hoặc replica set. Mobile lưu bill ở ngày Việt Nam `YYYY-MM-DDT12:00:00+07:00`. Không nhập thử giao dịch vào DB production.
+Khi dùng Vercel, đặt các biến này trên project API và deploy các route mới. Giá trị model phải là API ID `deepseek-flash` (không kèm dấu nháy), không dùng tên hiển thị `DeepSeek-V4.1-Flash`. Sau khi sửa biến môi trường, redeploy để API nhận giá trị mới. Server kiểm tra model trước khi dùng hạn mức đọc bill; lỗi cấu hình hoặc lỗi dịch vụ được báo riêng, không yêu cầu người dùng chụp ảnh rõ hơn. MongoDB cần Atlas hoặc replica set. Mobile lưu bill ở ngày Việt Nam `YYYY-MM-DDT12:00:00+07:00`. Không nhập thử giao dịch vào DB production.
 
 Test transaction dùng MongoDB replica set tạm, bind `127.0.0.1:27029`, tên replica set `receipt-test`; test chỉ cho phép URI localhost này và tự tạo/xóa DB `snowmilk_receipt_test_<uuid>`:
 
