@@ -17,12 +17,11 @@ export type BusinessProfile = {
 };
 
 export const DEFAULT_BUSINESS_PROFILE: Readonly<BusinessProfile> = {
-  displayName: "Ủa ngon!",
-  wordmark: "Ủa ngon!",
+  displayName: "Cái Tiệm Sữa",
+  wordmark: "Cái Tiệm Sữa",
   tagline: "làm ở nhà, ngon thiệt nè.",
   description:
-    "Quản lý bán hàng, sản xuất, kho và tài chính cho Ủa ngon!",
-  logoUrl: "/ua-ngon-logo.png",
+    "Quản lý bán hàng, sản xuất, kho và tài chính cho Cái Tiệm Sữa",
   timezone: "Asia/Ho_Chi_Minh",
   currency: "VND",
   locale: "vi-VN",
@@ -34,8 +33,9 @@ export const DEFAULT_BUSINESS_PROFILE: Readonly<BusinessProfile> = {
   },
 };
 
-const DEPRECATED_BUSINESS_NAMES = new Set(["bếp nhà nè"]);
+const DEPRECATED_BUSINESS_NAMES = new Set(["bếp nhà nè", "ủa ngon!"]);
 const DEPRECATED_LOGO_URLS = new Set([
+  "/ua-ngon-logo.png",
   "/logo.png",
   "/snowmilk-logo-transparent.png",
   "/snowmilk-app-icon-transparent-192.png",
@@ -100,7 +100,10 @@ export function normalizeBusinessProfile(
     logoUrl: replaceDeprecatedLogo(profile?.logoUrl),
     tagline: profile?.tagline?.trim() || DEFAULT_BUSINESS_PROFILE.tagline,
     description:
-      profile?.description?.trim() || DEFAULT_BUSINESS_PROFILE.description,
+      profile?.description
+        ?.trim()
+        .replace(/Bếp Nhà Nè|Ủa ngon!/gi, DEFAULT_BUSINESS_PROFILE.displayName) ||
+      DEFAULT_BUSINESS_PROFILE.description,
     currency: "VND",
     locale: "vi-VN",
     brandColors: {

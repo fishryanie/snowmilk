@@ -7,6 +7,7 @@ import {
   createResource,
   listResources,
 } from "@/services/resource.service";
+import { isVietnamDateKey } from "@/lib/vietnam-date";
 
 export async function GET(
   request: Request,
@@ -17,9 +18,24 @@ export async function GET(
 
   try {
     const url = new URL(request.url);
+    const from = resource === "purchases"
+      ? url.searchParams.get("from") ?? undefined
+      : undefined;
+    const to = resource === "purchases"
+      ? url.searchParams.get("to") ?? undefined
+      : undefined;
+    if (
+      (from !== undefined && !isVietnamDateKey(from)) ||
+      (to !== undefined && !isVietnamDateKey(to)) ||
+      (from !== undefined && to !== undefined && from > to)
+    ) {
+      return apiError("Khoảng ngày nhập hàng không hợp lệ", 422);
+    }
     const data = await listResources(resource, {
       query: url.searchParams.get("q") ?? undefined,
       limit: Number(url.searchParams.get("limit") ?? 250),
+      from,
+      to,
     });
     return apiSuccess(data);
   } catch (error) {

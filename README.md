@@ -1,9 +1,9 @@
-# Bếp Nhà Nè
+# Cái Tiệm Sữa
 
 > “làm ở nhà, ngon thiệt nè.”
 
 Ứng dụng quản lý bán hàng cuối ngày, chuẩn bị món, kho, công thức, giá vốn và
-tài chính cho Bếp Nhà Nè. Hệ thống hỗ trợ nhiều dòng kinh doanh; hiện tại gồm
+tài chính cho Cái Tiệm Sữa. Hệ thống hỗ trợ nhiều dòng kinh doanh; hiện tại gồm
 Sữa Tuyết, Sữa tươi và Đồ ăn sáng.
 
 ## Nguồn dữ liệu production
@@ -179,3 +179,25 @@ docs/                   phân tích, schema, business rules, đối chiếu
   cộng hoặc tính giá vốn; đổi `gram` ↔ `kg` sẽ chuẩn hóa lịch sử mua và tính
   lại sản phẩm liên quan. Xem `docs/excel-analysis.md` và
   `docs/data-verification.md`.
+
+## DeepSeek: nhập hàng từ ảnh bill
+
+Mobile gọi `POST /api/purchases/scan` với `{ imageBase64 }` (JPEG, tối đa 4 triệu ký tự base64). Server đọc danh mục thật, gọi DeepSeek `deepseek-flash` với ảnh và JSON output, kiểm tra kết quả và trả bản nháp. Các trường không đọc được giữ `null`; ngày không hợp lệ không tự đổi thành hôm nay. Ảnh chỉ dùng cho yêu cầu đọc, không lưu ảnh trong MongoDB. API có giới hạn 6 lần/phút và 30 lần/giờ toàn máy chủ để giới hạn chi phí cả khi AUTH_ENFORCEMENT legacy chưa bật. Khi bật auth, proxy áp quyền `purchases:write` cho cả hai endpoint.
+
+`POST /api/purchases/import-receipt` nhận `{ receiptId, lines }`, `lines` theo validator phiếu nhập hiện có. Lưu cả bill và cập nhật danh mục/giá vốn trong một transaction; lỗi hoàn tác tất cả. Dấu vân tay JPEG là idempotency key: gửi lại dữ liệu giống nhau trả các ID đã lưu; dữ liệu khác với ảnh đã lưu trả 409. Hai dòng tạo cùng hàng mới/quy cách tái sử dụng một hàng trong danh mục. Dấu vân tay chỉ nhận diện cùng ảnh; chụp lại bill bằng ảnh khác cần người dùng kiểm tra lịch sử.
+
+Cấu hình trên máy chủ (không đưa vào biến NEXT_PUBLIC_/EXPO_PUBLIC_):
+
+```env
+DEEPSEEK_API_KEY=
+DEEPSEEK_RECEIPT_MODEL=deepseek-flash
+```
+
+Khi dùng Vercel, đặt các biến này trên project API và deploy các route mới. MongoDB cần Atlas hoặc replica set. Mobile lưu bill ở ngày Việt Nam `YYYY-MM-DDT12:00:00+07:00`. Không nhập thử giao dịch vào DB production.
+
+Test transaction dùng MongoDB replica set tạm, bind `127.0.0.1:27029`, tên replica set `receipt-test`; test chỉ cho phép URI localhost này và tự tạo/xóa DB `snowmilk_receipt_test_<uuid>`:
+
+```sh
+RECEIPT_TEST_MONGODB_URI='mongodb://127.0.0.1:27029/?replicaSet=receipt-test' bun test services/receipt-import.integration.test.ts
+bun test lib/receipt.test.ts lib/validators/resources.test.ts lib/vietnam-date.test.ts
+```

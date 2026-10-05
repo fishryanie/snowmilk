@@ -1,6 +1,10 @@
 import mongoose from "mongoose";
 import { getMongoConfig } from "@/lib/mongodb-config";
 
+// Keep legacy purchase/catalog writes in the receipt import's transaction.
+// Outside Connection.transaction() this does not attach a session.
+mongoose.set("transactionAsyncLocalStorage", true);
+
 type MongooseCache = {
   connection: typeof mongoose | null;
   promise: Promise<typeof mongoose> | null;

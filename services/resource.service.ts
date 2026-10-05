@@ -307,20 +307,20 @@ async function productPayload(
   code: string,
   editingId?: string,
 ) {
-  const [topping, size, batch, settings, depreciation] = await Promise.all([
-    Ingredient.findOne({
+  // Sequential operations also work when this calculation runs in a transaction.
+  const topping = await Ingredient.findOne({
       _id: payload.toppingIngredientId,
       category: "Topping",
       isActive: true,
-    }).lean(),
-    ProductSize.findOne({
+    }).lean();
+  const size = await ProductSize.findOne({
       _id: payload.sizeId,
       isActive: true,
-    }).lean(),
-    MilkBatch.findOne()
+    }).lean();
+  const batch = await MilkBatch.findOne()
       .sort({ cookedAt: -1, createdAt: -1 })
-      .lean(),
-    Setting.find({
+      .lean();
+  const settings = await Setting.find({
       key: {
         $in: [
           "overhead_bien_doi",
@@ -328,12 +328,11 @@ async function productPayload(
           "chi_phi_co_dinh_thang_d",
         ],
       },
-    }).lean(),
-    Equipment.aggregate<{ value: number }>([
+    }).lean();
+  const depreciation = await Equipment.aggregate<{ value: number }>([
       { $match: { isActive: true } },
       { $group: { _id: null, value: { $sum: "$monthlyDepreciation" } } },
-    ]),
-  ]);
+    ]);
   if (!topping) {
     throw new Error("Topping không tồn tại hoặc đã ngừng kích hoạt.");
   }
@@ -945,11 +944,17 @@ export async function recalculateProductCosts(
 
 export async function listResources(
   resource: ResourceName,
-  options: { query?: string; limit?: number } = {},
+  options: { query?: string; limit?: number; from?: string; to?: string } = {},
 ) {
   await connectMongo();
   const model = resourceModels[resource];
   const filter: Record<string, unknown> = {};
+  if (resource === "purchases" && (options.from || options.to)) {
+    filter.purchaseDate = {
+      ...(options.from ? { $gte: vietnamDayBoundary(options.from) } : {}),
+      ...(options.to ? { $lte: vietnamDayBoundary(options.to, true) } : {}),
+    };
+  }
   const sort: Record<string, 1 | -1> =
     resource === "purchases"
       ? { purchaseDate: -1, createdAt: -1 }
@@ -1046,6 +1051,7 @@ export async function listResources(
 export async function createResource(
   resource: ResourceName,
   payload: Record<string, unknown>,
+  options: { inTransaction?: boolean } = {},
 ) {
   await connectMongo();
   if (resource === "purchases") {
@@ -1060,6 +1066,8 @@ export async function createResource(
       );
       return Purchase.findById(purchase._id);
     } catch (error) {
+      // The caller rolls back the whole bill, including newly created ingredients.
+      if (options.inTransaction) throw error;
       if (purchase) {
         const linkedExpense = await Expense.findOne({
           sourcePurchaseId: purchase._id,

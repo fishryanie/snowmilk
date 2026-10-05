@@ -5,11 +5,11 @@ import {
 } from "@/lib/business-profile";
 
 describe("BusinessProfile", () => {
-  test("uses the approved Ủa ngon! identity by default", () => {
+  test("uses the Cái Tiệm Sữa identity by default", () => {
     const profile = normalizeBusinessProfile();
-    expect(profile.displayName).toBe("Ủa ngon!");
-    expect(profile.wordmark).toBe("Ủa ngon!");
-    expect(profile.logoUrl).toBe("/ua-ngon-logo.png");
+    expect(profile.displayName).toBe("Cái Tiệm Sữa");
+    expect(profile.wordmark).toBe("Cái Tiệm Sữa");
+    expect(profile.logoUrl).toBeUndefined();
     expect(profile.tagline).toBe(
       "làm ở nhà, ngon thiệt nè.",
     );
@@ -21,16 +21,21 @@ describe("BusinessProfile", () => {
     });
   });
 
-  test("upgrades the persisted legacy name and logo", () => {
+  test.each([
+    ["Bếp Nhà Nè", "/snowmilk-logo-transparent.png"],
+    ["Ủa ngon!", "/ua-ngon-logo.png"],
+  ])("upgrades the persisted %s name and logo", (name, logoUrl) => {
     const profile = normalizeBusinessProfile({
-      displayName: "Bếp Nhà Nè",
-      wordmark: "Bếp Nhà Nè",
-      logoUrl: "/snowmilk-logo-transparent.png",
+      displayName: name,
+      wordmark: name,
+      description: `Quản lý vận hành cho ${name}`,
+      logoUrl,
     });
 
-    expect(profile.displayName).toBe("Ủa ngon!");
-    expect(profile.wordmark).toBe("Ủa ngon!");
-    expect(profile.logoUrl).toBe("/ua-ngon-logo.png");
+    expect(profile.displayName).toBe("Cái Tiệm Sữa");
+    expect(profile.wordmark).toBe("Cái Tiệm Sữa");
+    expect(profile.description).toBe("Quản lý vận hành cho Cái Tiệm Sữa");
+    expect(profile.logoUrl).toBeUndefined();
   });
 
   test("keeps missing colors from the safe fallback", () => {
