@@ -5,6 +5,15 @@ import { calculateBusinessCashBalance } from "@/lib/divestment-claims";
 import { calculateOwnerInvestmentTotal } from "@/lib/investment-total";
 import { connectMongo } from "@/lib/mongodb";
 import {
+  cumulativeSalesPipeline,
+  emptyFinanceSummary,
+  expenseFacetPipeline,
+  investmentFacetPipeline,
+  type CumulativeSalesSummary,
+  type ExpenseFacet,
+  type InvestmentFacet,
+} from "@/lib/dashboard-queries";
+import {
   payrollPeriodEndDateKey,
   summarizeClosedPayrollFunds,
 } from "@/lib/payroll";
@@ -90,117 +99,52 @@ export async function GET(request: Request) {
 
     const [
       sales,
-      purchases,
-      expenses,
-      equipment,
+      purchaseFacets,
+      expenseFacets,
+      equipmentFacets,
       payrollSettlements,
-      equipmentInvestment,
-      purchaseInvestment,
-      expenseInvestment,
-      salesFundedPurchaseInvestment,
-      salesFundedExpenseInvestment,
-      salesFundedEquipmentInvestment,
-      allSales,
-      investmentPurchases,
-      investmentEquipment,
+      cumulativeSales,
       divestments,
       activeProductRecords,
-      validBatchCount,
+      validBatch,
       latestInventorySnapshot,
-      missingPurchaseFunding,
-      missingExpenseFunding,
-      missingEquipmentFunding,
-    ] =
-      await Promise.all([
-        Sale.find({ saleDate: dateFilter }).lean(),
-        Purchase.find({ purchaseDate: dateFilter }).lean(),
-        Expense.find({ expenseDate: dateFilter }).lean(),
-        Equipment.find({ purchaseDate: dateFilter }).lean(),
-        PayrollPeriodSettlement.find({})
-          .select(
-            "period allocatedTotal reserveFundsTotal workingCapitalReserve",
-          )
-          .lean(),
-        Equipment.aggregate([
-          { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-        ]),
-        Purchase.aggregate([
-          { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-        ]),
-        Expense.aggregate([
-          {
-            $match: {
-              $or: [
-                { paymentStatus: "paid" },
-                { paymentStatus: { $exists: false } },
-                { paymentStatus: null },
-              ],
-            },
-          },
-          { $group: { _id: null, total: { $sum: "$amount" } } },
-        ]),
-        Purchase.aggregate([
-          { $match: { fundingSource: "sales_revenue" } },
-          { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-        ]),
-        Expense.aggregate([
-          {
-            $match: {
-              fundingSource: "sales_revenue",
-              $or: [
-                { paymentStatus: "paid" },
-                { paymentStatus: { $exists: false } },
-                { paymentStatus: null },
-              ],
-            },
-          },
-          { $group: { _id: null, total: { $sum: "$amount" } } },
-        ]),
-        Equipment.aggregate([
-          { $match: { fundingSource: "sales_revenue" } },
-          { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-        ]),
-        Sale.find({})
-          .select(
-            "saleDate entryMode netRevenue snowMilkRevenue freshMilkRevenue freshMilkBottleCount cashReceived bankTransferReceived",
-          )
-          .lean(),
-        Purchase.find({})
-          .select("_id totalAmount fundingSource")
-          .lean(),
-        Equipment.find({})
-          .select("_id totalAmount fundingSource")
-          .lean(),
-        Divestment.find({})
-          .select("amount claims.sourceId claims.sourceType claims.amount")
-          .lean(),
-        Product.find({ isActive: true })
-          .select("hasCostWarning fullCost sellingPrice")
-          .lean(),
-        MilkBatch.countDocuments({ costPerMl: { $gt: 0 } }),
-        InventorySnapshot.findOne({})
-          .sort({ snapshotDate: -1 })
-          .select("snapshotDate milkBatches")
-          .lean(),
-        Purchase.countDocuments({
-          $or: [
-            { fundingSource: { $exists: false } },
-            { fundingSource: null },
-          ],
-        }),
-        Expense.countDocuments({
-          $or: [
-            { fundingSource: { $exists: false } },
-            { fundingSource: null },
-          ],
-        }),
-        Equipment.countDocuments({
-          $or: [
-            { fundingSource: { $exists: false } },
-            { fundingSource: null },
-          ],
-        }),
-      ]);
+    ] = await Promise.all([
+      Sale.find({ saleDate: dateFilter })
+        .select(
+          "saleDate entryMode netRevenue snowMilkRevenue freshMilkRevenue freshMilkBottleCount totalCups totalVariableCost allocatedFixedCost estimatedProfit contributionProfit sizeSummaries.sizeName sizeSummaries.quantity sizeSummaries.referenceSellingPrice items.productName items.groupName items.quantity items.revenue",
+        )
+        .lean(),
+      Purchase.aggregate<InvestmentFacet>(investmentFacetPipeline(dateFilter)),
+      Expense.aggregate<ExpenseFacet>(expenseFacetPipeline(dateFilter)),
+      Equipment.aggregate<InvestmentFacet>(investmentFacetPipeline(dateFilter)),
+      PayrollPeriodSettlement.find({})
+        .select("period allocatedTotal reserveFundsTotal workingCapitalReserve")
+        .lean(),
+      Sale.aggregate<CumulativeSalesSummary>(cumulativeSalesPipeline),
+      Divestment.find({})
+        .select("amount claims.sourceId claims.sourceType claims.amount")
+        .lean(),
+      Product.find({ isActive: true })
+        .select("hasCostWarning fullCost sellingPrice")
+        .lean(),
+      MilkBatch.exists({ costPerMl: { $gt: 0 } }),
+      InventorySnapshot.findOne({})
+        .sort({ snapshotDate: -1 })
+        .select("snapshotDate milkBatches")
+        .lean(),
+    ]);
+    const purchases = purchaseFacets[0]?.period ?? [];
+    const expenses = expenseFacets[0]?.period ?? [];
+    const equipment = equipmentFacets[0]?.period ?? [];
+    const investmentPurchases = purchaseFacets[0]?.investments ?? [];
+    const investmentEquipment = equipmentFacets[0]?.investments ?? [];
+    const purchaseFinance = purchaseFacets[0]?.summary[0] ?? emptyFinanceSummary;
+    const expenseFinance = expenseFacets[0]?.summary[0] ?? emptyFinanceSummary;
+    const equipmentFinance = equipmentFacets[0]?.summary[0] ?? emptyFinanceSummary;
+    const missingPurchaseFunding = purchaseFinance.missingFunding;
+    const missingExpenseFunding = expenseFinance.missingFunding;
+    const missingEquipmentFunding = equipmentFinance.missingFunding;
+    const salesSummary = cumulativeSales[0];
 
     const dailySummaryDates = new Set(
       sales
@@ -468,35 +412,22 @@ export async function GET(request: Request) {
       (item) => item.netCashFlow > 0,
     ).length;
     const salesDays = daily.filter((item) => item.revenue > 0).length;
-    const allDailySummaryDates = new Set(
-      allSales
-        .filter((sale) => sale.entryMode === "daily-summary")
-        .map((sale) => vietnamDateKey(new Date(sale.saleDate))),
-    );
-    const cumulativeCashIn = allSales
-      .filter((sale) => {
-        const day = vietnamDateKey(new Date(sale.saleDate));
-        return (
-          sale.entryMode === "daily-summary" ||
-          !allDailySummaryDates.has(day)
-        );
-      })
-      .reduce((sum, sale) => sum + (sale.netRevenue ?? 0), 0);
+    const cumulativeCashIn = salesSummary?.totalRevenue ?? 0;
     const cumulativeSettledPayrollTotal =
       closedPayrollFunds.settledPayrollTotal;
     const cumulativeSeparatedReserveFundTotal =
       closedPayrollFunds.separatedReserveFundTotal;
     const cumulativeCashOut =
-      (equipmentInvestment[0]?.total ?? 0) +
-      (purchaseInvestment[0]?.total ?? 0) +
-      (expenseInvestment[0]?.total ?? 0) +
+      equipmentFinance.total +
+      purchaseFinance.total +
+      expenseFinance.total +
       cumulativeSettledPayrollTotal +
       cumulativeSeparatedReserveFundTotal;
     const businessCash = calculateBusinessCashBalance(
       cumulativeCashIn,
-      salesFundedPurchaseInvestment[0]?.total ?? 0,
-      salesFundedExpenseInvestment[0]?.total ?? 0,
-      salesFundedEquipmentInvestment[0]?.total ?? 0,
+      purchaseFinance.salesFundedTotal,
+      expenseFinance.salesFundedTotal,
+      equipmentFinance.salesFundedTotal,
       cumulativeSettledPayrollTotal,
       cumulativeSeparatedReserveFundTotal,
     );
@@ -526,7 +457,7 @@ export async function GET(request: Request) {
         href: "/products",
       });
     }
-    if (validBatchCount === 0) {
+    if (!validBatch) {
       healthIssues.push({
         key: "batches",
         severity: "error",
@@ -581,13 +512,7 @@ export async function GET(request: Request) {
         href: "/equipment",
       });
     }
-    const paymentMismatchCount = allSales.filter(
-      (sale) =>
-        sale.entryMode === "daily-summary" &&
-        Number(sale.cashReceived ?? 0) +
-          Number(sale.bankTransferReceived ?? 0) !==
-          Number(sale.netRevenue ?? 0),
-    ).length;
+    const paymentMismatchCount = salesSummary?.paymentMismatchCount ?? 0;
     if (paymentMismatchCount > 0) {
       healthIssues.push({
         key: "payment-reconciliation",
@@ -631,7 +556,7 @@ export async function GET(request: Request) {
       });
     }
     const setupRequired =
-      activeProductRecords.length === 0 || validBatchCount === 0;
+      activeProductRecords.length === 0 || !validBatch;
     const hasError = healthIssues.some((issue) => issue.severity === "error");
     const hasWarning = healthIssues.some(
       (issue) => issue.severity === "warning",
@@ -645,18 +570,9 @@ export async function GET(request: Request) {
             ? ("attention" as const)
             : ("ready" as const),
         issues: healthIssues,
-        lastSaleDate:
-          allSales.length > 0
-            ? vietnamDateKey(
-                new Date(
-                  Math.max(
-                    ...allSales.map((sale) =>
-                      new Date(sale.saleDate).getTime(),
-                    ),
-                  ),
-                ),
-              )
-            : null,
+        lastSaleDate: salesSummary?.lastSaleDate
+          ? vietnamDateKey(new Date(salesSummary.lastSaleDate))
+          : null,
         lastInventoryDate: latestInventorySnapshot?.snapshotDate
           ? vietnamDateKey(new Date(latestInventorySnapshot.snapshotDate))
           : null,

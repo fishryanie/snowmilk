@@ -7,7 +7,7 @@ import {
   DEFAULT_LEGACY_EXPENSE_PAYMENT_STATUS,
   EXPENSE_PAYMENT_STATUSES,
 } from "@/lib/expense-payment-status";
-import { schemaOptions, traceFields } from "./helpers";
+import { addReadIndexes, schemaOptions, traceFields } from "./helpers";
 
 const ExpenseSchema = new Schema(
   {
@@ -59,6 +59,8 @@ const ExpenseSchema = new Schema(
   },
   schemaOptions,
 );
+
+addReadIndexes(ExpenseSchema, "expenses");
 
 const cachedExpenseModel = mongoose.models.Expense;
 

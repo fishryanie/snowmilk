@@ -1,5 +1,5 @@
 import mongoose, { Schema } from "mongoose";
-import { schemaOptions, traceFields } from "./helpers";
+import { addReadIndexes, schemaOptions, traceFields } from "./helpers";
 
 const IngredientSchema = new Schema(
   {
@@ -21,6 +21,8 @@ const IngredientSchema = new Schema(
   },
   schemaOptions,
 );
+
+addReadIndexes(IngredientSchema, "ingredients");
 
 export const Ingredient =
   mongoose.models.Ingredient ?? mongoose.model("Ingredient", IngredientSchema);

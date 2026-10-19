@@ -1,6 +1,6 @@
 import mongoose, { Schema } from "mongoose";
 import { DEFAULT_PRODUCT_GROUP } from "@/lib/product-groups";
-import { schemaOptions, traceFields } from "./helpers";
+import { addReadIndexes, schemaOptions, traceFields } from "./helpers";
 
 const ProductPackagingItemSchema = new Schema(
   {
@@ -87,6 +87,8 @@ const ProductSchema = new Schema(
   },
   schemaOptions,
 );
+
+addReadIndexes(ProductSchema, "products");
 
 const cachedProductModel = mongoose.models.Product;
 

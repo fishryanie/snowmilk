@@ -3,7 +3,7 @@ import {
   DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
   PURCHASE_FUNDING_SOURCES,
 } from "@/lib/purchase-funding";
-import { schemaOptions, traceFields } from "./helpers";
+import { addReadIndexes, schemaOptions, traceFields } from "./helpers";
 
 const EquipmentSchema = new Schema(
   {
@@ -35,6 +35,8 @@ const EquipmentSchema = new Schema(
   },
   schemaOptions,
 );
+
+addReadIndexes(EquipmentSchema, "equipment");
 
 const cachedEquipmentModel = mongoose.models.Equipment;
 

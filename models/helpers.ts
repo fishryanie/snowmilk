@@ -1,4 +1,11 @@
-import type { SchemaDefinition } from "mongoose";
+import type { Schema, SchemaDefinition } from "mongoose";
+import { dbReadIndexes } from "@/lib/db-read-indexes";
+
+export function addReadIndexes(schema: Schema, collection: string) {
+  for (const { key, name } of dbReadIndexes[collection] ?? []) {
+    schema.index(key, { name });
+  }
+}
 
 export const traceFields: SchemaDefinition = {
   sourceSheet: { type: String, trim: true },

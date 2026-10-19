@@ -1,5 +1,5 @@
 import mongoose, { Schema } from "mongoose";
-import { schemaOptions, traceFields } from "./helpers";
+import { addReadIndexes, schemaOptions, traceFields } from "./helpers";
 
 const SizeSchema = new Schema(
   {
@@ -13,6 +13,8 @@ const SizeSchema = new Schema(
   },
   schemaOptions,
 );
+
+addReadIndexes(SizeSchema, "productsizes");
 
 export const ProductSize =
   mongoose.models.ProductSize ??

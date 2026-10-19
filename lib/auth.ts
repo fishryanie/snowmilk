@@ -16,7 +16,7 @@ const authDisabledForRollout = !isAuthEnforced();
 // operator has not configured one, use a process-local random value that fails
 // closed across restarts/instances. Production cutover requires the stable env
 // secret and proxy.ts validates it before enforcing auth globally.
-const rolloutBaseUrl = authDisabledForRollout ? "http://localhost:3000" : undefined;
+const rolloutBaseUrl = authDisabledForRollout ? "http://localhost:3001" : undefined;
 const rolloutSecret = authDisabledForRollout
   ? randomBytes(32).toString("hex")
   : undefined;

@@ -35,7 +35,8 @@ cp .env.example .env.local
 bun run dev
 ```
 
-Mở [http://localhost:3000](http://localhost:3000). Với môi trường production
+Mở [http://localhost:3001](http://localhost:3001). Nếu đổi cổng dev, cập nhật
+`BETTER_AUTH_URL` tương ứng để đăng nhập không bị lỗi origin. Với môi trường production
 hoặc khi cần đọc baseline thật, giữ nguyên cấu hình Atlas trong `.env.local`:
 
 ```env
@@ -120,6 +121,12 @@ bun run typecheck
 bun run build
 ```
 
+## Hiệu năng truy vấn
+
+Đo hiệu năng truy vấn và kiểm tra/thêm index bằng `bun run db:profile`,
+`bun run db:indexes` (dry-run) và `bun run db:indexes --apply`.
+Xem kết quả đo và cách kiểm thử tại [docs/database-performance.md](docs/database-performance.md).
+
 ## Backup và restore
 
 ```bash
@@ -161,6 +168,41 @@ docs/                   phân tích, schema, business rules, đối chiếu
 - `/equipment`
 - `/import`
 - `/settings`
+- `/storefront/orders` — đơn hàng đặt qua app, bill chuyển khoản và trạng thái giao hàng.
+- `/storefront/products` — thêm, sửa, xóa món, ảnh, giá, topping và số lượng bán online.
+- `/storefront/settings` — thông tin shop, ảnh QR chuyển khoản và phí giao hàng.
+
+## Quản trị cửa hàng online trên web
+
+Mở nhóm **Cửa hàng online** trên menu để vào **Đơn hàng online**, **Món trên app**
+và **Shop & QR chuyển khoản**. Menu trên app dùng `storefront_products`, cài đặt
+dùng `storefront_settings`, đơn dùng `storefront_orders` trong cùng database và
+`STOREFRONT_STORE_ID` với app đặt món. Danh mục `/products` tiếp tục dùng cho
+công thức/giá vốn. Đơn online chưa tự cộng vào phiếu chốt ngày.
+
+Thiết lập một lần trên server có cấu hình MongoDB đúng của tiệm:
+
+```sh
+bun --env-file=.env.local scripts/setup-online-admin.ts
+```
+
+Script chuẩn bị tổ chức/điểm bán nếu còn thiếu và ghi cấu hình cửa hàng, secret
+đăng nhập và mã thiết lập vào `.env.local`; không chuyển đổi kho/doanh thu.
+Khởi động lại server rồi vào `/sign-in/storefront-setup`, nhập tên, email,
+mật khẩu và mã `AUTH_BOOTSTRAP_TOKEN` lấy tại server để tạo chủ quán đầu tiên.
+Nếu đã có owner, dùng tài khoản hiện tại; không tạo lại. Xóa mã bootstrap khỏi
+môi trường server sau khi thiết lập. Khi deploy, cấu hình các biến tương ứng
+trên server và `BETTER_AUTH_URL` theo domain admin.
+
+API cửa hàng luôn yêu cầu phiên đăng nhập thật và đúng tổ chức, kể cả khi
+auth legacy đang tắt. Owner quản lý món/QR; staff xử lý đơn; viewer chỉ xem.
+Ảnh upload nhận JPG/PNG/WebP tối đa 1,4 MB; bấm **Lưu** sau khi chọn ảnh.
+Xóa món yêu cầu phiên bản mới nhất để tránh xóa từ danh sách cũ sau khi có
+đơn mới. Các đơn đã đặt giữ nguyên tên, giá và topping kể cả khi món bị xóa.
+Đơn được lọc trên server theo số điện thoại/trạng thái, phân trang 50 đơn,
+tự cập nhật 15 giây; phải có lý do khi hủy đơn.
+Đơn COD hiển thị rõ số tiền cần thu khi giao; đơn chuyển khoản có phần xem bill
+và xác nhận tiền. Chưa có QR vẫn nhận COD, còn đơn chuyển khoản cần QR hợp lệ.
 
 ## Quy tắc quan trọng
 

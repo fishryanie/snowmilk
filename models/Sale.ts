@@ -1,6 +1,6 @@
 import mongoose, { Schema } from "mongoose";
 import { DEFAULT_PRODUCT_GROUP } from "@/lib/product-groups";
-import { schemaOptions, traceFields } from "./helpers";
+import { addReadIndexes, schemaOptions, traceFields } from "./helpers";
 
 const SaleItemSchema = new Schema(
   {
@@ -107,6 +107,8 @@ const SaleSchema = new Schema(
   },
   schemaOptions,
 );
+
+addReadIndexes(SaleSchema, "sales");
 
 SaleSchema.index(
   { saleDate: 1, batchName: 1, paymentMethod: 1 },

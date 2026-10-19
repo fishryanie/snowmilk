@@ -1,6 +1,6 @@
 import mongoose, { Schema } from "mongoose";
 import { DIVESTMENT_CLAIM_SOURCE_TYPES } from "@/lib/divestment-claims";
-import { schemaOptions, traceFields } from "./helpers";
+import { addReadIndexes, schemaOptions, traceFields } from "./helpers";
 
 const DivestmentClaimSchema = new Schema(
   {
@@ -30,6 +30,8 @@ const DivestmentSchema = new Schema(
   },
   schemaOptions,
 );
+
+addReadIndexes(DivestmentSchema, "divestments");
 
 DivestmentSchema.index(
   { "claims.sourceKey": 1 },

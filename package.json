@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "bun@1.1.34",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 3001",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -14,6 +14,8 @@
     "db:start": "bun scripts/mongo-local.ts start",
     "db:status": "bun scripts/mongo-local.ts status",
     "db:stop": "bun scripts/mongo-local.ts stop",
+    "db:indexes": "bun scripts/db-read-indexes.ts",
+    "db:profile": "bun scripts/db-query-profile.ts",
     "db:backup": "bun scripts/db-backup.ts",
     "db:restore": "bun scripts/db-restore.ts",
     "recalculate:estimated-sales": "bun scripts/recalculate-estimated-sales.ts",
@@ -42,7 +44,8 @@
     "react-dom": "19.2.4",
     "react-hook-form": "^7.82.0",
     "server-only": "^0.0.1",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

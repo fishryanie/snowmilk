@@ -3,6 +3,7 @@
 import { LockOutlined, MailOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Form, Input, Typography } from "antd";
 import { useState, type CSSProperties } from "react";
+import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
 
 type Credentials = {
@@ -36,7 +37,13 @@ export function SignInForm({
         callbackURL: destination,
       });
       if (result.error) {
-        setError("Email hoặc mật khẩu chưa đúng.");
+        setError(
+          result.error.code === "INVALID_ORIGIN"
+            ? "Địa chỉ admin chưa khớp cấu hình đăng nhập trên server."
+            : result.error.status === 401
+              ? "Email hoặc mật khẩu chưa đúng."
+              : "Không thể đăng nhập lúc này. Hãy thử lại.",
+        );
         return;
       }
       window.location.assign(destination);
@@ -108,6 +115,7 @@ export function SignInForm({
             Đăng nhập
           </Button>
         </Form>
+        <Link href="/sign-in/storefront-setup">Thiết lập chủ quán lần đầu</Link>
       </Card>
     </main>
   );

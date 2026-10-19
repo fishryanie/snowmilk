@@ -1,5 +1,5 @@
 import mongoose, { Schema } from "mongoose";
-import { schemaOptions, traceFields } from "./helpers";
+import { addReadIndexes, schemaOptions, traceFields } from "./helpers";
 
 const BatchIngredientSchema = new Schema(
   {
@@ -52,6 +52,8 @@ const MilkBatchSchema = new Schema(
   },
   schemaOptions,
 );
+
+addReadIndexes(MilkBatchSchema, "milkbatches");
 
 const cachedMilkBatchModel = mongoose.models.MilkBatch;
 

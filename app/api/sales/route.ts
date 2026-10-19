@@ -16,6 +16,7 @@ import { Sale } from "@/models/Sale";
 import { Setting } from "@/models/Setting";
 import { vietnamDayBoundary } from "@/lib/vietnam-date";
 import { dailySaleSchema } from "@/lib/validators/sales";
+import { parseSalesHistoryQuery, salesHistoryCursor, SalesHistoryQueryError } from "@/lib/sales-history";
 
 const DAILY_PAYMENT_METHOD = "Khác";
 
@@ -135,19 +136,30 @@ async function dailySaleContext(selectedBatchId?: string) {
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { filter, limit, view } = parseSalesHistoryQuery(new URL(request.url).searchParams);
     await connectMongo();
-    const [history, context] = await Promise.all([
-      Sale.find({ entryMode: "daily-summary" })
-        .sort({ saleDate: -1 })
-        .limit(250)
-        .lean(),
-      dailySaleContext(),
-    ]);
+    const historyQuery = Sale.find(filter).sort({ saleDate: -1, _id: -1 });
+    if (view === 'history') {
+      const rows = await historyQuery
+        .select('_id saleDate cashReceived bankTransferReceived')
+        .limit(limit + 1)
+        .lean();
+      const history = rows.slice(0, limit);
+      const last = history[history.length - 1];
+      return apiSuccess({
+        history,
+        nextCursor: rows.length > limit && last ? salesHistoryCursor(last) : null,
+      });
+    }
+    if (view === 'record') {
+      return apiSuccess({ history: await historyQuery.limit(limit).lean() });
+    }
+    const [history, context] = await Promise.all([historyQuery.limit(limit).lean(), dailySaleContext()]);
     return apiSuccess({ history, ...context });
   } catch (error) {
-    return apiError(errorMessage(error), 503);
+    return apiError(errorMessage(error), error instanceof SalesHistoryQueryError ? 400 : 503);
   }
 }
 

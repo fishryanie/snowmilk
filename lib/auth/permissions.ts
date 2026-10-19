@@ -65,6 +65,12 @@ export function permissionForRequest(
   method: string,
 ): Permission {
   const normalizedMethod = method.toUpperCase();
+  if (pathname.startsWith("/api/storefront-admin/")) {
+    const read = isReadMethod(normalizedMethod);
+    if (pathname.includes("/orders") || pathname.includes("/receipt")) return read ? "sales:read" : "sales:write";
+    if (pathname.endsWith("/settings")) return read ? "catalog:read" : "settings:manage";
+    return read ? "catalog:read" : "catalog:write";
+  }
 
   if (isReadMethod(normalizedMethod)) {
     if (
