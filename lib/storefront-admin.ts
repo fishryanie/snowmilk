@@ -2,13 +2,15 @@ import "server-only";
 import { getAuthMongo } from "@/lib/auth/mongo";
 import { requirePermission } from "@/lib/auth/dal";
 import type { Permission } from "@/lib/auth/permissions";
+import { authUrlConfig } from "@/lib/auth/urls";
 import { CommerceStore } from "@/lib/storefront-core/store";
 import { CommerceError } from "@/lib/storefront-core/validation";
 import { ZodError } from "zod";
 export async function adminStore(request: Request, permission: Permission) {
   if (request.method === "POST") {
-    const allowed = new URL(process.env.BETTER_AUTH_URL || request.url).origin;
-    if (request.headers.get("origin") !== allowed)
+    const { trustedOrigins } = authUrlConfig();
+    const allowed = trustedOrigins.length ? trustedOrigins : [new URL(request.url).origin];
+    if (!allowed.includes(request.headers.get("origin") || ""))
       throw new CommerceError("Yêu cầu không đúng nguồn quản trị.", 403);
   }
   const access = await requirePermission(request.headers, permission);

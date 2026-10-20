@@ -194,6 +194,22 @@ Nếu đã có owner, dùng tài khoản hiện tại; không tạo lại. Xóa 
 môi trường server sau khi thiết lập. Khi deploy, cấu hình các biến tương ứng
 trên server và `BETTER_AUTH_URL` theo domain admin.
 
+### Đăng nhập sau khi deploy Vercel
+
+Nếu thấy **“Địa chỉ admin chưa khớp cấu hình đăng nhập trên server.”**, kiểm tra
+**Project → Settings → Environment Variables**. Đặt `BETTER_AUTH_URL` theo origin
+admin thực tế, ví dụ `https://admin.example.com` hoặc `https://ten-project.vercel.app`,
+không thêm `/sign-in`, không giữ `http://localhost:3001` của máy dev. Chọn đúng
+môi trường **Production** hoặc **Preview**, rồi **Redeploy** để áp dụng.
+
+Khi không đặt `BETTER_AUTH_URL`, app dùng domain production của Vercel cho bản
+Production, hoặc URL nhánh/deployment cho Preview. Các URL nhánh và deployment
+do Vercel cung cấp được thêm vào danh sách origin đăng nhập và quản trị cửa hàng;
+không cho phép chung mọi domain `*.vercel.app`. Domain riêng cần khai báo qua
+`BETTER_AUTH_URL`. `localhost:3001` chỉ là mặc định khi chạy ngoài production.
+Giữ `BETTER_AUTH_SECRET` ổn định trên server để phiên đăng nhập dùng được giữa
+các instance.
+
 API cửa hàng luôn yêu cầu phiên đăng nhập thật và đúng tổ chức, kể cả khi
 auth legacy đang tắt. Owner quản lý món/QR; staff xử lý đơn; viewer chỉ xem.
 Ảnh upload nhận JPG/PNG/WebP tối đa 1,4 MB; bấm **Lưu** sau khi chọn ảnh.

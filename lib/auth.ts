@@ -5,6 +5,7 @@ import { betterAuth } from "better-auth/minimal";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { isAuthEnforced } from "@/lib/auth/config";
 import { getAuthMongo } from "@/lib/auth/mongo";
+import { authUrlConfig } from "@/lib/auth/urls";
 import { DEFAULT_BUSINESS_PROFILE } from "@/lib/business-profile";
 
 const { client, db } = getAuthMongo();
@@ -16,7 +17,6 @@ const authDisabledForRollout = !isAuthEnforced();
 // operator has not configured one, use a process-local random value that fails
 // closed across restarts/instances. Production cutover requires the stable env
 // secret and proxy.ts validates it before enforcing auth globally.
-const rolloutBaseUrl = authDisabledForRollout ? "http://localhost:3001" : undefined;
 const rolloutSecret = authDisabledForRollout
   ? randomBytes(32).toString("hex")
   : undefined;
@@ -24,7 +24,7 @@ const rolloutSecret = authDisabledForRollout
 function authOptions(disableSignUp: boolean) {
   return {
     appName: DEFAULT_BUSINESS_PROFILE.displayName,
-    baseURL: process.env.BETTER_AUTH_URL ?? rolloutBaseUrl,
+    ...authUrlConfig(),
     secret: process.env.BETTER_AUTH_SECRET ?? rolloutSecret,
     database: mongodbAdapter(db, { client, transaction: true }),
     emailAndPassword: {
