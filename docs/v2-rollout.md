@@ -29,8 +29,7 @@ và apply. URI, username và password không được ghi vào output/log.
 | Chênh lệch thanh toán | 0đ |
 | Ly Sữa Tuyết ước tính | 2.893 |
 
-`2.893` ly không được materialize thành SKU thực tế và không được tạo stock
-movement hồi tố.
+`2.893` ly không được materialize thành SKU thực tế.
 
 ## 3. Dry-run online
 
@@ -44,7 +43,6 @@ bun run migrate:v2 --catalog-map=config/v2-catalog-map.online-snowmilk.json
   `scheme=mongodb+srv`, `dbName=snowmilk`.
 - Catalog map 12/12 product, không còn exception.
 - Sales 20/20 ngày và mọi tổng ở mục 2 khớp.
-- `noRetroactiveStockMovements=true`.
 - Lưu checksum và reconciliation report vào hồ sơ cutover.
 
 Dry-run là read-only; không tạo cả migration receipt trong database.
@@ -58,7 +56,6 @@ Dry-run là read-only; không tạo cả migration receipt trong database.
 - Owner đã đo và chốt ngoài hệ thống các yield nguyên liệu thô cùng hạn dùng
   thực tế của Hộp Healthy, sẵn sàng nhập ngay trong maintenance window sau
   khi seed v2 tồn tại.
-- Đã kiểm kho vật lý tại điểm bán, chuẩn bị opening balances.
 - Feature flag `V2_OPERATIONS_ENABLED` vẫn `disabled`, đã test và có kế hoạch
   rollback.
 - Maintenance window và người chịu trách nhiệm được xác nhận.
@@ -86,8 +83,8 @@ upsert/idempotency receipt để chạy lại không nhân đôi dữ liệu.
    token. API v2 luôn yêu cầu session thật kể cả khi proxy legacy chưa bật auth.
 5. Trong maintenance window, bật đồng thời `AUTH_ENFORCEMENT=enabled` và
    `V2_OPERATIONS_ENABLED=enabled`; chưa mở lại hệ thống cho người dùng.
-6. Phiếu kiểm kho posted đầu tiên tại location tự tạo opening movements từ số
-   đếm vật lý; không replay 144 purchases để suy đoán tồn hiện tại.
+6. Kiểm tra danh mục và phiếu nhập: số lượng mua, thành tiền và đơn giá giữ
+   nguyên; nhập hàng và chốt ngày không phụ thuộc số dư kho.
 7. Owner nhập yield/hạn dùng đã đo, phát hành recipe Healthy, rồi đối soát 20
    ngày, business line, cash/bank và số chai.
 8. Mở lại hệ thống và chuyển read/write sang v2; không dual-write kéo dài.
@@ -103,5 +100,5 @@ upsert/idempotency receipt để chạy lại không nhân đôi dữ liệu.
 3. Bootstrap owner đầu tiên, đăng nhập thử và đọc lại membership.
 4. Xóa `AUTH_BOOTSTRAP_TOKEN` khỏi môi trường.
 5. Bật `AUTH_ENFORCEMENT=enabled` cùng lúc với cutover vận hành v2.
-6. Kiểm thử owner/staff/viewer trên cả UI và API; staff được kiểm kho/chốt ngày,
-   chỉ owner được mở lại ngày hoặc điều chỉnh kho thủ công.
+6. Kiểm thử owner/staff/viewer trên cả UI và API; staff được nhập hàng/chốt ngày,
+   chỉ owner được mở lại ngày.

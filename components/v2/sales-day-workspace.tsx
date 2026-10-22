@@ -45,7 +45,6 @@ type CatalogSku = {
   businessLine: { id?: string; code: string; name: string } | null;
   category?: { id?: string; code: string; name: string } | null;
   fulfillment: 'made_to_order' | 'preproduced' | string;
-  availableQuantity?: number | null;
   canSell?: boolean;
 };
 
@@ -195,7 +194,6 @@ export function SalesDayWorkspace({ initialDate }: { initialDate?: string }) {
     let discountVnd = 0;
     let refundVnd = 0;
     let quantity = 0;
-    const blocked: CatalogSku[] = [];
 
     for (const line of day.lines) {
       const sku = line.skuId ? skuById.get(line.skuId) : undefined;
@@ -204,13 +202,7 @@ export function SalesDayWorkspace({ initialDate }: { initialDate?: string }) {
       grossVnd += lineQuantity * Number(line.unitPriceVnd ?? sku?.unitPriceVnd ?? 0);
       discountVnd += Math.max(0, Number(line?.discountVnd ?? 0));
       refundVnd += Math.max(0, Number(line?.refundVnd ?? 0));
-      if (
-        sku?.fulfillment === 'preproduced' &&
-        sku.availableQuantity != null &&
-        lineQuantity > sku.availableQuantity
-      ) {
-        blocked.push(sku);
-      }
+
     }
 
     let netVnd = Math.max(0, grossVnd - discountVnd - refundVnd);
@@ -233,7 +225,6 @@ export function SalesDayWorkspace({ initialDate }: { initialDate?: string }) {
       collectedVnd,
       differenceVnd: collectedVnd - netVnd,
       quantity,
-      blocked,
     };
   }, [day.lines, day.payments, day.status, day.totals, skuById]);
 
@@ -332,10 +323,6 @@ export function SalesDayWorkspace({ initialDate }: { initialDate?: string }) {
       setSubmitError('Tài khoản hiện tại không có quyền chốt ngày.');
       return;
     }
-    if (totals.blocked.length > 0) {
-      setSubmitError('Số hộp bán đang vượt tồn thành phẩm. Hãy bổ sung mẻ đã làm.');
-      return;
-    }
     if (totals.differenceVnd !== 0) {
       setSubmitError('Tiền thực nhận phải bằng doanh thu thuần trước khi chốt ngày.');
       return;
@@ -379,7 +366,7 @@ export function SalesDayWorkspace({ initialDate }: { initialDate?: string }) {
       );
       setDay(normalizeSalesDay(result));
       closeAttempt.current = null;
-      message.success('Đã chốt ngày và cập nhật doanh thu, tồn kho.');
+      message.success('Đã chốt ngày và cập nhật doanh thu.');
     } catch (error) {
       const text = errorText(
         error,
@@ -522,11 +509,7 @@ export function SalesDayWorkspace({ initialDate }: { initialDate?: string }) {
           onClose={() => setSubmitError(null)}
           title='Chưa thể hoàn tất'
           description={submitError}
-          action={
-            totals.blocked.length > 0 ? (
-              <Link href='/preparation'>Bổ sung mẻ đã làm</Link>
-            ) : undefined
-          }
+
         />
       ) : null}
 
@@ -561,14 +544,10 @@ export function SalesDayWorkspace({ initialDate }: { initialDate?: string }) {
                     const quantity = Number(line?.quantity ?? 0);
                     const unitPriceVnd = line?.unitPriceVnd ?? sku.unitPriceVnd;
                     const missingPrice = unitPriceVnd == null;
-                    const stockBlocked =
-                      sku.fulfillment === 'preproduced' &&
-                      sku.availableQuantity != null &&
-                      quantity > sku.availableQuantity;
                     return (
                       <Card
                         key={sku.id}
-                        className={`surface-card v2-product-card${stockBlocked ? ' is-blocked' : ''}`}
+                        className='surface-card v2-product-card'
                       >
                         <div className='v2-product-main'>
                           <div className='v2-product-copy'>
@@ -583,9 +562,7 @@ export function SalesDayWorkspace({ initialDate }: { initialDate?: string }) {
                             </Space>
                             <Text type='secondary'>
                               {missingPrice ? 'Chưa thể bán' : `${formatVnd(unitPriceVnd)} / món`}
-                              {sku.availableQuantity != null
-                                ? ` · Còn ${sku.availableQuantity}`
-                                : ''}
+
                             </Text>
                           </div>
                           <label className='v2-quantity-control'>
@@ -607,16 +584,6 @@ export function SalesDayWorkspace({ initialDate }: { initialDate?: string }) {
                           <Text type='secondary'>Thành tiền</Text>
                           <Text strong>{formatVnd(quantity * Number(unitPriceVnd ?? 0))}</Text>
                         </div>
-                        {stockBlocked ? (
-                          <Alert
-                            type='warning'
-                            showIcon
-                            title={`Vượt tồn ${quantity - Number(sku.availableQuantity)} hộp`}
-                            description={
-                              <Link href='/preparation'>Mở Chuẩn bị để bổ sung mẻ đã làm</Link>
-                            }
-                          />
-                        ) : null}
                         <details className='v2-line-adjustments'>
                           <summary>Giảm giá hoặc hoàn tiền cho món này</summary>
                           <div className='v2-adjustment-grid'>
@@ -790,7 +757,6 @@ export function SalesDayWorkspace({ initialDate }: { initialDate?: string }) {
                     disabled={
                       totals.quantity <= 0 ||
                       totals.differenceVnd !== 0 ||
-                      totals.blocked.length > 0 ||
                       unmatchedLines.length > 0
                     }
                     onClick={handleCloseDay}
@@ -849,7 +815,6 @@ export function SalesDayWorkspace({ initialDate }: { initialDate?: string }) {
               disabled={
                 totals.quantity <= 0 ||
                 totals.differenceVnd !== 0 ||
-                totals.blocked.length > 0 ||
                 unmatchedLines.length > 0
               }
               onClick={handleCloseDay}

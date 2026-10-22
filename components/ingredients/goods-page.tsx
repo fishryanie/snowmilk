@@ -1,9 +1,7 @@
 "use client";
 
-import { Tabs } from "antd";
 import { PageHeader } from "@/components/common/page-header";
 import { ResourceManager } from "@/components/common/resource-manager";
-import { InventoryWorkspace } from "@/components/inventory/inventory-workspace";
 import { workbookIngredients } from "@/lib/workbook-snapshot";
 
 const fields = [
@@ -59,47 +57,19 @@ const fields = [
   },
 ];
 
-export function GoodsPage({
-  initialSnapshotDate,
-  initialTab,
-}: {
-  initialSnapshotDate?: string;
-  initialTab: "inventory" | "catalog";
-}) {
+export function GoodsPage() {
   return (
     <div className="page-wrap goods-page">
       <PageHeader
-        title="Hàng hóa & kiểm kho"
-        description="Đếm tồn cuối ngày và quản lý danh mục nguyên liệu, topping, bao bì tại cùng một nơi."
+        title="Danh mục hàng hóa"
+        description="Quản lý nguyên liệu, topping, bao bì, quy cách mua và giá vốn."
       />
-      <Tabs
-        className="goods-tabs"
-        defaultActiveKey={initialTab}
-        items={[
-          {
-            key: "inventory",
-            label: "Kiểm kho",
-            children: (
-              <InventoryWorkspace
-                embedded
-                initialSnapshotDate={initialSnapshotDate}
-              />
-            ),
-          },
-          {
-            key: "catalog",
-            label: "Danh mục hàng hóa",
-            children: (
-              <ResourceManager
-                resource="ingredients"
-                fields={fields}
-                initialData={workbookIngredients}
-                addLabel="Thêm hàng hóa"
-                editorColumns={2}
-              />
-            ),
-          },
-        ]}
+      <ResourceManager
+        resource="ingredients"
+        fields={fields}
+        initialData={workbookIngredients}
+        addLabel="Thêm hàng hóa"
+        editorColumns={2}
       />
     </div>
   );

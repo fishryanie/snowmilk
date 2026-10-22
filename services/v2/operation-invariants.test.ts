@@ -4,7 +4,6 @@ import {
   persistedSalesTotals,
   reversalRevenueSnapshot,
   salesOperationRequestHash,
-  stockCountAmounts,
 } from "@/services/v2/operation-invariants";
 import { DomainError } from "@/services/v2/errors";
 import { assertWriteReplay } from "@/services/v2/write-idempotency";
@@ -29,39 +28,7 @@ describe("v2 service persistence invariants", () => {
     });
   });
 
-  test("keeps unknown stock cost null instead of fabricating zero", () => {
-    expect(
-      stockCountAmounts({
-        expectedQuantity: "2",
-        countedQuantity: "5",
-        averageUnitCostVnd: null,
-        costDataQuality: "missing_cost",
-      }),
-    ).toEqual({
-      varianceQuantity: "3",
-      unitCostVnd: null,
-      varianceValueVnd: null,
-      countedInventoryValueVnd: null,
-      costDataQuality: "missing_cost",
-    });
-  });
 
-  test("revalues a known-cost count and keeps signed variance", () => {
-    expect(
-      stockCountAmounts({
-        expectedQuantity: "5",
-        countedQuantity: "2",
-        averageUnitCostVnd: "1234.5",
-        costDataQuality: "complete",
-      }),
-    ).toEqual({
-      varianceQuantity: "-3",
-      unitCostVnd: "1234.5",
-      varianceValueVnd: -3_704,
-      countedInventoryValueVnd: 2_469,
-      costDataQuality: "complete",
-    });
-  });
 
   test("hashes the complete idempotency key, not only a collision-prone suffix", () => {
     expect(operationKeySuffix("first-shared-tail")).not.toBe(

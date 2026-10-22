@@ -1,5 +1,15 @@
 # Hiệu năng truy vấn MongoDB
 
+## Chốt doanh thu đơn giản (22/10/2026)
+
+- `/sales` chỉ tải `/api/sales?limit=50`, không lấy danh mục món, mẻ, giả định hay settings.
+- `sales` chỉ lưu ngày, tiền mặt, chuyển khoản và `_id`; doanh thu báo cáo/quỹ lương/vốn được cộng khi đọc. Đã bỏ script và thư viện tính doanh thu ước tính.
+- Lịch sử trả ba trường, đọc tối đa 51 dòng để xác định trang kế tiếp, dùng cursor theo ngày và unique index `saleDate_1`; không `skip`, không đếm cả bảng.
+- `bun run db:simplify-sales` kiểm tra dữ liệu; thêm `--apply` để sao lưu EJSON vào `backups/sales-simplify/`, đối soát số tiền, thay document trong transaction và bỏ index dư. Script dừng nếu thiếu khoản tiền, lệch tổng cũ hoặc trùng ngày; không tự suy đoán.
+- Bộ dữ liệu 85 ngày: BSON của danh sách giảm từ 178.237 xuống 7.486 byte (khoảng 95,8%); đây là kích thước document, không phải phần đĩa WiredTiger được thu hồi ngay.
+- Tổng tiền giữ nguyên: tiền mặt 164.852.000đ, chuyển khoản 106.974.000đ. Các kết quả benchmark cũ bên dưới là lịch sử trước thay đổi này.
+
+
 Đo ngày 13/10/2026 trên database Atlas `snowmilk`. Dữ liệu tại thời điểm đo:
 314 phiếu nhập, 76 bản chốt bán hàng, 48 nguyên liệu và 18 sản phẩm.
 
@@ -44,7 +54,7 @@ Danh sách dùng chung nằm ở `lib/db-read-indexes.ts`:
   ingredientId, itemCode và category.
 - Lịch sử bán hàng theo entryMode + saleDate + _id, hỗ trợ cursor và ngày trùng.
 - Danh sách sản phẩm, nguyên liệu, size, mẻ, chi phí và tài sản theo createdAt.
-- Nguyên liệu kiểm kho theo isActive + category + name.
+- Danh mục nguyên liệu theo isActive + category + name.
 - Mẻ theo cookedAt + createdAt; thu hồi vốn theo withdrawalDate + createdAt.
 
 `explain("executionStats")` xác nhận 8 truy vấn trong profiler đều dùng
@@ -81,6 +91,77 @@ DB_PERFORMANCE_TEST_MONGODB_URI='mongodb://127.0.0.1:27030/' bun test lib/dashbo
 nguồn vốn sau claim/xóa nguồn, ranh giới ngày Việt Nam và kết quả sắp xếp
 trước/sau index. Database fixture tự được xóa sau test.
 
+
+## API danh sách đơn online — 22/10/2026
+
+Đo trực tiếp Atlas bằng cấu hình local, chỉ đọc: 7 đơn của cửa hàng trả về
+1.070.164 byte dù đã loại `receipt` và `payment`. Riêng ảnh base64 tại
+`quote.lines.imageUrl` chiếm 1.059.622 byte. Bảng quản trị không hiển thị
+ảnh món; nút Chi tiết gọi API riêng.
+
+Lần tối ưu ban đầu, API `/api/storefront-admin/orders` dùng `listOrders(..., { includeImages: false })`
+để loại ảnh ngay trong MongoDB projection. Kết quả vẫn giữ cấu trúc cũ với
+`imageUrl: ""`; các trường khác, cursor, bộ lọc, phân quyền và xử lý đơn hết hạn
+giữ nguyên. Mặc định `listOrders()` và API chi tiết vẫn trả ảnh snapshot.
+
+Trong lượt đo cùng kết nối, dữ liệu query giảm còn 10.542 byte (khoảng 99%);
+trung vị ba lần đọc giảm từ 130 xuống 48 ms. MongoDB thực thi khoảng 1 ms,
+chỉ đọc 7 documents. Đây là số đo query từ máy local, không phải thời gian HTTP
+của deployment có đăng nhập. Kết nối mới mất khoảng 962 ms trong lượt này.
+
+Response danh sách có `Server-Timing` với hai mục `auth` và `orders` để phân biệt
+chi phí session/phân quyền với truy vấn, xử lý hết hạn và tạo response. Chưa đo
+được HTTP có đăng nhập trên production; request không có session trả 401.
+Header production hiện cho thấy function chạy ở `iad1`; cần đối chiếu region
+Atlas và đo lại sau deploy nếu thời gian server vẫn cao.
+
+Profiler chỉ đọc, in số đo và đối chiếu dữ liệu trước/sau, không in nội dung đơn:
+
+```sh
+bun scripts/storefront-orders-profile.ts
+DB_PERFORMANCE_TEST_MONGODB_URI='mongodb://127.0.0.1:27030/' bun test lib/storefront-core
+```
+
+Ba test MongoDB mới dùng database tạm riêng, kiểm tra giảm payload, tổng tiền,
+phương thức thanh toán legacy/bill, tenant/owner/phone/status, cursor và việc
+đọc danh sách không làm mất ảnh trong snapshot gốc hay API chi tiết.
+
+### Bảng đơn rút gọn và chi tiết tải khi bấm xem — 22/10/2026
+
+API danh sách hiện dùng `listAdminOrders()`, projection chỉ lấy mã đơn, ngày đặt,
+trạng thái, tổng tiền, tên và số điện thoại. Không đọc giỏ hàng, lịch sử,
+địa chỉ, ảnh món, QR hay bill trong query danh sách. Giữ phân trang cursor
+50 đơn, lọc số điện thoại/trạng thái và xử lý đơn quá hạn.
+
+API chi tiết quản trị dùng `adminOrder()`: tên món/topping, số lượng, đơn giá,
+thành tiền và tổng thanh toán; không chuyển ảnh món, QR hay dữ liệu bill.
+Bill vẫn chỉ tải khi bấm xem bill. Snapshot gốc và các phương thức đọc đơn
+cho khách không bị sửa. Hủy/xóa/xử lý hết hạn chỉ đọc ID món và số lượng
+cần cho hoàn kho; xóa đơn đang xử lý hoàn kho trong cùng transaction,
+đơn đã hủy/hết hạn/hoàn tất không hoàn kho thêm lần nữa.
+
+Đo lại chỉ đọc trên cùng 7 đơn Atlas: query danh sách còn 1.370 byte,
+response `{ orders, nextCursor }` còn 1.322 byte, giá trị trên bảng khớp
+hoàn toàn. Ba lượt query 45/45/44 ms so với 46/47/46 ms khi vẫn đọc giỏ hàng
+không ảnh; MongoDB thực thi 1 ms, đọc 7 documents/7 keys, không có SORT.
+Đây là số đo query, không phải HTTP có đăng nhập hay thời gian tải giao diện.
+
+Đã thêm hai index `{ storeId: 1, _id: -1 }` và
+`{ storeId: 1, status: 1, _id: -1 }` vào manifest và Atlas để hỗ trợ
+danh sách theo cửa hàng/trạng thái khi dữ liệu tăng. Giữ index lọc điện thoại
+hiện hữu. Dry-run riêng collection sau apply không còn index thiếu:
+
+```sh
+bun scripts/db-read-indexes.ts --collection=storefront_orders
+bun run test:storefront-orders
+DB_PERFORMANCE_TEST_MONGODB_URI='mongodb://127.0.0.1:27030/' bun test lib/storefront-core
+```
+
+DOM test chạy React/Ant Design thật với HTTP giả: kiểm tra cột, tooltip,
+API chi tiết chỉ gọi khi bấm xem, đổi trạng thái, hủy bắt buộc lý do, xóa,
+quyền chỉ xem và không render ảnh món. MongoDB test dùng database fixture
+riêng để kiểm tra projection, legacy payment, phân trang/bộ lọc/tenant,
+hết hạn và giữ nguyên danh mục món khi hủy/xóa đơn đồng thời.
 
 ## Tải trang và cache — 22/10/2026
 

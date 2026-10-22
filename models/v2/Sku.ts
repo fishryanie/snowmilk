@@ -4,7 +4,6 @@ import {
   ActorSchema,
   LegacySourceSchema,
   SALES_UNIT_VALUES,
-  type V2HookDocument,
   v2SchemaOptions,
   versionField,
   V2_COLLECTIONS,
@@ -67,8 +66,7 @@ const SkuSchema = new Schema(
     },
     sortOrder: { type: Number, required: true, min: 0, default: 0 },
     legacySource: { type: LegacySourceSchema },
-    // Historical reference only. V2 costing must come from immutable recipe,
-    // production and stock snapshots, never silently from this legacy value.
+    // Historical reference retained for migrated catalogue records.
     legacyCostSnapshot: { type: Schema.Types.Mixed, immutable: true },
     isActive: activeField,
     version: versionField,
@@ -104,16 +102,6 @@ SkuSchema.index(
     name: "uq_sku_legacy_source",
   },
 );
-
-SkuSchema.pre("validate", function () {
-  const doc = this as V2HookDocument;
-  if (doc.fulfillmentMode === "preproduced" && !doc.outputInventoryItemId) {
-    doc.invalidate(
-      "outputInventoryItemId",
-      "SKU làm sẵn phải liên kết với hàng tồn kho thành phẩm.",
-    );
-  }
-});
 
 export const Sku =
   mongoose.models.V2Sku ?? mongoose.model("V2Sku", SkuSchema);

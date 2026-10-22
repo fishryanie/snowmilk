@@ -1,3 +1,4 @@
+import { dailyClosingsFromWorkbook } from "@/lib/sales-import";
 import { connectMongo } from "@/lib/mongodb";
 import type { ParsedWorkbook } from "@/lib/excel/mapper";
 import { importSummary } from "@/lib/excel/mapper";
@@ -31,6 +32,7 @@ export async function persistWorkbook(
   parsed: ParsedWorkbook,
   fileName: string,
 ) {
+  const sales = dailyClosingsFromWorkbook(parsed.sales);
   await connectMongo();
 
   await Promise.all([
@@ -55,16 +57,18 @@ export async function persistWorkbook(
     parsed.milkBatches.length
       ? MilkBatch.bulkWrite(upserts(parsed.milkBatches, "code"), { ordered: false })
       : null,
-    parsed.sales.length
-      ? Sale.bulkWrite(upserts(parsed.sales, "legacyId"), { ordered: false })
+    sales.length
+      ? Sale.bulkWrite(sales.map(record => ({ updateOne: {
+          filter: { saleDate: record.saleDate },
+          // Re-importing a workbook must not overwrite a manually closed day.
+          update: { $setOnInsert: record }, upsert: true,
+        } })), { ordered: false })
       : null,
   ]);
 
-  const [ingredients, sizes, products, batches] = await Promise.all([
+  const [ingredients, sizes] = await Promise.all([
     Ingredient.find().select("_id code name").lean(),
     ProductSize.find().select("_id name").lean(),
-    Product.find().select("_id code").lean(),
-    MilkBatch.find().select("_id code name").lean(),
   ]);
   const ingredientsByCode = new Map(
     ingredients.map((ingredient) => [ingredient.code, ingredient]),
@@ -73,13 +77,6 @@ export async function persistWorkbook(
     ingredients.map((ingredient) => [ingredient.name, ingredient]),
   );
   const sizesByName = new Map(sizes.map((size) => [size.name, size]));
-  const productsByCode = new Map(
-    products.map((product) => [product.code, product]),
-  );
-  const batchesByName = new Map(
-    batches.map((batch) => [batch.name, batch]),
-  );
-
   await Promise.all([
     parsed.purchases.length
       ? Purchase.bulkWrite(
@@ -123,29 +120,6 @@ export async function persistWorkbook(
                 }]
               : [];
           }),
-          { ordered: false },
-        )
-      : null,
-    parsed.sales.length
-      ? Sale.bulkWrite(
-          parsed.sales.map((sale) => ({
-            updateOne: {
-              filter: { legacyId: sale.legacyId },
-              update: {
-                $set: {
-                  batchId: batchesByName.get(String(sale.batchName ?? ""))?._id,
-                  items: (
-                    sale.items as Array<Record<string, unknown>>
-                  ).map((item) => ({
-                    ...item,
-                    productId: productsByCode.get(
-                      String(item.productCode ?? ""),
-                    )?._id,
-                  })),
-                },
-              },
-            },
-          })),
           { ordered: false },
         )
       : null,

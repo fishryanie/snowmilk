@@ -12,7 +12,7 @@ export function V2RolloutNotice({ feature }: { feature: string }) {
     <div className='page-wrap v2-workspace'>
       <PageHeader
         title={feature}
-        description='Khu vực này sẽ mở sau khi dữ liệu online được migration, kiểm kho mở đầu và đối soát thành công.'
+        description='Khu vực này sẽ mở sau khi dữ liệu online được migration và đối soát thành công.'
       />
       <Card className='surface-card v2-empty-state'>
         <SafetyCertificateOutlined aria-hidden='true' />

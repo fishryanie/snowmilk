@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     }
     const input = receiptScanSchema.safeParse(await request.json());
     if (!input.success) return apiError("Ảnh bill không hợp lệ hoặc quá lớn.", 422);
-    return apiSuccess(await scanReceipt(input.data.imageBase64, request.signal), "Đã đọc bill. Kiểm tra trước khi nhập kho.");
+    return apiSuccess(await scanReceipt(input.data.imageBase64, request.signal), "Đã đọc bill. Kiểm tra trước khi lưu phiếu nhập.");
   } catch (error) {
     if (error instanceof ReceiptScanError || error instanceof ReceiptBudgetError) return apiError(error.message, error.status);
     if (error instanceof SyntaxError) return apiError("Ảnh bill không hợp lệ.", 422);

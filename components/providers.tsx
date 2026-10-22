@@ -40,9 +40,13 @@ export function Providers({
         },
         components: {
           Table: {
+          
+            borderRadiusOuter: 10,
+            borderRadius: 10,
             headerBg: "#e8f3ff",
-            headerColor: brandColors.ink,
+            // headerColor: brandColors.ink,
             rowHoverBg: "#f5faff",
+            headerBorderRadius: 0,
           },
         },
       }}

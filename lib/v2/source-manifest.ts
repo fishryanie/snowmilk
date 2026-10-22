@@ -50,12 +50,6 @@ export const LEGACY_SOURCE_POLICIES = [
     canonicalTargets: [],
   },
   {
-    key: "inventorySnapshots",
-    collectionName: "inventorysnapshots",
-    disposition: "preserve_for_physical_opening_reference",
-    canonicalTargets: [],
-  },
-  {
     key: "expenses",
     collectionName: "expenses",
     disposition: "preserve_read_only",

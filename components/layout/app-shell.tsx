@@ -81,30 +81,6 @@ const navigationGroups: NavigationGroup[] = [
         pageTitle: 'Chốt bán hàng cuối ngày',
         permission: 'sales:read',
       },
-      {
-        key: '/preparation',
-        icon: <ExperimentOutlined />,
-        label: 'Chuẩn bị',
-        pageTitle: 'Chuẩn bị món & làm mẻ',
-        permission: 'production:read',
-        v2Only: true,
-      },
-      {
-        key: '/inventory',
-        icon: <SkinOutlined />,
-        label: 'Kho',
-        pageTitle: 'Kho & kiểm kho',
-        permission: 'inventory:read',
-        v2Only: true,
-      },
-      {
-        key: '/ingredients',
-        icon: <SkinOutlined />,
-        label: 'Hàng hóa & kho',
-        mobileLabel: 'Kho',
-        permission: 'inventory:read',
-        legacyOnly: true,
-      },
     ],
   },
   {
@@ -151,8 +127,7 @@ const navigationGroups: NavigationGroup[] = [
         icon: <SkinOutlined />,
         label: 'Hàng hóa',
         pageTitle: 'Danh mục hàng hóa',
-        permission: 'inventory:read',
-        v2Only: true,
+        permission: 'catalog:read',
       },
       {
         key: '/batches',
@@ -452,9 +427,7 @@ function AuthenticatedShell({
     })),
   }));
   const mobileQuickLinks = (
-    v2OperationsEnabled
-      ? ['/dashboard', '/sales', '/preparation', '/inventory']
-      : ['/dashboard', '/sales', '/ingredients']
+    ['/dashboard', '/sales', '/purchases', '/ingredients']
   ).flatMap((key) => {
     const item = menuDefinitions.find(
       (candidate) =>
@@ -467,10 +440,10 @@ function AuthenticatedShell({
     ? mobileQuickLinks
     : mobileQuickLinks.filter((item) => can(item.permission));
 
-  const navigation = (theme: 'dark' | 'light') => (
+  const navigation = () => (
     <Menu
       mode='inline'
-      theme={theme}
+      theme='dark'
       selectedKeys={[currentKey]}
       items={menuItems}
       onClick={() => setDrawerOpen(false)}
@@ -495,12 +468,12 @@ function AuthenticatedShell({
           width={252}
           collapsedWidth={80}
           collapsed={collapsed}
-          theme='light'
+          theme='dark'
           className='app-sider'
           id='desktop-navigation'
         >
           <Brand compact={collapsed} profile={businessProfile} />
-          {navigation('light')}
+          {navigation()}
         </Sider>
       ) : null}
       <Layout>
@@ -551,6 +524,7 @@ function AuthenticatedShell({
         </Content>
       </Layout>
       <Drawer
+        rootClassName='app-navigation-drawer'
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         placement='left'
@@ -559,7 +533,7 @@ function AuthenticatedShell({
         styles={{ body: { padding: 8 } }}
         id='mobile-navigation'
       >
-        {navigation('light')}
+        {navigation()}
       </Drawer>
       <nav
         className='mobile-quick-nav'

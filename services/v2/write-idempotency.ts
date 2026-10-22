@@ -1,5 +1,3 @@
-import type { CreateProductionBatchInput } from "@/lib/validators/v2/production-batches";
-import type { CreateStockCountInput } from "@/lib/validators/v2/stock-counts";
 import type { CreatePurchaseReceiptInput } from "@/lib/validators/v2/purchase-receipts";
 import { sha256Canonical } from "@/lib/v2/canonical";
 import { DomainError } from "@/services/v2/errors";
@@ -14,37 +12,6 @@ function canonicalInstant(value: string | undefined) {
   return value == null ? null : new Date(value).toISOString();
 }
 
-export function productionBatchRequestHash(input: CreateProductionBatchInput) {
-  return sha256Canonical({
-    businessDate: input.businessDate,
-    recipeVersionId: input.recipeVersionId.toLowerCase(),
-    startedAt: canonicalInstant(input.startedAt),
-    plannedOutputQuantity: input.plannedOutputQuantity,
-    expiresAt: canonicalInstant(input.expiresAt),
-    note: input.note,
-  });
-}
-
-export function stockCountRequestHash(input: CreateStockCountInput) {
-  return sha256Canonical({
-    countedAt: canonicalInstant(input.countedAt),
-    note: input.note,
-    lines: [...input.lines]
-      .map((line) => ({
-        inventoryItemId: line.inventoryItemId.toLowerCase(),
-        inventoryLotId: line.inventoryLotId?.toLowerCase() ?? null,
-        countedQuantity: canonicalDecimal(line.countedQuantity),
-        unitCostVnd: canonicalDecimal(line.unitCostVnd),
-        note: line.note,
-      }))
-      .sort((left, right) => {
-        const leftKey = `${left.inventoryItemId}:${left.inventoryLotId ?? ""}`;
-        const rightKey = `${right.inventoryItemId}:${right.inventoryLotId ?? ""}`;
-        return leftKey.localeCompare(rightKey);
-      }),
-  });
-}
-
 export function purchaseReceiptRequestHash(input: CreatePurchaseReceiptInput) {
   return sha256Canonical({
     businessDate: input.businessDate,
@@ -56,8 +23,6 @@ export function purchaseReceiptRequestHash(input: CreatePurchaseReceiptInput) {
       inventoryItemId: line.inventoryItemId.toLowerCase(),
       quantity: canonicalDecimal(line.quantity),
       totalAmountVnd: line.totalAmountVnd,
-      lotCode: line.lotCode?.toLocaleUpperCase("vi-VN") ?? null,
-      expiresAt: canonicalInstant(line.expiresAt),
     })),
   });
 }

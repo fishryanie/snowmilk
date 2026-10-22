@@ -12,7 +12,6 @@ import {
   DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE,
   ownerCapitalPurchaseFilter,
 } from "@/lib/purchase-funding";
-import { vietnamDateKey } from "@/lib/vietnam-date";
 import { Divestment } from "@/models/Divestment";
 import { Equipment } from "@/models/Equipment";
 import { Expense } from "@/models/Expense";
@@ -30,8 +29,8 @@ type ClaimInput = {
 
 type SaleRecord = {
   saleDate: Date;
-  entryMode?: string;
-  netRevenue?: number;
+  cashReceived: number;
+  bankTransferReceived: number;
 };
 
 type PurchaseRecord = {
@@ -105,7 +104,7 @@ async function buildClaimContext() {
   const [sales, purchases, equipment, expenses, payrollSettlements, divestments] =
     await Promise.all([
       Sale.find({})
-        .select("saleDate entryMode netRevenue")
+        .select("saleDate cashReceived bankTransferReceived")
         .lean<SaleRecord[]>(),
       Purchase.find({})
         .select(
@@ -137,17 +136,6 @@ async function buildClaimContext() {
         .lean<DivestmentRecord[]>(),
     ]);
 
-  const dailySummaryDates = new Set(
-    sales
-      .filter((sale) => sale.entryMode === "daily-summary")
-      .map((sale) => vietnamDateKey(new Date(sale.saleDate))),
-  );
-  const effectiveSales = sales.filter((sale) => {
-    const day = vietnamDateKey(new Date(sale.saleDate));
-    return (
-      sale.entryMode === "daily-summary" || !dailySummaryDates.has(day)
-    );
-  });
   const claimedSourceKeys = new Set(
     divestments.flatMap((divestment) =>
       (divestment.claims ?? [])
@@ -185,8 +173,8 @@ async function buildClaimContext() {
     investmentTotal,
     withdrawnTotal,
   );
-  const totalRevenue = effectiveSales.reduce(
-    (sum, sale) => sum + safeAmount(sale.netRevenue),
+  const totalRevenue = sales.reduce(
+    (sum, sale) => sum + safeAmount(sale.cashReceived) + safeAmount(sale.bankTransferReceived),
     0,
   );
   const salesFundedPurchaseTotal = purchases

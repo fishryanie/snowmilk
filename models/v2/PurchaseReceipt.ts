@@ -29,12 +29,6 @@ const PurchaseReceiptLineSchema = new Schema(
       required: true,
       immutable: true,
     },
-    inventoryLotId: {
-      type: Schema.Types.ObjectId,
-      ref: "V2InventoryLot",
-      default: null,
-      immutable: true,
-    },
     itemCodeSnapshot: { type: String, required: true, trim: true, immutable: true },
     itemNameSnapshot: { type: String, required: true, trim: true, immutable: true },
     unitSnapshot: {
@@ -46,14 +40,6 @@ const PurchaseReceiptLineSchema = new Schema(
     quantity: decimalField({ positive: true, immutable: true }),
     unitCostVnd: decimalField({ positive: true, immutable: true }),
     totalAmountVnd: vndField({ immutable: true }),
-    lotCodeSnapshot: { type: String, trim: true, default: null, immutable: true },
-    expiresAt: { type: Date, default: null, immutable: true },
-    stockMovementId: {
-      type: Schema.Types.ObjectId,
-      ref: "V2StockMovement",
-      required: true,
-      immutable: true,
-    },
   },
   { _id: false },
 );

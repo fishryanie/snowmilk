@@ -14,7 +14,6 @@ import {
   App,
   Button,
   Card,
-  DatePicker,
   Empty,
   Input,
   InputNumber,
@@ -24,7 +23,6 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import dayjs from 'dayjs';
 import { useMemo, useRef, useState } from 'react';
 import { PageHeader } from '@/components/common/page-header';
 import { useCurrentAccess } from '@/components/v2/access-context';
@@ -41,19 +39,16 @@ import { formatDate, formatNumber, formatVnd } from '@/lib/formatters';
 
 const { Text, Title } = Typography;
 
-type InventoryItemOption = {
+type PurchaseItemOption = {
   inventoryItemId: string;
   code: string;
   name: string;
   kind: string;
   baseUnit: string;
-  lotTracked: boolean;
-  expiryTracked?: boolean;
 };
 
-type InventoryResponse = {
-  balances: InventoryItemOption[];
-  openingRequired: boolean;
+type PurchaseItemsResponse = {
+  items: PurchaseItemOption[];
 };
 
 type ReceiptLine = {
@@ -65,8 +60,6 @@ type ReceiptLine = {
   quantity: string;
   unitCostVnd: string;
   totalAmountVnd: number;
-  lotCode: string | null;
-  expiresAt: string | null;
 };
 
 type PurchaseReceipt = {
@@ -90,23 +83,16 @@ type DraftLine = {
   inventoryItemId?: string;
   quantity?: string;
   totalAmountVnd?: number;
-  lotCode: string;
-  expiresOn?: string;
 };
 
 function newLine(): DraftLine {
   return {
     key: newIdempotencyKey('purchase-line'),
-    lotCode: '',
   };
 }
 
 function toHcmIso(value: string) {
   return new Date(`${value}:00+07:00`).toISOString();
-}
-
-function expiryIso(value: string) {
-  return new Date(`${value}T23:59:59+07:00`).toISOString();
 }
 
 function kindLabel(kind: string) {
@@ -134,22 +120,21 @@ export function PurchaseReceivingWorkspace() {
   const canReceive = can('purchases:write');
 
   const enabled = !accessLoading && canRead;
-  const inventory = useApiQuery<InventoryResponse>(enabled ? '/api/v2/inventory/balances' : null);
+  const catalog = useApiQuery<PurchaseItemsResponse>(enabled ? '/api/v2/catalog/purchase-items' : null);
   const history = useApiQuery<ReceiptResponse>(enabled ? '/api/v2/purchase-receipts' : null);
-  const openingRequired = Boolean(inventory.data?.openingRequired);
   const receipts = history.data?.receipts ?? [];
   const items = useMemo(() => {
-    const unique = new Map<string, InventoryItemOption>();
-    for (const balance of inventory.data?.balances ?? []) {
+    const unique = new Map<string, PurchaseItemOption>();
+    for (const balance of catalog.data?.items ?? []) {
       if (!unique.has(balance.inventoryItemId)) unique.set(balance.inventoryItemId, balance);
     }
     return [...unique.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name, 'vi'));
-  }, [inventory.data]);
-  const loading = accessLoading || inventory.loading || history.loading;
-  const loadError = inventory.error || history.error
-    ? errorText(inventory.error ?? history.error, 'Không tải được danh mục hoặc lịch sử nhập hàng.') : null;
+  }, [catalog.data]);
+  const loading = accessLoading || catalog.loading || history.loading;
+  const loadError = catalog.error || history.error
+    ? errorText(catalog.error ?? history.error, 'Không tải được danh mục hoặc lịch sử nhập hàng.') : null;
   function refreshData() {
-    inventory.refresh();
+    catalog.refresh();
     history.refresh();
   }
 
@@ -165,12 +150,6 @@ export function PurchaseReceivingWorkspace() {
       Number.isSafeInteger(line.totalAmountVnd) &&
       Number(line.totalAmountVnd) > 0,
   );
-  const hasMissingRequiredExpiry = completeLines.some((line) => {
-    const item = line.inventoryItemId
-      ? itemById.get(line.inventoryItemId)
-      : undefined;
-    return Boolean(item?.expiryTracked && !line.expiresOn);
-  });
   const totalAmountBigInt = completeLines.reduce(
     (sum, line) => sum + BigInt(Number(line.totalAmountVnd)),
     BigInt(0),
@@ -195,14 +174,6 @@ export function PurchaseReceivingWorkspace() {
       setError('Mỗi dòng cần có hàng hóa, số lượng dương và thành tiền nguyên VND.');
       return;
     }
-    if (openingRequired) {
-      setError('Hãy hoàn tất kiểm kho mở đầu trước khi nhận hàng v2.');
-      return;
-    }
-    if (hasMissingRequiredExpiry) {
-      setError('Hàng hóa theo dõi hạn dùng phải có hạn dùng trước khi ghi phiếu.');
-      return;
-    }
     if (totalAmountVnd == null) {
       setError('Tổng phiếu vượt giới hạn số nguyên VND an toàn. Hãy tách thành nhiều phiếu.');
       return;
@@ -212,20 +183,11 @@ export function PurchaseReceivingWorkspace() {
       receivedAt: toHcmIso(receivedAt),
       supplierName: supplierName.trim(),
       supplierContact: supplierContact.trim(),
-      lines: completeLines.map((line) => {
-        const item = itemById.get(String(line.inventoryItemId));
-        return {
-          inventoryItemId: line.inventoryItemId,
-          quantity: line.quantity,
-          totalAmountVnd: line.totalAmountVnd,
-          ...(item?.lotTracked && line.lotCode.trim()
-            ? { lotCode: line.lotCode.trim() }
-            : {}),
-          ...(item?.lotTracked && line.expiresOn
-            ? { expiresAt: expiryIso(line.expiresOn) }
-            : {}),
-        };
-      }),
+      lines: completeLines.map((line) => ({
+        inventoryItemId: line.inventoryItemId,
+        quantity: line.quantity,
+        totalAmountVnd: line.totalAmountVnd,
+      })),
       note: note.trim(),
     };
     const idempotencyKey = pendingIdempotencyKey(
@@ -266,7 +228,7 @@ export function PurchaseReceivingWorkspace() {
     <div className='page-wrap v2-workspace purchase-receiving-v2'>
       <PageHeader
         title='Nhập hàng'
-        description='Ghi nhận hàng thực nhận theo đơn vị gốc. Máy chủ tự tính đơn giá chính xác, tạo lot và cập nhật sổ kho trong một transaction.'
+        description='Ghi số lượng nhập, thành tiền và đơn giá mua theo từng hàng hóa.'
         actions={
           <Button
             icon={<ReloadOutlined />}
@@ -297,15 +259,6 @@ export function PurchaseReceivingWorkspace() {
           showIcon
           title='Chế độ chỉ xem'
           description='Bạn có thể xem lịch sử phiếu nhập nhưng không có quyền ghi nhận hàng mới.'
-        />
-      ) : null}
-      {!accessLoading && canRead && openingRequired ? (
-        <Alert
-          type='warning'
-          showIcon
-          title='Cần mở sổ kho trước khi nhập hàng'
-          description='Chủ quán hãy vào Kho, kiểm đủ mọi hàng hóa và xác nhận số dư mở đầu cutover. Phiếu nhập sẽ được giữ nguyên trên màn hình.'
-          action={<Button href='/inventory'>Đến Kho</Button>}
         />
       ) : null}
       {error || loadError ? (
@@ -428,9 +381,7 @@ export function PurchaseReceivingWorkspace() {
                           onChange={(value) =>
                             updateLine(line.key, {
                               inventoryItemId: value,
-                              lotCode: '',
-                              expiresOn: undefined,
-                            })
+                                                      })
                           }
                         />
                       </label>
@@ -468,37 +419,7 @@ export function PurchaseReceivingWorkspace() {
                           }
                         />
                       </label>
-                      {item?.lotTracked ? (
-                        <>
-                          <label className='v2-field'>
-                            <span>Mã lot (không bắt buộc)</span>
-                            <Input
-                              value={line.lotCode}
-                              onChange={(event) => updateLine(line.key, { lotCode: event.target.value })}
-                              placeholder='Máy chủ sẽ tạo nếu để trống'
-                              maxLength={120}
-                            />
-                          </label>
-                          <label className='v2-field'>
-                            <span>Hạn dùng {item.expiryTracked ? '' : '(không bắt buộc)'}</span>
-                            <DatePicker
-                              value={line.expiresOn ? dayjs(line.expiresOn) : null}
-                              format='DD/MM/YYYY'
-                              placeholder='Chọn ngày'
-                              aria-label={`Hạn dùng dòng ${index + 1}`}
-                              onChange={(value) =>
-                                updateLine(line.key, {
-                                  expiresOn: value?.format('YYYY-MM-DD'),
-                                })
-                              }
-                            />
-                          </label>
-                        </>
-                      ) : null}
                     </div>
-                    {item?.lotTracked ? (
-                      <Text type='secondary'>Hàng này được theo dõi theo lot; mỗi lần nhận sẽ tạo một lot riêng.</Text>
-                    ) : null}
                   </Card>
                 );
               })}
@@ -549,8 +470,6 @@ export function PurchaseReceivingWorkspace() {
               loading={saving}
               disabled={
                 saving ||
-                openingRequired ||
-                hasMissingRequiredExpiry ||
                 totalAmountVnd == null ||
                 completeLines.length !== lines.length ||
                 !supplierName.trim()

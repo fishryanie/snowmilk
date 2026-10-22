@@ -22,6 +22,18 @@ export const TENDER_METHODS = [
   "other",
 ] as const;
 
+// These actors are stamped when an existing draft is closed or reopened.
+// Immutable child paths would discard the first assignment on a saved document.
+const SalesDayActorSchema = new Schema(
+  {
+    userId: { type: String, required: true, trim: true },
+    displayName: { type: String, trim: true },
+    source: { type: String, enum: ["user", "system", "migration"], required: true },
+    requestId: { type: String, trim: true },
+  },
+  { _id: false },
+);
+
 const BusinessLineSnapshotSchema = new Schema(
   {
     id: { type: Schema.Types.ObjectId, ref: "V2BusinessLine", required: true },
@@ -157,9 +169,9 @@ const SalesDaySchema = new Schema(
     },
     idempotencyKey: { type: String, trim: true },
     closedAt: { type: Date, default: null },
-    closedBy: { type: ActorSchema, default: null },
+    closedBy: { type: SalesDayActorSchema, default: null },
     reopenedAt: { type: Date, default: null },
-    reopenedBy: { type: ActorSchema, default: null },
+    reopenedBy: { type: SalesDayActorSchema, default: null },
     reopenReason: { type: String, trim: true },
     previousClosedRevisionId: {
       type: Schema.Types.ObjectId,

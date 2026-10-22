@@ -1,12 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { Types } from "mongoose";
-import { InventoryBalance } from "./InventoryBalance";
 import { Recipe } from "./Recipe";
 import { RecipeVersion } from "./RecipeVersion";
 import { RevenueEntry } from "./RevenueEntry";
 import { SalesDay } from "./SalesDay";
-import { StockCount } from "./StockCount";
-import { StockMovement } from "./StockMovement";
 
 const actor = { userId: "test", source: "system" };
 
@@ -92,64 +89,17 @@ describe("v2 model cross-domain invariants", () => {
     await expect(draft.validate()).rejects.toThrow("request hash");
   });
 
-  test("does not permit zero-valued cost fields to masquerade as missing", async () => {
-    const balance = new InventoryBalance({
-      organizationId: new Types.ObjectId(),
-      locationId: new Types.ObjectId(),
-      inventoryItemId: new Types.ObjectId(),
-      onHandQuantity: "1",
-      reservedQuantity: "0",
-      availableQuantity: "1",
-      averageUnitCostVnd: "0",
-      inventoryValueVnd: 0,
-      costDataQuality: "missing_cost",
-      lastMovementId: new Types.ObjectId(),
-      lastMovementAt: new Date(),
-      actor,
-    });
-    await expect(balance.validate()).rejects.toThrow("cost giả định");
-  });
 
-  test("validates inventory balance quantities without floating-point loss", async () => {
-    const balance = new InventoryBalance({
-      organizationId: new Types.ObjectId(),
-      locationId: new Types.ObjectId(),
-      inventoryItemId: new Types.ObjectId(),
-      onHandQuantity: "100000000000000000000.2",
-      reservedQuantity: "100000000000000000000.1",
-      availableQuantity: "0.1",
-      averageUnitCostVnd: null,
-      inventoryValueVnd: null,
-      costDataQuality: "missing_cost",
-      lastMovementId: new Types.ObjectId(),
-      lastMovementAt: new Date(),
-      actor,
-    });
-    await expect(balance.validate()).resolves.toBeUndefined();
-    balance.availableQuantity = "0.1000000001";
-    await expect(balance.validate()).rejects.toThrow("Tồn khả dụng");
-  });
 
-  test("keeps subnormal Decimal128 movement signs exact", async () => {
-    const movement = new StockMovement({
-      organizationId: new Types.ObjectId(),
-      locationId: new Types.ObjectId(),
-      inventoryItemId: new Types.ObjectId(),
-      inventoryLotId: new Types.ObjectId(),
-      itemCodeSnapshot: "RAW-POTATO",
-      itemNameSnapshot: "Khoai",
-      unitSnapshot: "g",
-      movementType: "opening",
-      quantityDelta: "1E-1000",
-      businessDate: "2026-08-12",
-      occurredAt: new Date(),
-      sourceType: "stock_count",
-      sourceId: new Types.ObjectId(),
-      sourceLineKey: "raw-potato",
-      idempotencyKey: "tiny-opening-movement",
-      actor,
-    });
-    await expect(movement.validate()).resolves.toBeUndefined();
+
+  test("keeps close/reopen actor stamps when updating a persisted sales day", () => {
+    const day = SalesDay.hydrate({ closedBy: null, reopenedBy: null });
+    day.closedBy = actor;
+    day.reopenedBy = actor;
+    expect(day.closedBy.userId).toBe("test");
+    expect(day.closedBy.source).toBe("system");
+    expect(day.reopenedBy.userId).toBe("test");
+    expect(day.reopenedBy.source).toBe("system");
   });
 
   test("allows an empty draft while its close-time cost is unresolved", async () => {
@@ -234,48 +184,5 @@ describe("v2 model cross-domain invariants", () => {
     await expect(invalidReversal.validate()).rejects.toThrow("không dương");
   });
 
-  test("validates stock-count variance with exact decimal arithmetic", async () => {
-    const count = new StockCount({
-      organizationId: new Types.ObjectId(),
-      locationId: new Types.ObjectId(),
-      businessDate: "2026-08-12",
-      countCode: "OPENING-20260812-TEST",
-      countType: "opening",
-      status: "posted",
-      lines: [
-        {
-          lineKey: "item:lot",
-          inventoryItemId: new Types.ObjectId(),
-          inventoryLotId: new Types.ObjectId(),
-          itemCodeSnapshot: "RAW-POTATO",
-          itemNameSnapshot: "Khoai",
-          unitSnapshot: "g",
-          expectedQuantity: "100000000000000000000.1",
-          countedQuantity: "100000000000000000000.2",
-          varianceQuantity: "0.1",
-          unitCostVnd: "12.5",
-          varianceValueVnd: 1,
-          adjustmentMovementId: new Types.ObjectId(),
-        },
-      ],
-      countedAt: new Date(),
-      postedAt: new Date(),
-      idempotencyKey: "opening-count-model-test",
-      requestHash: "a".repeat(64),
-      actor,
-    });
-    await expect(count.validate()).resolves.toBeUndefined();
-    count.lines[0].varianceQuantity = "0.1000000001";
-    await expect(count.validate()).rejects.toThrow("Sai chênh lệch");
-  });
 
-  test("declares exactly one unique opening-count index", () => {
-    const openingIndexes = StockCount.schema.indexes().filter(
-      (entry: [Record<string, unknown>, Record<string, unknown>]) =>
-        entry[1].partialFilterExpression &&
-        JSON.stringify(entry[1].partialFilterExpression) ===
-          JSON.stringify({ countType: "opening" }),
-    );
-    expect(openingIndexes).toHaveLength(1);
-  });
 });

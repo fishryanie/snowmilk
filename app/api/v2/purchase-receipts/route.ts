@@ -32,7 +32,7 @@ export async function POST(request: Request) {
         toV2Context(access),
         createPurchaseReceiptSchema.parse(payload),
       ),
-      "Đã ghi phiếu nhập, lot, sổ kho và giá vốn trong cùng transaction.",
+      "Đã ghi số lượng nhập, thành tiền và đơn giá.",
       201,
     );
   } catch (error) {

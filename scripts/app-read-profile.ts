@@ -5,13 +5,13 @@ const base = process.env.APP_PROFILE_URL ?? "http://localhost:3002";
 const pages = [
   "/dashboard", "/sales", "/ingredients", "/products", "/costing", "/batches",
   "/purchases", "/expenses", "/payroll", "/divestments", "/equipment", "/settings",
-  "/inventory", "/preparation", "/reports", "/employees", "/storefront/orders",
+ "/reports", "/employees", "/storefront/orders",
   "/storefront/products", "/storefront/settings",
 ];
 const apis = [
   "/api/products?limit=500", "/api/ingredients?limit=500", "/api/batches?limit=500",
-  "/api/purchases?limit=500", "/api/settings", "/api/sales", "/api/reports/dashboard",
-  "/api/product-onboarding", "/api/inventory", "/api/payroll/employees",
+  "/api/purchases?limit=500", "/api/settings", "/api/sales?limit=50", "/api/reports/dashboard",
+  "/api/product-onboarding", "/api/payroll/employees",
   "/api/payroll/withdrawals", "/api/payroll/periods", "/api/divestment-claims",
 ];
 

@@ -3,6 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { Types, type ClientSession } from "mongoose";
 import { connectMongo } from "@/lib/mongodb";
+import { Product } from "@/models/Product";
 import { calculateSalesDay, multiplyDecimalRateToVnd } from "@/lib/v2/money";
 import type {
   CloseSalesDayInput,
@@ -13,24 +14,16 @@ import { BusinessLine } from "@/models/v2/BusinessLine";
 import { AuditLog } from "@/models/v2/AuditLog";
 import { Category } from "@/models/v2/Category";
 import { DailyRevenueFact } from "@/models/v2/DailyRevenueFact";
-import { InventoryBalance } from "@/models/v2/InventoryBalance";
-import { InventoryLot } from "@/models/v2/InventoryLot";
 import { RevenueEntry } from "@/models/v2/RevenueEntry";
 import { SalesDay } from "@/models/v2/SalesDay";
 import { Sku } from "@/models/v2/Sku";
 import { SkuPrice } from "@/models/v2/SkuPrice";
-import { StockMovement } from "@/models/v2/StockMovement";
-import { compareDecimalStringsExact } from "@/models/v2/helpers";
 import {
   id,
   parseBusinessDate,
   type V2Context,
 } from "@/services/v2/context";
 import { DomainError, duplicateKey } from "@/services/v2/errors";
-import {
-  allocateFefo,
-  type AvailableLot,
-} from "@/services/v2/inventory-allocation";
 import {
   persistedSalesTotals,
   reversalRevenueSnapshot,
@@ -39,7 +32,7 @@ import {
 import { assertWriteReplay } from "@/services/v2/write-idempotency";
 import { decimalString, documentId } from "@/services/v2/serialize";
 
-const CALCULATION_VERSION = "sales-v2.1";
+const CALCULATION_VERSION = "sales-v2.2";
 
 // Mongoose lean/hydrated documents are dynamic at this repository boundary.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -47,16 +40,6 @@ type AnyDocument = Record<string, any>;
 
 function priceMoment(businessDate: string) {
   return new Date(`${businessDate}T23:59:59.999+07:00`);
-}
-
-function costRate(totalVnd: number, quantity: number) {
-  if (quantity <= 0) return "0";
-  const scale = BigInt(1_000_000);
-  const numerator = BigInt(totalVnd) * scale;
-  const quotient = numerator / BigInt(quantity);
-  const whole = quotient / scale;
-  const fraction = String(quotient % scale).padStart(6, "0").replace(/0+$/, "");
-  return fraction ? `${whole}.${fraction}` : String(whole);
 }
 
 function serializeLine(line: AnyDocument) {
@@ -355,199 +338,6 @@ export async function saveSalesDayDraft(
   return serializeSalesDay(existing.toObject(), businessDate);
 }
 
-async function sellFinishedGood(
-  context: V2Context,
-  day: AnyDocument,
-  line: AnyDocument,
-  closeVersion: number,
-  idempotencyKey: string,
-  occurredAt: Date,
-  session: ClientSession,
-) {
-  const sku = (await Sku.findOne({
-    _id: line.skuId,
-    organizationId: context.organizationId,
-    isActive: true,
-  })
-    .session(session)
-    .lean()) as AnyDocument | null;
-  if (!sku) throw new DomainError(`Không tìm thấy SKU ${line.skuCodeSnapshot}.`, 409);
-  if (sku.fulfillmentMode !== "preproduced") {
-    return {
-      cogsVnd: line.cogsVnd == null ? null : Number(line.cogsVnd),
-      unitCostVnd: line.unitCostVnd ?? null,
-    };
-  }
-  if (!sku.outputInventoryItemId) {
-    throw new DomainError(
-      `${sku.name} là món làm sẵn nhưng chưa liên kết thành phẩm kho.`,
-      409,
-      "MISSING_FINISHED_GOOD",
-    );
-  }
-  const balances = (await InventoryBalance.find({
-    organizationId: context.organizationId,
-    locationId: context.locationId,
-    inventoryItemId: sku.outputInventoryItemId,
-    availableQuantity: { $gt: 0 },
-  })
-    .session(session)
-    .lean()) as AnyDocument[];
-  const lotIds = balances.map((balance) => balance.inventoryLotId).filter(Boolean);
-  const lots = (await InventoryLot.find({
-    _id: { $in: lotIds },
-    organizationId: context.organizationId,
-    locationId: context.locationId,
-    status: "available",
-    $or: [{ expiresAt: null }, { expiresAt: { $gt: occurredAt } }],
-  })
-    .session(session)
-    .lean()) as AnyDocument[];
-  const lotById = new Map(lots.map((lot) => [String(lot._id), lot]));
-  const available: AvailableLot[] = balances
-    .filter(
-      (balance) =>
-        !balance.inventoryLotId || lotById.has(String(balance.inventoryLotId)),
-    )
-    .map((balance) => {
-      const lot = lotById.get(String(balance.inventoryLotId));
-      return {
-        balanceId: String(balance._id),
-        inventoryLotId: documentId(balance.inventoryLotId),
-        availableQuantity: decimalString(balance.availableQuantity),
-        unitCostVnd:
-          balance.averageUnitCostVnd == null
-            ? null
-            : decimalString(balance.averageUnitCostVnd),
-        costDataQuality: balance.costDataQuality,
-        expiresAt: lot?.expiresAt ?? null,
-        producedAt: lot?.producedAt ?? null,
-      };
-    });
-  const quantity = Number(decimalString(line.quantity));
-  const allocations = allocateFefo(available, quantity);
-  let cogsVnd = 0;
-  let hasMissingCost = false;
-  for (const [index, allocation] of allocations.entries()) {
-    const allocationHasCost =
-      allocation.costDataQuality === "complete" &&
-      allocation.unitCostVnd != null;
-    const amountVnd = allocationHasCost
-      ? multiplyDecimalRateToVnd(
-          String(allocation.quantity),
-          allocation.unitCostVnd!,
-        )
-      : null;
-    if (amountVnd == null) hasMissingCost = true;
-    else cogsVnd += amountVnd;
-    const delta = Types.Decimal128.fromString(String(-allocation.quantity));
-    const balanceIncrement: Record<string, unknown> = {
-      onHandQuantity: delta,
-      availableQuantity: delta,
-      version: 1,
-    };
-    if (amountVnd != null) balanceIncrement.inventoryValueVnd = -amountVnd;
-    const updated = await InventoryBalance.findOneAndUpdate(
-      {
-        _id: id(allocation.balanceId, "balanceId"),
-        availableQuantity: { $gte: Types.Decimal128.fromString(String(allocation.quantity)) },
-      },
-      {
-        $inc: balanceIncrement,
-        $set: { lastMovementAt: occurredAt, actor: context.actor },
-      },
-      { new: true, session },
-    );
-    if (!updated) {
-      throw new DomainError(
-        `Tồn ${sku.name} vừa thay đổi. Hãy tải lại trước khi chốt.`,
-        409,
-        "INVENTORY_CONFLICT",
-      );
-    }
-    if (allocation.inventoryLotId) {
-      const updatedLot = await InventoryLot.findOneAndUpdate(
-        {
-          _id: id(allocation.inventoryLotId, "inventoryLotId"),
-          organizationId: context.organizationId,
-          locationId: context.locationId,
-          inventoryItemId: sku.outputInventoryItemId,
-          status: "available",
-          onHandQuantity: {
-            $gte: Types.Decimal128.fromString(String(allocation.quantity)),
-          },
-          $or: [{ expiresAt: null }, { expiresAt: { $gt: occurredAt } }],
-        },
-        {
-          $inc: { onHandQuantity: delta, version: 1 },
-          $set: { actor: context.actor },
-        },
-        { new: true, session },
-      );
-      if (!updatedLot) {
-        throw new DomainError(
-          `Lot ${sku.name} vừa thay đổi. Hãy tải lại trước khi chốt.`,
-          409,
-          "INVENTORY_CONFLICT",
-        );
-      }
-      if (compareDecimalStringsExact(updatedLot.onHandQuantity, "0") === 0) {
-        await InventoryLot.updateOne(
-          { _id: updatedLot._id },
-          { $set: { status: "depleted", actor: context.actor } },
-          { session },
-        );
-      }
-    }
-    const movement = await StockMovement.create(
-      [
-        {
-          organizationId: context.organizationId,
-          locationId: context.locationId,
-          inventoryItemId: sku.outputInventoryItemId,
-          inventoryLotId: allocation.inventoryLotId
-            ? id(allocation.inventoryLotId, "inventoryLotId")
-            : null,
-          itemCodeSnapshot: sku.code,
-          itemNameSnapshot: sku.name,
-          unitSnapshot: "each",
-          movementType: "sale_consume",
-          quantityDelta: String(-allocation.quantity),
-          unitCostVnd: allocation.unitCostVnd,
-          inventoryValueDeltaVnd: amountVnd == null ? null : -amountVnd,
-          businessDate: day.businessDate,
-          occurredAt,
-          sourceType: "sales_day",
-          sourceId: day._id,
-          sourceLineKey: `${line.lineKey}:v${closeVersion}:${index}`,
-          idempotencyKey: `${idempotencyKey}:stock:${line.lineKey}:${index}`,
-          actor: context.actor,
-        },
-      ],
-      { session },
-    );
-    const linkedMovement = await InventoryBalance.updateOne(
-      {
-        _id: updated._id,
-        organizationId: context.organizationId,
-        locationId: context.locationId,
-      },
-      { $set: { lastMovementId: movement[0]._id } },
-      { session },
-    );
-    if (linkedMovement.matchedCount !== 1) {
-      throw new DomainError(
-        "Không thể liên kết bút toán bán với balance vừa cập nhật.",
-        409,
-        "INVENTORY_CONFLICT",
-      );
-    }
-  }
-  return hasMissingCost
-    ? { cogsVnd: null, unitCostVnd: null }
-    : { cogsVnd, unitCostVnd: costRate(cogsVnd, quantity) };
-}
-
 function factDimensions(day: AnyDocument) {
   const dimensions: AnyDocument[] = [];
   const lineGroups = new Map<string, AnyDocument>();
@@ -711,7 +501,7 @@ export async function closeSalesDay(
   context: V2Context,
   rawBusinessDate: string,
   input: CloseSalesDayInput,
-) {
+): Promise<ReturnType<typeof serializeSalesDay>> {
   const businessDate = parseBusinessDate(rawBusinessDate);
   const requestHash = salesOperationRequestHash("close", businessDate, input);
   const mongoose = await connectMongo();
@@ -781,26 +571,20 @@ export async function closeSalesDay(
       const closeVersion = Number(day.version) + 1;
       const occurredAt = new Date();
       let totalCogs = 0;
+      const products = await Product.find({
+        code: { $in: (day.lines as AnyDocument[]).map((line) => line.skuCodeSnapshot) },
+      }).select("code fullCost").session(session).lean();
+      const costByCode = new Map(products.map((product) => [String(product.code), Number(product.fullCost)]));
       for (const line of day.lines as AnyDocument[]) {
-        const cost = await sellFinishedGood(
-          context,
-          day,
-          line,
-          closeVersion,
-          input.idempotencyKey,
-          occurredAt,
-          session,
-        );
-        line.cogsVnd = cost.cogsVnd;
-        line.unitCostVnd = cost.unitCostVnd;
-        line.profitVnd =
-          cost.cogsVnd == null
-            ? null
-            : Number(line.netRevenueVnd) - cost.cogsVnd;
-        if (cost.unitCostVnd != null && cost.cogsVnd != null) {
-          line.dataQuality = "complete";
-          totalCogs += cost.cogsVnd;
-        }
+        const unitCost = costByCode.get(String(line.skuCodeSnapshot));
+        const hasCost = unitCost != null && Number.isFinite(unitCost) && unitCost > 0;
+        line.unitCostVnd = hasCost ? String(unitCost) : null;
+        line.cogsVnd = hasCost
+          ? multiplyDecimalRateToVnd(decimalString(line.quantity), String(unitCost))
+          : null;
+        line.profitVnd = hasCost ? Number(line.netRevenueVnd) - line.cogsVnd : null;
+        line.dataQuality = hasCost ? "complete" : "missing_cost";
+        if (hasCost) totalCogs += line.cogsVnd;
       }
       const hasMissingCost = day.lines.some(
         (line: AnyDocument) => line.dataQuality !== "complete",
@@ -880,7 +664,7 @@ export async function reopenSalesDay(
   context: V2Context,
   rawBusinessDate: string,
   input: ReopenSalesDayInput,
-) {
+): Promise<ReturnType<typeof serializeSalesDay>> {
   const businessDate = parseBusinessDate(rawBusinessDate);
   const requestHash = salesOperationRequestHash("reopen", businessDate, input);
   const mongoose = await connectMongo();
@@ -987,128 +771,6 @@ export async function reopenSalesDay(
           })),
           { session },
         );
-      }
-      const saleMovements = (await StockMovement.find({
-        organizationId: context.organizationId,
-        locationId: context.locationId,
-        sourceType: "sales_day",
-        sourceId: day._id,
-        movementType: "sale_consume",
-      })
-        .session(session)
-        .lean()) as AnyDocument[];
-      const reversedMovementIds = new Set(
-        (
-          await StockMovement.distinct("reversalOfId", {
-            organizationId: context.organizationId,
-            locationId: context.locationId,
-            sourceType: "reversal",
-          }).session(session)
-        ).map(String),
-      );
-      for (const movement of saleMovements.filter(
-        (item) => !reversedMovementIds.has(String(item._id)),
-      )) {
-        const restoredQuantity = decimalString(movement.quantityDelta).replace(/^-/, "");
-        const delta = Types.Decimal128.fromString(restoredQuantity);
-        const restoredValueVnd =
-          movement.inventoryValueDeltaVnd == null
-            ? null
-            : -Number(movement.inventoryValueDeltaVnd);
-        const balanceIncrement: Record<string, unknown> = {
-          onHandQuantity: delta,
-          availableQuantity: delta,
-          version: 1,
-        };
-        if (restoredValueVnd != null) {
-          balanceIncrement.inventoryValueVnd = restoredValueVnd;
-        }
-        const restoredBalance = await InventoryBalance.findOneAndUpdate(
-          {
-            organizationId: context.organizationId,
-            locationId: context.locationId,
-            inventoryItemId: movement.inventoryItemId,
-            inventoryLotId: movement.inventoryLotId ?? null,
-          },
-          {
-            $inc: balanceIncrement,
-            $set: { lastMovementAt: new Date(), actor: context.actor },
-          },
-          { new: true, session },
-        );
-        if (!restoredBalance) {
-          throw new DomainError(
-            "Không thể khôi phục tồn kho vì balance không còn tồn tại.",
-            409,
-            "INVENTORY_CONFLICT",
-          );
-        }
-        if (movement.inventoryLotId) {
-          const restoredLot = await InventoryLot.findOneAndUpdate(
-            {
-              _id: movement.inventoryLotId,
-              organizationId: context.organizationId,
-              locationId: context.locationId,
-              inventoryItemId: movement.inventoryItemId,
-            },
-            {
-              $inc: { onHandQuantity: delta, version: 1 },
-              $set: { status: "available", actor: context.actor },
-            },
-            { new: true, session },
-          );
-          if (!restoredLot) {
-            throw new DomainError(
-              "Không thể khôi phục lot thành phẩm vì lot không còn tồn tại.",
-              409,
-              "INVENTORY_CONFLICT",
-            );
-          }
-        }
-        const reversal = await StockMovement.create(
-          [
-            {
-              organizationId: movement.organizationId,
-              locationId: movement.locationId,
-              inventoryItemId: movement.inventoryItemId,
-              inventoryLotId: movement.inventoryLotId,
-              itemCodeSnapshot: movement.itemCodeSnapshot,
-              itemNameSnapshot: movement.itemNameSnapshot,
-              unitSnapshot: movement.unitSnapshot,
-              movementType: "reversal",
-              quantityDelta: restoredQuantity,
-              unitCostVnd: movement.unitCostVnd,
-              inventoryValueDeltaVnd: restoredValueVnd,
-              businessDate,
-              occurredAt: new Date(),
-              sourceType: "reversal",
-              sourceId: day._id,
-              sourceLineKey: `${movement.sourceLineKey}:reversal`,
-              reversalOfId: movement._id,
-              reason: input.reason,
-              idempotencyKey: `${input.idempotencyKey}:stock:${movement._id}`,
-              actor: context.actor,
-            },
-          ],
-          { session },
-        );
-        const linkedMovement = await InventoryBalance.updateOne(
-          {
-            organizationId: context.organizationId,
-            locationId: context.locationId,
-            inventoryItemId: movement.inventoryItemId,
-            inventoryLotId: movement.inventoryLotId ?? null,
-          },
-          { $set: { lastMovementId: reversal[0]._id } },
-          { session },
-        );
-        if (linkedMovement.matchedCount !== 1) {
-          throw new DomainError(
-            "Không thể liên kết bút toán đảo với balance vừa khôi phục.",
-            409,
-            "INVENTORY_CONFLICT",
-          );
-        }
       }
       day.status = "reopened";
       day.reopenedAt = new Date();

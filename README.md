@@ -78,7 +78,7 @@ bun run migrate:v2 --catalog-map=config/v2-catalog-map.online-snowmilk.json
 ```
 
 Không chạy `--apply` trước khi hoàn tất backup/restore thử, đối soát báo cáo,
-kiểm kho vật lý tại cutover và maintenance window. Apply yêu cầu đồng thời
+đối soát tại cutover và maintenance window. Apply yêu cầu đồng thời
 target Atlas `snowmilk`, confirmation token và checksum mới nhất của chính
 dry-run đó. Xem [docs/v2-rollout.md](docs/v2-rollout.md).
 
@@ -92,9 +92,8 @@ và membership, rồi bật `AUTH_ENFORCEMENT=enabled`. Owner, staff và viewer 
 được kiểm tra lại tại Route Handler/DAL, không chỉ ẩn nút trên giao diện.
 
 `V2_OPERATIONS_ENABLED` cũng mặc định là `disabled`; chỉ bật cùng
-`AUTH_ENFORCEMENT` trong maintenance window sau migration và trước khi owner
-ghi opening balance. Trước cutover, `/sales` tiếp tục dùng luồng legacy để quán
-không bị gián đoạn.
+`AUTH_ENFORCEMENT` trong maintenance window sau migration và trước khi bắt đầu
+ghi nhận nghiệp vụ v2. `/sales` luôn dùng form chốt tiền đơn giản: ngày, tiền mặt và chuyển khoản; không nhập sản lượng SKU.
 
 ## Phân tích và import Excel
 
@@ -158,7 +157,6 @@ docs/                   phân tích, schema, business rules, đối chiếu
 
 - `/dashboard`
 - `/sales`
-- `/preparation`
 - `/reports`
 - `/purchases`
 - `/expenses`
@@ -169,7 +167,7 @@ docs/                   phân tích, schema, business rules, đối chiếu
 - `/import`
 - `/settings`
 - `/storefront/orders` — đơn hàng đặt qua app, bill chuyển khoản và trạng thái giao hàng.
-- `/storefront/products` — thêm, sửa, xóa món, ảnh, giá, topping và số lượng bán online.
+- `/storefront/products` — thêm, sửa, xóa món, ảnh, giá, topping và trạng thái bán online.
 - `/storefront/settings` — thông tin shop, ảnh QR chuyển khoản và phí giao hàng.
 
 ## Quản trị cửa hàng online trên web
@@ -213,8 +211,7 @@ các instance.
 API cửa hàng luôn yêu cầu phiên đăng nhập thật và đúng tổ chức, kể cả khi
 auth legacy đang tắt. Owner quản lý món/QR; staff xử lý đơn; viewer chỉ xem.
 Ảnh upload nhận JPG/PNG/WebP tối đa 1,4 MB; bấm **Lưu** sau khi chọn ảnh.
-Xóa món yêu cầu phiên bản mới nhất để tránh xóa từ danh sách cũ sau khi có
-đơn mới. Các đơn đã đặt giữ nguyên tên, giá và topping kể cả khi món bị xóa.
+Xóa món yêu cầu phiên bản mới nhất để tránh xóa từ danh sách cũ sau khi món được sửa. Các đơn đã đặt giữ nguyên tên, giá và topping kể cả khi món bị xóa.
 Đơn được lọc trên server theo số điện thoại/trạng thái, phân trang 50 đơn,
 tự cập nhật 15 giây; phải có lý do khi hủy đơn.
 Đơn COD hiển thị rõ số tiền cần thu khi giao; đơn chuyển khoản có phần xem bill
@@ -223,16 +220,16 @@ và xác nhận tiền. Chưa có QR vẫn nhận COD, còn đơn chuyển kho�
 ## Quy tắc quan trọng
 
 - Một product–size là một product riêng.
-- V2 dùng một `SalesDay` cho mỗi ngày/điểm bán; người dùng nhập số lượng từng
-  SKU cuối ngày, không nhập từng đơn POS.
+- `/sales` mở modal gồm ngày, tiền mặt và chuyển khoản; lịch sử có thêm cột Tổng tiền được cộng trực tiếp khi render ở frontend.
+  Collection `sales` có unique index theo ngày, không lưu tổng tiền hay cost ước tính.
 - Giá và cost được snapshot tại thời điểm bán.
 - Doanh thu toàn app là tổng các business line cấp lá; không thêm field cứng
   theo món mới.
 - VND luôn là integer; số lượng/cost rate dùng Decimal128. Thiếu cost phải hiển
   thị thiếu dữ liệu, không mặc định thành 0 để tạo lợi nhuận giả.
-- Kiểm kho là snapshot cuối ngày: nhập tồn thực tế để định giá kho và đối chiếu
-  số ly theo vỏ ly. Số ly suy ra là chỉ báo vận hành, không phải số bán thực tế.
-- Import giữ `sourceSheet`, `sourceRow`, `legacyId`.
+- Không quản lý tồn kho, kiểm kho, lô kho hay giới hạn số lượng còn bán online.
+  Số lượng nhập hàng, quy cách và tính giá vốn vẫn được lưu đầy đủ.
+- Import giữ `sourceSheet`, `sourceRow`, `legacyId` cho danh mục/nhập hàng; bán hàng được gom theo ngày và chỉ lưu hai khoản tiền. Bản chốt đã tồn tại không bị workbook ghi đè.
 - Số lượng mua và công thức được tự quy đổi về cùng đơn vị cost trước khi
   cộng hoặc tính giá vốn; đổi `gram` ↔ `kg` sẽ chuẩn hóa lịch sử mua và tính
   lại sản phẩm liên quan. Xem `docs/excel-analysis.md` và

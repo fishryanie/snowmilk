@@ -128,7 +128,7 @@ test("prefetch keys use Vietnam dates at the UTC date boundary", () => {
     "/api/reports/dashboard?from=2026-10-01&to=2026-10-01",
   ]);
   expect(routeDataUrls("/sales", true, now)).toEqual([
-    "/api/v2/catalog/skus", "/api/v2/sales-days/2026-10-01",
+    "/api/sales?limit=50",
   ]);
   expect(routeDataUrls("/storefront/orders")).toContain("/api/storefront-admin/orders?");
 });

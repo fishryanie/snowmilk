@@ -14,16 +14,18 @@
     "db:start": "bun scripts/mongo-local.ts start",
     "db:status": "bun scripts/mongo-local.ts status",
     "db:stop": "bun scripts/mongo-local.ts stop",
+    "db:simplify-sales": "bun scripts/simplify-sales.ts",
     "db:indexes": "bun scripts/db-read-indexes.ts",
     "db:profile": "bun scripts/db-query-profile.ts",
     "db:backup": "bun scripts/db-backup.ts",
     "db:restore": "bun scripts/db-restore.ts",
-    "recalculate:estimated-sales": "bun scripts/recalculate-estimated-sales.ts",
     "recalculate:products": "bun scripts/recalculate-product-costs.ts",
     "repair:cost-units": "bun scripts/repair-cost-units.ts",
     "migrate:v2": "bun scripts/migrate-v2.ts",
     "profile:app": "bun scripts/app-read-profile.ts",
-    "test:api-navigation": "bun build scripts/test-api-navigation.tsx --target=node --external=react --external=react-dom/client --external=react/jsx-runtime --external=swr --external=happy-dom --outfile=node_modules/.cache/snowmilk-api-navigation.mjs && node node_modules/.cache/snowmilk-api-navigation.mjs"
+    "test:without-inventory": "bun build scripts/test-without-inventory.ts --target=node --external=mongoose --external=mongodb --external=zod --external=server-only --outfile=node_modules/.cache/snowmilk-without-inventory.mjs && node --conditions=react-server node_modules/.cache/snowmilk-without-inventory.mjs",
+    "test:api-navigation": "bun build scripts/test-api-navigation.tsx --target=node --external=react --external=react-dom/client --external=react/jsx-runtime --external=swr --external=happy-dom --outfile=node_modules/.cache/snowmilk-api-navigation.mjs && node node_modules/.cache/snowmilk-api-navigation.mjs",
+    "test:storefront-orders": "bun build scripts/test-storefront-orders.tsx --target=node --external=react --external=react-dom --external=antd --external=@ant-design/icons --external=swr --external=happy-dom --outfile=node_modules/.cache/snowmilk-storefront-orders.mjs && node --import=./scripts/test-browser-environment.mjs node_modules/.cache/snowmilk-storefront-orders.mjs"
   },
   "dependencies": {
     "@ant-design/charts": "^2.6.7",
@@ -31,7 +33,6 @@
     "@ant-design/nextjs-registry": "^1.3.0",
     "@better-auth/mongo-adapter": "^1.6.27",
     "@hookform/resolvers": "^5.4.0",
-    "add": "^2.0.9",
     "antd": "^6.5.1",
     "better-auth": "^1.6.27",
     "chart.js": "^4.5.1",

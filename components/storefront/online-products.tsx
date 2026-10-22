@@ -105,13 +105,12 @@ export function OnlineProducts() {
               ),
             },
             { title: 'Giá bán', dataIndex: 'price', render: (value: number) => money(value) },
-            { title: 'Còn bán', key: 'stock', render: (_, p) => (p.stock === null ? 'Không giới hạn' : `${p.stock} ${p.unit}`) },
             {
               title: 'Trạng thái',
               key: 'status',
               render: (_, p) => (
-                <Tag color={p.status === 'hidden' ? 'default' : p.status === 'sold_out' || p.stock === 0 ? 'orange' : 'success'}>
-                  {p.status === 'available' && p.stock === 0 ? 'Hết hàng' : availabilityOptions.find(o => o.value === p.status)?.label}
+                <Tag color={p.status === 'hidden' ? 'default' : p.status === 'sold_out' ? 'orange' : 'success'}>
+                  {availabilityOptions.find(o => o.value === p.status)?.label}
                 </Tag>
               ),
             },

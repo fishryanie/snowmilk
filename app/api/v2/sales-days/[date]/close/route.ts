@@ -23,7 +23,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         date,
         closeSalesDaySchema.parse(payload),
       ),
-      "Đã chốt ngày, doanh thu và tồn kho trong cùng transaction.",
+      "Đã chốt ngày và cập nhật doanh thu.",
     );
   } catch (error) {
     return v2ErrorResponse(error);

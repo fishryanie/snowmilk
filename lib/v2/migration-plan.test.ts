@@ -102,7 +102,6 @@ describe("v2 legacy sales backfill planner", () => {
       estimatedSnowMilkCups: 2_893,
     });
     expect(result.salesDays).toHaveLength(20);
-    expect(result.stockMovements).toEqual([]);
     expect(
       result.salesDays.slice(0, 15).every((sale) =>
         (sale.lines as Array<{ businessLineCode: string }>).every(
@@ -112,7 +111,7 @@ describe("v2 legacy sales backfill planner", () => {
     ).toBe(true);
   });
 
-  test("does not fabricate SKUs or retroactive stock movements", () => {
+  test("does not fabricate SKUs", () => {
     const result = buildLegacySalesBackfillPlan(onlineSalesFixture);
     const lines = result.salesDays.flatMap(
       (sale) => sale.lines as Array<Record<string, unknown>>,
@@ -124,7 +123,6 @@ describe("v2 legacy sales backfill planner", () => {
         .filter(({ businessLineCode }) => businessLineCode === "SNOW_MILK")
         .every(({ quantitySource }) => quantitySource === "estimated"),
     ).toBe(true);
-    expect(result.stockMovements).toHaveLength(0);
   });
 
   test("blocks a payment mismatch", () => {
@@ -168,7 +166,6 @@ describe("v2 legacy sales backfill planner", () => {
       estimatedSnowMilkCups: 2_894,
     });
     expect(result.salesDays).toHaveLength(21);
-    expect(result.stockMovements).toEqual([]);
   });
 
   test("produces the same checksum independent of source order", () => {

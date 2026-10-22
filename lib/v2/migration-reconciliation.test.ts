@@ -57,7 +57,6 @@ describe("applied migration read-back reconciliation", () => {
     const reconciliation = buildAppliedMigrationReconciliation({
       frozenBaseline: layer,
       overall: layer,
-      retroactiveStockMovementCount: 0,
     }, {
       saleCount: 20,
       entryCount: 25,
@@ -91,7 +90,6 @@ describe("applied migration read-back reconciliation", () => {
     const reconciliation = buildAppliedMigrationReconciliation({
       frozenBaseline: layer,
       overall: layer,
-      retroactiveStockMovementCount: 0,
     }, {
       saleCount: 20,
       entryCount: 25,
@@ -109,27 +107,6 @@ describe("applied migration read-back reconciliation", () => {
     ).toMatchObject({ matches: false });
   });
 
-  test("blocks any retroactive stock movement linked to legacy sales dates", () => {
-    const applied = appliedFixture();
-    const layer = {
-      salesDays: summarizeAppliedSalesDays(applied.salesDays),
-      revenueEntries: summarizeAppliedRevenueEntries(applied.revenueEntries),
-      dailyFacts: summarizeAppliedDailyFacts(applied.dailyFacts),
-    };
-    const reconciliation = buildAppliedMigrationReconciliation({
-      frozenBaseline: layer,
-      overall: layer,
-      retroactiveStockMovementCount: 1,
-    }, {
-      saleCount: 20,
-      entryCount: 25,
-      factCount: 20,
-      ...LEGACY_BASELINE.totals,
-    });
-    expect(() => assertReconciliationMatches(reconciliation)).toThrow(
-      "stockMovements.retroactiveLegacyCount",
-    );
-  });
 
   test("reconciles the frozen baseline and a larger overall incremental plan", () => {
     const applied = appliedFixture([
@@ -162,7 +139,6 @@ describe("applied migration read-back reconciliation", () => {
       {
         frozenBaseline: frozenLayer,
         overall: layer,
-        retroactiveStockMovementCount: 0,
       },
       {
         saleCount: 21,

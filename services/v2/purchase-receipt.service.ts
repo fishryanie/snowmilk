@@ -4,18 +4,13 @@ import { Types, type ClientSession } from "mongoose";
 import { connectMongo } from "@/lib/mongodb";
 import type { CreatePurchaseReceiptInput } from "@/lib/validators/v2/purchase-receipts";
 import { AuditLog } from "@/models/v2/AuditLog";
-import { InventoryBalance } from "@/models/v2/InventoryBalance";
 import { InventoryItem } from "@/models/v2/InventoryItem";
-import { InventoryLot } from "@/models/v2/InventoryLot";
 import { PurchaseReceipt } from "@/models/v2/PurchaseReceipt";
-import { StockCount } from "@/models/v2/StockCount";
-import { StockMovement } from "@/models/v2/StockMovement";
 import { id, type V2Context } from "@/services/v2/context";
 import { DomainError, duplicateKey } from "@/services/v2/errors";
 import { operationKeySuffix } from "@/services/v2/operation-invariants";
 import {
   deriveUnitCostVnd,
-  purchaseBalanceAmounts,
   sumVndExact,
 } from "@/services/v2/purchase-receipt-invariants";
 import { decimalString } from "@/services/v2/serialize";
@@ -50,15 +45,12 @@ function serializeReceipt(receipt: Plain) {
     lines: (receipt.lines as Plain[]).map((line) => ({
       lineKey: String(line.lineKey),
       inventoryItemId: String(line.inventoryItemId),
-      inventoryLotId: line.inventoryLotId ? String(line.inventoryLotId) : null,
       itemCode: String(line.itemCodeSnapshot),
       itemName: String(line.itemNameSnapshot),
       baseUnit: String(line.unitSnapshot),
       quantity: decimalString(line.quantity),
       unitCostVnd: decimalString(line.unitCostVnd),
       totalAmountVnd: Number(line.totalAmountVnd),
-      lotCode: line.lotCodeSnapshot ? String(line.lotCodeSnapshot) : null,
-      expiresAt: line.expiresAt ? new Date(line.expiresAt).toISOString() : null,
     })),
   };
 }
@@ -75,6 +67,16 @@ async function existingReceipt(
   });
   if (session) query.session(session);
   return (await query.lean()) as Plain | null;
+}
+
+export async function listPurchaseItems(context: V2Context) {
+  await connectMongo();
+  const items = await InventoryItem.find({ organizationId: context.organizationId, isActive: true })
+    .select("code name itemType baseUnit").sort({ itemType: 1, name: 1 }).lean();
+  return { items: items.map((item) => ({
+    inventoryItemId: String(item._id), code: String(item.code), name: String(item.name),
+    kind: String(item.itemType), baseUnit: String(item.baseUnit),
+  })) };
 }
 
 export async function listPurchaseReceipts(context: V2Context, limit = 100) {
@@ -110,19 +112,6 @@ export async function createPurchaseReceipt(
         return;
       }
 
-      const hasOpeningCount = await StockCount.exists({
-        organizationId: context.organizationId,
-        locationId: context.locationId,
-        status: "posted",
-      }).session(session);
-      if (!hasOpeningCount) {
-        throw new DomainError(
-          "Hãy hoàn tất kiểm kho mở đầu tại điểm bán trước khi nhận hàng v2.",
-          409,
-          "OPENING_STOCK_REQUIRED",
-        );
-      }
-
       const inventoryItemIds = [...new Set(input.lines.map((line) => line.inventoryItemId))]
         .map((value) => id(value, "inventoryItemId"));
       const items = (await InventoryItem.find({
@@ -152,188 +141,20 @@ export async function createPurchaseReceipt(
         if (!item) {
           throw new DomainError("Hàng hóa nhập không tồn tại.", 422);
         }
-        if (!item.lotTracked && (source.lotCode || source.expiresAt)) {
-          throw new DomainError(
-            `${item.name} không theo dõi lot; không được nhập mã lot hoặc hạn dùng.`,
-            422,
-            "INVENTORY_LOT_NOT_ALLOWED",
-          );
-        }
-        if (item.expiryTracked && !source.expiresAt) {
-          throw new DomainError(
-            `${item.name} có theo dõi hạn dùng; hãy nhập hạn dùng của lot nhận hàng.`,
-            422,
-            "INVENTORY_EXPIRY_REQUIRED",
-          );
-        }
-
         const lineKey = `${index + 1}:${source.inventoryItemId}`;
         const unitCostVnd = deriveUnitCostVnd(
           source.totalAmountVnd,
           source.quantity,
         );
-        let inventoryLotId: Types.ObjectId | null = null;
-        let lotCodeSnapshot: string | null = null;
-
-        if (item.lotTracked) {
-          const lotCode =
-            source.lotCode?.trim().toLocaleUpperCase("vi-VN") ||
-            `PUR-${input.businessDate.replaceAll("-", "")}-${operationKeySuffix(`${input.idempotencyKey}:${index}`)}`;
-          const duplicateLot = await InventoryLot.exists({
-            organizationId: context.organizationId,
-            locationId: context.locationId,
-            inventoryItemId,
-            lotCode,
-          }).session(session);
-          if (duplicateLot) {
-            throw new DomainError(
-              `Lot ${lotCode} của ${item.name} đã tồn tại. Hãy dùng mã lot nhận hàng khác.`,
-              409,
-              "INVENTORY_LOT_EXISTS",
-            );
-          }
-          const lot = await InventoryLot.create(
-            [
-              {
-                organizationId: context.organizationId,
-                locationId: context.locationId,
-                inventoryItemId,
-                lotCode,
-                sourceType: "purchase",
-                sourceId: receiptId,
-                receivedAt,
-                expiresAt: source.expiresAt ? new Date(source.expiresAt) : null,
-                initialQuantity: source.quantity,
-                onHandQuantity: source.quantity,
-                unitCostVnd,
-                costDataQuality: "complete",
-                status: "available",
-                actor: context.actor,
-              },
-            ],
-            { session },
-          );
-          inventoryLotId = lot[0]._id;
-          lotCodeSnapshot = lotCode;
-        }
-
-        const balance = (await InventoryBalance.findOne({
-          organizationId: context.organizationId,
-          locationId: context.locationId,
-          inventoryItemId,
-          inventoryLotId,
-        })
-          .session(session)
-          .lean()) as Plain | null;
-        const amounts = purchaseBalanceAmounts({
-          existingOnHandQuantity: decimalString(balance?.onHandQuantity ?? "0"),
-          existingAvailableQuantity: decimalString(balance?.availableQuantity ?? "0"),
-          existingInventoryValueVnd:
-            balance?.inventoryValueVnd == null
-              ? null
-              : Number(balance.inventoryValueVnd),
-          existingCostDataQuality: balance?.costDataQuality,
-          incomingQuantity: source.quantity,
-          incomingAmountVnd: source.totalAmountVnd,
-        });
-        const movement = await StockMovement.create(
-          [
-            {
-              organizationId: context.organizationId,
-              locationId: context.locationId,
-              inventoryItemId,
-              inventoryLotId,
-              itemCodeSnapshot: item.code,
-              itemNameSnapshot: item.name,
-              unitSnapshot: item.baseUnit,
-              movementType: "purchase_receive",
-              quantityDelta: source.quantity,
-              unitCostVnd,
-              inventoryValueDeltaVnd: source.totalAmountVnd,
-              businessDate: input.businessDate,
-              occurredAt: receivedAt,
-              sourceType: "purchase",
-              sourceId: receiptId,
-              sourceLineKey: lineKey,
-              idempotencyKey: `${input.idempotencyKey}:stock:${index}`,
-              actor: context.actor,
-            },
-          ],
-          { session },
-        );
-
-        if (balance) {
-          const updated = await InventoryBalance.findOneAndUpdate(
-            {
-              _id: balance._id,
-              organizationId: context.organizationId,
-              locationId: context.locationId,
-              version: balance.version,
-              onHandQuantity: balance.onHandQuantity,
-            },
-            {
-              $set: {
-                onHandQuantity: Types.Decimal128.fromString(amounts.onHandQuantity),
-                availableQuantity: Types.Decimal128.fromString(
-                  amounts.availableQuantity,
-                ),
-                averageUnitCostVnd:
-                  amounts.averageUnitCostVnd == null
-                    ? null
-                    : Types.Decimal128.fromString(amounts.averageUnitCostVnd),
-                inventoryValueVnd: amounts.inventoryValueVnd,
-                costDataQuality: amounts.costDataQuality,
-                lastMovementId: movement[0]._id,
-                lastMovementAt: receivedAt,
-                actor: context.actor,
-              },
-              $inc: { version: 1 },
-            },
-            { new: true, session },
-          );
-          if (!updated) {
-            throw new DomainError(
-              `Tồn ${item.name} vừa thay đổi. Hãy tải lại trước khi nhập.`,
-              409,
-              "INVENTORY_CONFLICT",
-            );
-          }
-        } else {
-          await InventoryBalance.create(
-            [
-              {
-                organizationId: context.organizationId,
-                locationId: context.locationId,
-                inventoryItemId,
-                inventoryLotId,
-                onHandQuantity: amounts.onHandQuantity,
-                reservedQuantity: "0",
-                availableQuantity: amounts.availableQuantity,
-                averageUnitCostVnd: amounts.averageUnitCostVnd,
-                inventoryValueVnd: amounts.inventoryValueVnd,
-                costDataQuality: amounts.costDataQuality,
-                lastMovementId: movement[0]._id,
-                lastMovementAt: receivedAt,
-                actor: context.actor,
-              },
-            ],
-            { session },
-          );
-        }
-
         persistedLines.push({
           lineKey,
           inventoryItemId,
-          inventoryLotId,
           itemCodeSnapshot: item.code,
           itemNameSnapshot: item.name,
           unitSnapshot: item.baseUnit,
           quantity: source.quantity,
           unitCostVnd,
           totalAmountVnd: source.totalAmountVnd,
-          lotCodeSnapshot,
-          expiresAt: source.expiresAt ? new Date(source.expiresAt) : null,
-          stockMovementId: movement[0]._id,
         });
       }
 
@@ -400,7 +221,7 @@ export async function createPurchaseReceipt(
       output = repeated;
     } else {
       throw new DomainError(
-        "Phiếu nhập xung đột với thay đổi kho khác. Hãy tải lại và thử lại.",
+        "Phiếu nhập xung đột với một thay đổi khác. Hãy tải lại và thử lại.",
         409,
         "PURCHASE_RECEIPT_CONFLICT",
       );

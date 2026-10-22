@@ -7,7 +7,7 @@ import { v2ErrorResponse } from "@/services/v2/route";
 
 export async function GET(request: Request) {
   try {
-    const access = await requirePermission(await headers(), "production:read");
+    const access = await requirePermission(await headers(), "catalog:read");
     const skuCode = new URL(request.url).searchParams.get("skuCode") ?? undefined;
     return apiSuccess(await listRecipes(toV2Context(access), skuCode));
   } catch (error) {

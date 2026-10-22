@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   closeSalesDaySchema,
-  completeProductionBatchSchema,
-  createProductionBatchSchema,
-  createStockCountSchema,
   reopenSalesDaySchema,
   revenueReportFiltersSchema,
   saveSalesDayDraftSchema,
@@ -53,48 +50,7 @@ describe("v2 API input validators", () => {
     ).toBe(false);
   });
 
-  test("validates production lifecycle and expiry order", () => {
-    expect(
-      createProductionBatchSchema.safeParse({
-        businessDate: "2026-08-12",
-        idempotencyKey,
-        recipeVersionId: id,
-        startedAt: "2026-08-12T06:00:00+07:00",
-        plannedOutputQuantity: 20,
-      }).success,
-    ).toBe(true);
-    expect(
-      completeProductionBatchSchema.safeParse({
-        version: 1,
-        idempotencyKey,
-        completedAt: "2026-08-12T07:00:00+07:00",
-        components: [{ inventoryItemId: id, quantity: "4000.5" }],
-        goodOutputQuantity: 19,
-        wasteOutputQuantity: 1,
-        expiresAt: "2026-08-13T07:00:00+07:00",
-      }).success,
-    ).toBe(true);
-  });
 
-  test("validates stock count decimals and duplicate lots", () => {
-    expect(
-      createStockCountSchema.safeParse({
-        idempotencyKey,
-        countedAt: "2026-08-12T20:00:00+07:00",
-        lines: [{ inventoryItemId: id, countedQuantity: "12.5" }],
-      }).success,
-    ).toBe(true);
-    expect(
-      createStockCountSchema.safeParse({
-        idempotencyKey,
-        countedAt: "2026-08-12T20:00:00+07:00",
-        lines: [
-          { inventoryItemId: id, countedQuantity: "12" },
-          { inventoryItemId: id, countedQuantity: "13" },
-        ],
-      }).success,
-    ).toBe(false);
-  });
 
   test("validates report date range and rejects unknown filters", () => {
     expect(

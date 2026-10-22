@@ -16,7 +16,6 @@ export type ShopProduct = {
   badge: string;
   unit: string;
   status: Availability;
-  stock: number | null;
   toppings: Topping[];
   toppingSelection?: "single" | "multiple";
   maxToppings?: number | null;
@@ -134,6 +133,16 @@ export type ShopOrder = {
   events: { status: OrderStatus; at: string; note: string }[];
   hasReceipt: boolean;
   payment?: { qrImage: string; note: string };
+};
+export type AdminOrderSummary = Pick<ShopOrder, "id" | "code" | "status" | "createdAt"> & {
+  total: number;
+  customer: Pick<Customer, "name" | "phone">;
+};
+export type AdminOrderLine = Pick<QuotedLine, "key" | "name" | "quantity" | "unitPrice" | "total"> & {
+  toppings: Pick<Topping, "name">[];
+};
+export type AdminOrderDetail = Omit<ShopOrder, "quote" | "payment"> & {
+  quote: Pick<Quote, "subtotal" | "deliveryFee" | "total"> & { lines: AdminOrderLine[] };
 };
 const currencyFormatter = new Intl.NumberFormat("vi-VN", {
   style: "currency",

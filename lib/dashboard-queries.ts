@@ -5,7 +5,6 @@ type DateRange = { $gte: Date; $lte: Date };
 export type FinanceSummary = {
   total: number;
   salesFundedTotal: number;
-  missingFunding: number;
 };
 
 export type InvestmentFacet = {
@@ -30,14 +29,11 @@ export type ExpenseFacet = {
 
 export type CumulativeSalesSummary = {
   totalRevenue: number;
-  paymentMismatchCount: number;
-  lastSaleDate: Date | null;
 };
 
 export const emptyFinanceSummary: FinanceSummary = {
   total: 0,
   salesFundedTotal: 0,
-  missingFunding: 0,
 };
 
 // Null and absent paymentStatus both mean paid for legacy records.
@@ -62,16 +58,11 @@ function financeSummary(amount: string, paid: boolean): PipelineStage.FacetPipel
           ],
         },
       },
-      missingFunding: {
-        $sum: {
-          $cond: [{ $eq: [{ $ifNull: ["$fundingSource", null] }, null] }, 1, 0],
-        },
-      },
     },
   }];
 }
 
-// One collection scan replaces separate period, total, funding and health reads.
+// One collection scan replaces separate period, total and funding reads.
 export function investmentFacetPipeline(dateRange: DateRange): PipelineStage[] {
   return [{
     $facet: {
@@ -104,43 +95,10 @@ export function expenseFacetPipeline(dateRange: DateRange): PipelineStage[] {
   }];
 }
 
-// Keep daily-summary precedence over itemized rows on the same Vietnam day.
-// Return just totals/health instead of transferring the entire sales history.
-export const cumulativeSalesPipeline: PipelineStage[] = [
-  {
-    $group: {
-      _id: { $dateToString: {
-        date: "$saleDate", format: "%Y-%m-%d", timezone: "Asia/Ho_Chi_Minh",
-      } },
-      hasDailySummary: {
-        $max: { $cond: [{ $eq: ["$entryMode", "daily-summary"] }, 1, 0] },
-      },
-      dailyRevenue: { $sum: {
-        $cond: [{ $eq: ["$entryMode", "daily-summary"] }, { $ifNull: ["$netRevenue", 0] }, 0],
-      } },
-      itemizedRevenue: { $sum: {
-        $cond: [{ $eq: ["$entryMode", "daily-summary"] }, 0, { $ifNull: ["$netRevenue", 0] }],
-      } },
-      lastSaleDate: { $max: "$saleDate" },
-      paymentMismatchCount: { $sum: {
-        $cond: [{ $and: [
-          { $eq: ["$entryMode", "daily-summary"] },
-          { $ne: [
-            { $add: [{ $ifNull: ["$cashReceived", 0] }, { $ifNull: ["$bankTransferReceived", 0] }] },
-            { $ifNull: ["$netRevenue", 0] },
-          ] },
-        ] }, 1, 0],
-      } },
-    },
+// Revenue is derived when read, never duplicated in daily closing documents.
+export const cumulativeSalesPipeline: PipelineStage[] = [{
+  $group: {
+    _id: null,
+    totalRevenue: { $sum: { $add: ["$cashReceived", "$bankTransferReceived"] } },
   },
-  {
-    $group: {
-      _id: null,
-      totalRevenue: { $sum: {
-        $cond: [{ $eq: ["$hasDailySummary", 1] }, "$dailyRevenue", "$itemizedRevenue"],
-      } },
-      paymentMismatchCount: { $sum: "$paymentMismatchCount" },
-      lastSaleDate: { $max: "$lastSaleDate" },
-    },
-  },
-];
+}];

@@ -11,9 +11,6 @@ describe("RBAC", () => {
   });
 
   test("staff can operate but cannot reopen or change catalog", () => {
-    expect(roleCan("staff", "production:write")).toBe(true);
-    expect(roleCan("staff", "inventory:count")).toBe(true);
-    expect(roleCan("staff", "inventory:adjust")).toBe(false);
     expect(roleCan("staff", "purchases:write")).toBe(true);
     expect(roleCan("staff", "finance:write")).toBe(false);
     expect(roleCan("staff", "sales:close")).toBe(true);
@@ -23,7 +20,6 @@ describe("RBAC", () => {
 
   test("owner can manage every permission", () => {
     expect(roleCan("owner", "team:manage")).toBe(true);
-    expect(roleCan("owner", "inventory:adjust")).toBe(true);
   });
 
   test("route policy protects high-risk transitions", () => {
@@ -31,8 +27,8 @@ describe("RBAC", () => {
       permissionForRequest("/api/v2/sales-days/2026-08-12/reopen", "POST"),
     ).toBe("sales:reopen");
     expect(
-      permissionForRequest("/api/v2/stock-counts", "POST"),
-    ).toBe("inventory:count");
+      permissionForRequest("/api/v2/purchase-receipts", "POST"),
+    ).toBe("purchases:write");
     expect(permissionForRequest("/api/purchases", "POST")).toBe(
       "purchases:write",
     );
@@ -40,4 +36,12 @@ describe("RBAC", () => {
       "finance:write",
     );
   });
+});
+
+
+test("simple daily closing follows sales permissions", () => {
+  expect(permissionForRequest("/api/sales", "GET")).toBe("sales:read");
+  expect(permissionForRequest("/api/sales", "POST")).toBe("sales:close");
+  expect(roleCan("staff", "sales:close")).toBe(true);
+  expect(roleCan("viewer", "sales:close")).toBe(false);
 });

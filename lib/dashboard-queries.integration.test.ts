@@ -48,7 +48,7 @@ describe.skipIf(!uri)("dashboard aggregates and read indexes (isolated MongoDB)"
     expect(await db.collection("sales").aggregate(cumulativeSalesPipeline).toArray()).toEqual([]);
   });
 
-  test("keeps legacy paid defaults, unpaid expenses and funding warnings distinct", async () => {
+  test("keeps legacy paid defaults and unpaid expenses distinct", async () => {
     await db.collection("expenses").insertMany([
       { expenseDate: range.$gte, amount: 100, fundingSource: "sales_revenue", paymentStatus: "paid" },
       { expenseDate: range.$gte, amount: 200, fundingSource: "sales_revenue", paymentStatus: "unpaid" },
@@ -58,7 +58,7 @@ describe.skipIf(!uri)("dashboard aggregates and read indexes (isolated MongoDB)"
     ]);
     const [facet] = await db.collection("expenses")
       .aggregate<ExpenseFacet>(expenseFacetPipeline(range)).toArray();
-    expect(facet.summary[0]).toMatchObject({ total: 800, salesFundedTotal: 400, missingFunding: 2 });
+    expect(facet.summary[0]).toMatchObject({ total: 800, salesFundedTotal: 400 });
     expect(facet.period).toHaveLength(4);
     expect(facet.period.find((row) => row.amount === 500)?.accountingTreatment).toBe("inventory_cost");
   });
@@ -76,7 +76,7 @@ describe.skipIf(!uri)("dashboard aggregates and read indexes (isolated MongoDB)"
     await db.collection("purchases").insertMany(rows);
     const [facet] = await db.collection("purchases")
       .aggregate<InvestmentFacet>(investmentFacetPipeline(range)).toArray();
-    expect(facet.summary[0]).toMatchObject({ total: 1500, salesFundedTotal: 200, missingFunding: 2 });
+    expect(facet.summary[0]).toMatchObject({ total: 1500, salesFundedTotal: 200 });
     expect(facet.period).toHaveLength(4);
     const claims = [
       { sourceId: String(owner), sourceType: "purchase" as const, amount: 100 },
@@ -91,19 +91,14 @@ describe.skipIf(!uri)("dashboard aggregates and read indexes (isolated MongoDB)"
     expect(original).toBe(1050);
   });
 
-  test("daily summaries override itemized rows by Vietnam day, including midnight boundaries", async () => {
+  test("revenue comes directly from the two amounts, ignoring stale computed values", async () => {
     await db.collection("sales").insertMany([
-      { saleDate: new Date("2026-09-30T17:30:00Z"), netRevenue: 900, entryMode: "itemized" },
-      { saleDate: new Date("2026-10-01T10:00:00Z"), netRevenue: 100, entryMode: "daily-summary", cashReceived: 60, bankTransferReceived: 40 },
-      { saleDate: new Date("2026-10-01T12:00:00Z"), netRevenue: 20, entryMode: "daily-summary", cashReceived: 10 },
-      { saleDate: new Date("2026-10-01T17:00:00Z"), netRevenue: 30, entryMode: "itemized" },
-      { saleDate: new Date("2026-10-02T10:00:00Z"), netRevenue: 40 },
-      { saleDate: new Date("2026-10-03T10:00:00Z"), entryMode: "daily-summary", cashReceived: null },
+      { saleDate: new Date("2026-10-01T17:00:00Z"), cashReceived: 60, bankTransferReceived: 40, netRevenue: 999 },
+      { saleDate: new Date("2026-10-02T17:00:00Z"), cashReceived: 10, bankTransferReceived: 20 },
+      { saleDate: new Date("2026-10-03T17:00:00Z"), cashReceived: 0, bankTransferReceived: 0 },
     ]);
-    const [summary] = await db.collection("sales")
-      .aggregate<CumulativeSalesSummary>(cumulativeSalesPipeline).toArray();
-    expect(summary).toMatchObject({ totalRevenue: 190, paymentMismatchCount: 1 });
-    expect(summary.lastSaleDate).toEqual(new Date("2026-10-03T10:00:00Z"));
+    const [summary] = await db.collection("sales").aggregate<CumulativeSalesSummary>(cumulativeSalesPipeline).toArray();
+    expect(summary).toMatchObject({ totalRevenue: 130 });
   });
 
   test("purchase history returns the same ordered rows without a blocking sort", async () => {

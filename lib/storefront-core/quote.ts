@@ -12,12 +12,6 @@ export function quoteCart(
   products: ShopProduct[],
   settings: ShopSettings,
 ): Quote {
-  const amounts = new Map<string, number>();
-  for (const line of cart)
-    amounts.set(
-      line.productId,
-      (amounts.get(line.productId) || 0) + line.quantity,
-    );
   const lines: QuotedLine[] = cart.map((line) => {
     const product = products.find((p) => p.id === line.productId);
     const maxToppings = product ? getMaxToppings(product) : null;
@@ -27,17 +21,14 @@ export function quoteCart(
     const issue =
       !product || product.status === "hidden"
         ? "Món này đã ngừng bán."
-        : product.status === "sold_out" || product.stock === 0
-          ? "Món này vừa hết hàng."
-          : product.stock != null &&
-              product.stock < (amounts.get(line.productId) || 0)
-            ? `Tiệm chỉ còn ${product.stock} phần.`
-            : maxToppings !== null && line.toppingIds.length > maxToppings
-              ? `Chỉ được chọn tối đa ${maxToppings} topping cho mỗi ${product.unit}.`
-              : toppings.length !== line.toppingIds.length ||
-                  toppings.some((t) => !t.available)
-                ? "Topping đã thay đổi hoặc hết hàng. Vui lòng chọn lại."
-                : undefined;
+        : product.status === "sold_out"
+          ? "Món này đang tạm ngừng bán."
+          : maxToppings !== null && line.toppingIds.length > maxToppings
+            ? `Chỉ được chọn tối đa ${maxToppings} topping cho mỗi ${product.unit}.`
+            : toppings.length !== line.toppingIds.length ||
+                toppings.some((t) => !t.available)
+              ? "Topping đã thay đổi hoặc tạm ngừng bán. Vui lòng chọn lại."
+              : undefined;
     const unitPrice =
       (product?.price || 0) + toppings.reduce((sum, t) => sum + t.price, 0);
     return {

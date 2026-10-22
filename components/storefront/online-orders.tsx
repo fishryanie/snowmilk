@@ -1,20 +1,48 @@
 'use client';
 
-import { EyeOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Button, Card, Input, Select, Table, Tag, Typography } from 'antd';
+import {
+  CarOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  CloseCircleOutlined,
+  CoffeeOutlined,
+  DeleteOutlined,
+  DollarOutlined,
+  EyeOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+  StopOutlined,
+} from '@ant-design/icons';
+import { Button, Card, Input, Select, Table, Tooltip, Typography } from 'antd';
 import { useState } from 'react';
 import { PageHeader } from '@/components/common/page-header';
-import { formatStamp, money, orderStatuses, statusLabels, type ShopOrder } from '@/lib/storefront-core/types';
+import { useCurrentAccess } from '@/components/v2/access-context';
+import { formatStamp, money, orderStatuses, orderTransitions, statusLabels, type AdminOrderSummary } from '@/lib/storefront-core/types';
+import { OrderActionDialog, type OrderAction } from './order-action-dialog';
 import { OnlineOrderDetail } from './order-detail';
-import { OnlineError, OrderStatusTag, useOnlineQuery } from './shared';
+import { OnlineError, useOnlineQuery } from './shared';
 
-type OrderList = { orders: ShopOrder[]; nextCursor: string | null };
+type OrderList = { orders: AdminOrderSummary[]; nextCursor: string | null };
 type Filter = { phone: string; status: string; cursors: string[] };
 
+const statusIcons = {
+  awaiting_payment: <ClockCircleOutlined style={{ color: '#ad6800' }} />,
+  payment_review: <SearchOutlined style={{ color: '#d46b08' }} />,
+  paid: <DollarOutlined style={{ color: '#389e0d' }} />,
+  preparing: <CoffeeOutlined style={{ color: '#08979c' }} />,
+  delivering: <CarOutlined style={{ color: '#1677ff' }} />,
+  completed: <CheckCircleOutlined style={{ color: '#389e0d' }} />,
+  cancelled: <StopOutlined style={{ color: '#cf1322' }} />,
+  expired: <CloseCircleOutlined style={{ color: '#8c8c8c' }} />,
+};
+
 export function OnlineOrders() {
+  const { can } = useCurrentAccess();
+  const canWrite = can('sales:write');
   const [filter, setFilter] = useState<Filter>({ phone: '', status: 'all', cursors: [] });
   const [phoneDraft, setPhoneDraft] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
+  const [action, setAction] = useState<OrderAction | null>(null);
   const params = new URLSearchParams();
   if (filter.phone) params.set('phone', filter.phone);
   if (filter.status !== 'all') params.set('status', filter.status);
@@ -57,60 +85,85 @@ export function OnlineOrders() {
           />
           <Typography.Text type='secondary'>Tự cập nhật mỗi 15 giây · 50 đơn/trang</Typography.Text>
         </div>
-        <Table<ShopOrder>
+        <Table<AdminOrderSummary>
+          bordered
           rowKey='id'
+          size='small'
           dataSource={query.data?.orders ?? []}
           loading={query.loading}
           pagination={false}
-          scroll={{ x: 920 }}
+          scroll={{ x: 'max-content' }}
           locale={{ emptyText: query.error ? 'Chưa tải được đơn hàng. Hãy thử lại.' : 'Chưa có đơn phù hợp.' }}
           columns={[
             {
-              title: 'Mã đơn / thời gian',
+              title: 'Mã đơn hàng',
               key: 'code',
-              render: (_, order) => (
-                <>
-                  <Typography.Text strong>{order.code}</Typography.Text>
-                  <br />
-                  <Typography.Text type='secondary'>{formatStamp(order.createdAt)}</Typography.Text>
-                </>
-              ),
+              render: (_, order) => <Typography.Text strong>{order.code}</Typography.Text>,
+            },
+            { title: 'Ngày đặt',  key: 'createdAt', render: (_, order) => formatStamp(order.createdAt) },
+            { title: 'Tổng tiền', key: 'total', align: 'right', render: (_, order) => money(order.total) },
+            { title: 'Tên', dataIndex: ['customer', 'name'], key: 'name' },
+            {
+              title: 'SĐT',
+              key: 'phone',
+              render: (_, order) => <a href={`tel:${order.customer.phone}`}>{order.customer.phone}</a>,
             },
             {
-              title: 'Khách hàng',
-              key: 'customer',
-              render: (_, order) => (
-                <>
-                  <Typography.Text>{order.customer.name}</Typography.Text>
-                  <br />
-                  <a href={`tel:${order.customer.phone}`}>{order.customer.phone}</a>
-                </>
-              ),
+              title: 'Trạng thái',
+              key: 'status',
+              align: 'center',
+              render: (_, order) => {
+                const next = orderTransitions[order.status].find(status => status !== 'cancelled');
+                const label = `${statusLabels[order.status]}${canWrite && next ? ` · Chuyển sang: ${statusLabels[next]}` : ''}`;
+                return (
+                  <Tooltip title={label}>
+                    <span>
+                      <Button
+                        size='small'
+                        aria-label={label}
+                        icon={statusIcons[order.status]}
+                        disabled={!canWrite || !next}
+                        onClick={() => {
+                          if (next) setAction({ order, target: next });
+                        }}>
+                        {statusLabels[order.status]}
+                      </Button>
+                    </span>
+                  </Tooltip>
+                );
+              },
             },
-            { title: 'Tổng tiền', key: 'total', render: (_, order) => money(order.quote.total) },
             {
-              title: 'Thanh toán',
-              key: 'paymentMethod',
-              render: (_, order) => (
-                <Tag color={order.paymentMethod === 'cod' ? 'gold' : 'blue'}>{order.paymentMethod === 'cod' ? 'COD · thu khi giao' : 'Chuyển khoản'}</Tag>
-              ),
-            },
-            { title: 'Trạng thái', key: 'status', render: (_, order) => <OrderStatusTag status={order.status} /> },
-            {
-              title: 'Bill',
-              key: 'receipt',
-              render: (_, order) => (order.paymentMethod === 'cod' ? 'Thu khi giao' : order.hasReceipt ? <Tag color='blue'>Đã gửi bill</Tag> : 'Chưa có bill'),
-            },
-            {
-              title: 'Thao tác',
-              key: 'action',
-              fixed: 'right',
-              width: 120,
-              render: (_, order) => (
-                <Button icon={<EyeOutlined />} onClick={() => setSelected(order.id)}>
-                  Chi tiết
-                </Button>
-              ),
+              key: 'delete',
+              align: 'center',
+              title: 'Actions',
+              render: (_, order) => [
+                <Tooltip title='Xóa đơn' key='delete'>
+                  <Button
+                    type='text'
+                    size='small'
+                    danger
+                    aria-label={`Xóa đơn ${order.code}`}
+                    icon={<DeleteOutlined />}
+                    disabled={!canWrite}
+                    onClick={() => setAction({ order, target: 'delete' })}
+                  />
+                </Tooltip>,
+                <Tooltip title={orderTransitions[order.status].includes('cancelled') ? 'Hủy đơn' : 'Đơn đã kết thúc, không thể hủy'} key='cancel'>
+                  <Button
+                    type='text'
+                    size='small'
+                    danger
+                    aria-label={`Hủy đơn ${order.code}`}
+                    icon={<StopOutlined />}
+                    disabled={!canWrite || !orderTransitions[order.status].includes('cancelled')}
+                    onClick={() => setAction({ order, target: 'cancelled' })}
+                  />
+                </Tooltip>,
+                <Tooltip title='Xem chi tiết' key='view'>
+                  <Button type='text' size='small' aria-label={`Xem chi tiết đơn ${order.code}`} icon={<EyeOutlined />} onClick={() => setSelected(order.id)} />
+                </Tooltip>,
+              ],
             },
           ]}
         />
@@ -131,7 +184,10 @@ export function OnlineOrders() {
           </Button>
         </div>
       </Card>
-      {selected ? <OnlineOrderDetail id={selected} onClose={() => setSelected(null)} onChanged={() => void query.reload()} /> : null}
+      {selected ? <OnlineOrderDetail key={selected} id={selected} onClose={() => setSelected(null)} onChanged={() => void query.reload()} /> : null}
+      {action ? (
+        <OrderActionDialog key={`${action.order.id}:${action.target}`} action={action} onClose={() => setAction(null)} onChanged={() => void query.reload()} />
+      ) : null}
     </>
   );
 }

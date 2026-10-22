@@ -10,11 +10,9 @@ import { Product } from "@/models/Product";
 import { BusinessLine } from "@/models/v2/BusinessLine";
 import { CatalogProduct } from "@/models/v2/CatalogProduct";
 import { Category } from "@/models/v2/Category";
-import { InventoryBalance } from "@/models/v2/InventoryBalance";
 import { Sku } from "@/models/v2/Sku";
 import { SkuPrice } from "@/models/v2/SkuPrice";
 import type { V2Context } from "@/services/v2/context";
-import { decimalString, documentId } from "@/services/v2/serialize";
 
 type PlainDocument = Record<string, unknown> & { _id: unknown };
 
@@ -209,11 +207,7 @@ export async function listCatalogSkus(context: V2Context, at = new Date()) {
   ]);
 
   const skuIds = (skus as PlainDocument[]).map((sku) => sku._id);
-  const outputItemIds = (skus as PlainDocument[]).flatMap((sku) =>
-    sku.outputInventoryItemId ? [sku.outputInventoryItemId] : [],
-  );
-  const [prices, balances] = await Promise.all([
-    SkuPrice.find({
+  const prices = await SkuPrice.find({
       ...scope,
       skuId: { $in: skuIds },
       isActive: true,
@@ -224,13 +218,7 @@ export async function listCatalogSkus(context: V2Context, at = new Date()) {
       ],
     })
       .sort({ effectiveFrom: -1 })
-      .lean(),
-    InventoryBalance.find({
-      ...scope,
-      locationId: context.locationId,
-      inventoryItemId: { $in: outputItemIds },
-    }).lean(),
-  ]);
+      .lean();
 
   const businessLineById = new Map(
     (businessLines as PlainDocument[]).map((line) => [String(line._id), line]),
@@ -252,21 +240,10 @@ export async function listCatalogSkus(context: V2Context, at = new Date()) {
       priceBySkuId.set(key, price);
     }
   }
-  const availableByItemId = new Map<string, number>();
-  for (const balance of balances as PlainDocument[]) {
-    const key = String(balance.inventoryItemId);
-    const current = availableByItemId.get(key) ?? 0;
-    availableByItemId.set(
-      key,
-      current + Number(decimalString(balance.availableQuantity)),
-    );
-  }
-
   const items = (skus as PlainDocument[]).map((sku) => {
     const businessLine = businessLineById.get(String(sku.businessLineId));
     const category = categoryById.get(String(sku.categoryId));
     const price = priceBySkuId.get(String(sku._id));
-    const outputInventoryItemId = documentId(sku.outputInventoryItemId);
     return {
       id: String(sku._id),
       code: String(sku.code),
@@ -292,16 +269,7 @@ export async function listCatalogSkus(context: V2Context, at = new Date()) {
         : null,
       unitPriceVnd: price ? Number(price.unitPriceVnd) : null,
       priceEffectiveFrom: price?.effectiveFrom ?? null,
-      outputInventoryItemId,
-      availableQuantity:
-        outputInventoryItemId == null
-          ? null
-          : availableByItemId.get(outputInventoryItemId) ?? 0,
-      canSell:
-        Boolean(price) &&
-        (sku.fulfillmentMode !== "preproduced" ||
-          (outputInventoryItemId != null &&
-            (availableByItemId.get(outputInventoryItemId) ?? 0) > 0)),
+      canSell: Boolean(price),
     };
   });
   return { skus: items };

@@ -1,89 +1,24 @@
-import { describe, expect, test } from "bun:test";
-import { dailySaleSchema } from "./sales";
+import { describe, expect, test } from 'bun:test';
+import { dailySaleSchema } from './sales';
 
-const baseSale = {
-  saleDate: "2026-08-08",
-  batchId: "507f1f77bcf86cd799439011",
-  freshMilkBottleCount: 8,
-  cashReceived: 700_000,
-  bankTransferReceived: 500_000,
-};
+const sale = { saleDate: '2026-08-08', cashReceived: 700_000, bankTransferReceived: 500_000 };
 
-describe("daily sale revenue validation", () => {
-  test("accepts payments and lets the server derive total revenue", () => {
-    expect(dailySaleSchema.safeParse(baseSale).success).toBe(true);
+describe('simple daily closing validation', () => {
+  test('accepts just the date and two amounts, including a day with zero takings', () => {
+    expect(dailySaleSchema.parse(sale)).toEqual({ ...sale, overwrite: false });
+    expect(dailySaleSchema.safeParse({ ...sale, cashReceived: 0, bankTransferReceived: 0 }).success).toBe(true);
   });
-
-  test("allows zero fresh-milk bottles", () => {
-    expect(
-      dailySaleSchema.safeParse({
-        ...baseSale,
-        freshMilkBottleCount: 0,
-      }).success,
-    ).toBe(true);
+  test('rejects missing, negative, fractional, nonnumeric and excessive amounts', () => {
+    for (const value of [undefined, null, '', '1000', -1, 0.5, NaN, Infinity, 1_000_000_000_001]) {
+      for (const key of ['cashReceived', 'bankTransferReceived']) {
+        expect(dailySaleSchema.safeParse({ ...sale, [key]: value }).success).toBe(false);
+      }
+    }
   });
-
-  test("accepts quantities for newly added products", () => {
-    const result = dailySaleSchema.safeParse({
-      ...baseSale,
-      productQuantities: [
-        { productId: "507f1f77bcf86cd799439012", quantity: 3 },
-      ],
-    });
-
-    expect(result.success).toBe(true);
-  });
-
-  test("rejects duplicate product quantities", () => {
-    expect(
-      dailySaleSchema.safeParse({
-        ...baseSale,
-        productQuantities: [
-          { productId: "507f1f77bcf86cd799439012", quantity: 1 },
-          { productId: "507f1f77bcf86cd799439012", quantity: 2 },
-        ],
-      }).success,
-    ).toBe(false);
-  });
-
-  test("rejects a zero payment total", () => {
-    expect(
-      dailySaleSchema.safeParse({
-        ...baseSale,
-        cashReceived: 0,
-        bankTransferReceived: 0,
-      }).success,
-    ).toBe(false);
-  });
-
-  test("allows no batch because the server derives whether snow milk was sold", () => {
-    expect(
-      dailySaleSchema.safeParse({
-        ...baseSale,
-        batchId: undefined,
-        freshMilkBottleCount: 10,
-        cashReceived: 200_000,
-        bankTransferReceived: 0,
-      }).success,
-    ).toBe(true);
-  });
-
-  test("rejects a client-supplied total revenue", () => {
-    expect(
-      dailySaleSchema.safeParse({
-        ...baseSale,
-        totalRevenue: 1_200_000,
-      }).success,
-    ).toBe(false);
-  });
-
-  test("rejects client-computed revenue splits", () => {
-    expect(
-      dailySaleSchema.safeParse({
-        ...baseSale,
-        snowMilkRevenue: 1_000_000,
-        freshMilkRevenue: 200_000,
-      }).success,
-    ).toBe(false);
+  test('rejects invalid dates and every removed field', () => {
+    expect(dailySaleSchema.safeParse({ ...sale, saleDate: '2026-02-30' }).success).toBe(false);
+    for (const key of ['batchId', 'freshMilkBottleCount', 'productQuantities', 'note', 'netRevenue', 'totalVariableCost', 'estimatedProfit']) {
+      expect(dailySaleSchema.safeParse({ ...sale, [key]: 1 }).success).toBe(false);
+    }
   });
 });

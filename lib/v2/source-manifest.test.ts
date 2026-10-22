@@ -21,10 +21,6 @@ function baselineSources(): LegacySourceDocuments {
     sales: records(LEGACY_SOURCE_COUNT_BASELINE.sales, "sale"),
     milkBatches: records(LEGACY_SOURCE_COUNT_BASELINE.milkBatches, "batch"),
     purchases: records(LEGACY_SOURCE_COUNT_BASELINE.purchases, "purchase"),
-    inventorySnapshots: records(
-      LEGACY_SOURCE_COUNT_BASELINE.inventorySnapshots,
-      "snapshot",
-    ),
     expenses: records(LEGACY_SOURCE_COUNT_BASELINE.expenses, "expense"),
     equipment: records(LEGACY_SOURCE_COUNT_BASELINE.equipment, "equipment"),
   };
@@ -49,11 +45,6 @@ describe("legacy source manifest", () => {
       disposition: "preserve_read_only",
       canonicalTargets: [],
       checksum: expect.stringMatching(/^[a-f\d]{64}$/),
-    });
-    expect(first.find(({ key }) => key === "inventorySnapshots")).toMatchObject({
-      count: 4,
-      disposition: "preserve_for_physical_opening_reference",
-      canonicalTargets: [],
     });
   });
 

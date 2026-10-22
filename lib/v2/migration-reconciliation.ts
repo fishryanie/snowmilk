@@ -214,7 +214,6 @@ type AppliedLayerSnapshot = {
 type AppliedMigrationSnapshot = {
   frozenBaseline: AppliedLayerSnapshot;
   overall: AppliedLayerSnapshot;
-  retroactiveStockMovementCount: number;
 };
 
 export type AppliedMigrationExpectation = {
@@ -312,11 +311,7 @@ export function buildAppliedMigrationReconciliation(
   return [
     ...layerMetrics("frozenBaseline", actual.frozenBaseline, frozenExpectation),
     ...layerMetrics("overall", actual.overall, expectedOverall),
-    metric(
-      "stockMovements.retroactiveLegacyCount",
-      0,
-      actual.retroactiveStockMovementCount,
-    ),
+
   ];
 }
 

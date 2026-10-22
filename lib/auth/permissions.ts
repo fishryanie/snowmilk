@@ -4,12 +4,6 @@ export type Role = (typeof ROLES)[number];
 export const PERMISSIONS = [
   "catalog:read",
   "catalog:write",
-  "production:read",
-  "production:write",
-  "inventory:read",
-  "inventory:write",
-  "inventory:count",
-  "inventory:adjust",
   "sales:read",
   "sales:write",
   "sales:close",
@@ -33,9 +27,6 @@ const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> = {
   owner: new Set(PERMISSIONS),
   staff: new Set([
     ...READ_PERMISSIONS,
-    "production:write",
-    "inventory:write",
-    "inventory:count",
     "sales:write",
     "sales:close",
     "purchases:write",
@@ -83,24 +74,16 @@ export function permissionForRequest(
     if (pathname.includes("/payroll") || pathname.includes("/expenses")) {
       return "finance:read";
     }
-    if (
-      pathname.includes("/inventory") ||
-      pathname.includes("/stock-counts")
-    ) {
-      return "inventory:read";
-    }
-    if (pathname.includes("/production-batches")) return "production:read";
+    if (pathname.includes("/purchases") || pathname.includes("/purchase-receipts") || pathname.includes("/purchase-items")) return "purchases:read";
     if (pathname.includes("/sales")) return "sales:read";
     return "catalog:read";
   }
 
+  if (pathname === "/api/sales") return "sales:close";
   if (pathname.endsWith("/reopen")) return "sales:reopen";
   if (pathname.endsWith("/close")) return "sales:close";
   if (pathname.includes("/sales-days")) return "sales:write";
-  if (pathname.includes("/production-batches")) return "production:write";
-  if (pathname.includes("/stock-counts")) return "inventory:count";
-  if (pathname.includes("/inventory")) return "inventory:write";
-  if (pathname.includes("/purchases")) return "purchases:write";
+  if (pathname.includes("/purchases") || pathname.includes("/purchase-receipts")) return "purchases:write";
   if (
     pathname.includes("/payroll") ||
     pathname.includes("/expenses") ||

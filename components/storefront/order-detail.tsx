@@ -12,8 +12,8 @@ import {
   paymentMethodLabels,
   statusLabels,
   type OrderStatus,
-  type QuotedLine,
-  type ShopOrder,
+  type AdminOrderLine,
+  type AdminOrderDetail,
 } from '@/lib/storefront-core/types';
 import { OnlineError, OrderStatusTag, saveOnline, useOnlineQuery } from './shared';
 
@@ -25,14 +25,14 @@ const actionLabels: Partial<Record<OrderStatus, string>> = {
   cancelled: 'Hủy đơn',
 };
 
-function actionLabel(status: OrderStatus, order: ShopOrder) {
+function actionLabel(status: OrderStatus, order: AdminOrderDetail) {
   return status === 'completed' && order.paymentMethod === 'cod' ? 'Xác nhận đã giao và thu đủ tiền' : actionLabels[status];
 }
 
 export function OnlineOrderDetail({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
   const { can } = useCurrentAccess();
   const { message } = App.useApp();
-  const query = useOnlineQuery<ShopOrder>(`/api/storefront-admin/orders/${id}`, 15000);
+  const query = useOnlineQuery<AdminOrderDetail>(`/api/storefront-admin/orders/${id}`, 15000);
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState<OrderStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +124,7 @@ export function OnlineOrderDetail({ id, onClose, onChanged }: { id: string; onCl
                 { key: 'paymentMethod', label: 'Hình thức thanh toán', children: paymentMethodLabels[order.paymentMethod] },
               ]}
             />
-            <Table<QuotedLine>
+            <Table<AdminOrderLine>
               rowKey='key'
               size='small'
               pagination={false}

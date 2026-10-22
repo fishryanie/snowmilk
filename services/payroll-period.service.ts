@@ -24,8 +24,8 @@ import { Setting } from "@/models/Setting";
 
 type SaleRecord = {
   saleDate: Date;
-  entryMode?: string;
-  netRevenue?: number;
+  cashReceived: number;
+  bankTransferReceived: number;
 };
 
 type CostRecord = {
@@ -221,7 +221,7 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
     payrollReserveSettings,
   ] = await Promise.all([
     Sale.find({})
-      .select("saleDate entryMode netRevenue")
+      .select("saleDate cashReceived bankTransferReceived")
       .lean<SaleRecord[]>(),
     Purchase.find({})
       .select("purchaseDate totalAmount fundingSource")
@@ -253,18 +253,6 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
       .lean<PayrollReserveSettingRecord[]>(),
   ]);
 
-  const dailySummaryDates = new Set<string>();
-  for (const sale of sales) {
-    if (sale.entryMode === "daily-summary") {
-      dailySummaryDates.add(vietnamDateKey(new Date(sale.saleDate)));
-    }
-  }
-  const effectiveSales = sales.filter((sale) => {
-    const day = vietnamDateKey(new Date(sale.saleDate));
-    return (
-      sale.entryMode === "daily-summary" || !dailySummaryDates.has(day)
-    );
-  });
   const ledgers = new Map<string, PeriodLedger>();
   const sourcePeriods: string[] = [];
   const ledgerFor = (period: string) => {
@@ -291,10 +279,10 @@ export async function getPayrollPeriodSummaries(now = new Date()) {
   const normalizedFundingSource = (record: CostRecord) =>
     record.fundingSource || DEFAULT_LEGACY_PURCHASE_FUNDING_SOURCE;
 
-  for (const sale of effectiveSales) {
+  for (const sale of sales) {
     const date = vietnamDateKey(new Date(sale.saleDate));
     const period = date.slice(0, 7);
-    const amount = safeAmount(sale.netRevenue);
+    const amount = safeAmount(sale.cashReceived) + safeAmount(sale.bankTransferReceived);
     const ledger = ledgerFor(period);
     ledger.revenue += amount;
     sourcePeriods.push(period);

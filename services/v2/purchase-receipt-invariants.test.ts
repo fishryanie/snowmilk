@@ -2,7 +2,6 @@ import { describe, expect, it } from "bun:test";
 import {
   addUnsignedDecimals,
   deriveUnitCostVnd,
-  purchaseBalanceAmounts,
   sumVndExact,
 } from "./purchase-receipt-invariants";
 
@@ -20,42 +19,7 @@ describe("purchase receipt fixed-precision invariants", () => {
     );
   });
 
-  it("computes weighted cost from integer inventory value", () => {
-    expect(
-      purchaseBalanceAmounts({
-        existingOnHandQuantity: "3",
-        existingAvailableQuantity: "2.5",
-        existingInventoryValueVnd: 20_000,
-        existingCostDataQuality: "complete",
-        incomingQuantity: "2",
-        incomingAmountVnd: 30_000,
-      }),
-    ).toEqual({
-      onHandQuantity: "5",
-      availableQuantity: "4.5",
-      averageUnitCostVnd: "10000",
-      inventoryValueVnd: 50_000,
-      costDataQuality: "complete",
-    });
-  });
 
-  it("does not invent a cost for legacy stock with missing cost", () => {
-    expect(
-      purchaseBalanceAmounts({
-        existingOnHandQuantity: "3",
-        existingAvailableQuantity: "3",
-        existingInventoryValueVnd: null,
-        existingCostDataQuality: "missing_cost",
-        incomingQuantity: "2",
-        incomingAmountVnd: 30_000,
-      }),
-    ).toMatchObject({
-      onHandQuantity: "5",
-      averageUnitCostVnd: null,
-      inventoryValueVnd: null,
-      costDataQuality: "missing_cost",
-    });
-  });
 
   it("rejects unsafe VND totals", () => {
     expect(() => sumVndExact([Number.MAX_SAFE_INTEGER, 1])).toThrow(

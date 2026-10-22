@@ -16,19 +16,21 @@ type Context = { params: Promise<{ path?: string[] }> };
 export async function GET(request: Request, { params }: Context) {
   try {
     const path = (await params).path || [];
+    const authStarted = performance.now();
     const db = await adminStore(
       request,
       path[0] === "orders" || path[0] === "receipt"
         ? "sales:read"
         : "catalog:read",
     );
+    const authMs = performance.now() - authStarted;
     if (path.join("/") === "catalog") return adminOk(await db.catalog(true));
     if (path.join("/") === "settings") return adminOk(await db.settings());
     if (path.join("/") === "orders") {
       const url = new URL(request.url);
-      return adminOk(
-        await db.listOrders(
-          undefined,
+      const ordersStarted = performance.now();
+      const response = adminOk(
+        await db.listAdminOrders(
           url.searchParams.get("phone")
             ? normalizePhone(url.searchParams.get("phone")!)
             : undefined,
@@ -36,9 +38,14 @@ export async function GET(request: Request, { params }: Context) {
           z.enum(orderStatuses).optional().parse(url.searchParams.get("status") || undefined),
         ),
       );
+      response.headers.set(
+        "Server-Timing",
+        `auth;dur=${authMs.toFixed(1)}, orders;dur=${(performance.now() - ordersStarted).toFixed(1)}`,
+      );
+      return response;
     }
     if (path[0] === "orders" && path.length === 2)
-      return adminOk(await db.order(path[1]));
+      return adminOk(await db.adminOrder(path[1]));
     if (path[0] === "receipt" && path.length === 2) {
       const o = await db.getOrder(path[1]);
       const receipt = o.receipt;
@@ -75,6 +82,10 @@ export async function POST(request: Request, { params }: Context) {
       return adminOk(await db.deleteProduct(body, path[1]));
     if (path.join("/") === "settings")
       return adminOk(await db.saveSettings(body));
+    if (path[0] === "orders" && path.length === 3 && path[2] === "delete") {
+      z.strictObject({}).parse(body);
+      return adminOk(await db.deleteOrder(path[1]));
+    }
     if (path[0] === "orders" && path.length === 2) {
       const input = z
         .strictObject({

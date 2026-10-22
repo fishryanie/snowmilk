@@ -8,15 +8,11 @@ export function routeDataUrls(path: string, v2 = false, now = new Date()): strin
   const dashboard = `/api/reports/dashboard?from=${monthStart}&to=${date}`;
   switch (path) {
     case "/dashboard": return [dashboard];
-    case "/sales": return v2
-      ? ["/api/v2/catalog/skus", `/api/v2/sales-days/${date}`]
-      : ["/api/sales"];
+    case "/sales": return ["/api/sales?limit=50"];
     case "/products": return ["/api/product-onboarding"];
-    case "/ingredients": return [`/api/inventory?date=${date}`];
-    case "/inventory": return ["/api/v2/inventory/balances"];
-    case "/preparation": return ["/api/v2/production-batches", "/api/v2/inventory/balances"];
+    case "/ingredients": return ["/api/ingredients?limit=500"];
     case "/purchases": return v2
-      ? ["/api/v2/inventory/balances", "/api/v2/purchase-receipts"]
+      ? ["/api/v2/catalog/purchase-items", "/api/v2/purchase-receipts"]
       : ["/api/purchases?limit=500", "/api/ingredients?limit=500", "/api/reports/topping-ranking?refresh=0"];
     case "/costing": return ["/api/products?limit=500", "/api/batches?limit=500"];
     case "/batches": return ["/api/batches?limit=500", "/api/ingredients?limit=500", "/api/settings"];

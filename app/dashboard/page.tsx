@@ -5,22 +5,14 @@ import {
   ArrowUpOutlined,
   BankOutlined,
   CalendarOutlined,
-  CheckCircleOutlined,
-  CloudOutlined,
-  ClockCircleOutlined,
   DollarOutlined,
   ExclamationCircleOutlined,
-  InfoCircleOutlined,
-  RiseOutlined,
-  SafetyCertificateOutlined,
-  ShoppingOutlined,
   ShoppingCartOutlined,
   TrophyOutlined,
   WalletOutlined,
 } from "@ant-design/icons";
 import {
   Alert,
-  Button,
   Card,
   DatePicker,
   Progress,
@@ -42,33 +34,6 @@ import { useApiData } from "@/hooks/use-api-data";
 
 const { RangePicker } = DatePicker;
 const { Text, Title } = Typography;
-
-type DashboardData = Omit<typeof workbookDashboard, "health"> & {
-  kpis: (typeof workbookDashboard)["kpis"] & {
-    operatingExpenseTotal?: number;
-    cashExpenseTotal?: number;
-    outstandingExpenseTotal?: number;
-    payrollTotal?: number;
-    reserveFundTransferTotal?: number;
-  };
-  health: {
-    status: "ready" | "attention" | "setup-required";
-    issues: Array<{
-      key: string;
-      severity: "error" | "warning" | "info";
-      title: string;
-      description: string;
-      href?: string;
-    }>;
-    lastSaleDate: string | null;
-    lastInventoryDate: string | null;
-  };
-  groups?: Array<{
-    name: string;
-    quantity: number;
-    revenue: number;
-  }>;
-};
 
 type MetricTitleProps = {
   description: string;
@@ -134,74 +99,46 @@ export default function DashboardPage() {
     dayjs().format("YYYY-MM-DD"),
   ]);
   const url = `/api/reports/dashboard?from=${range[0]}&to=${range[1]}`;
-  const { data, loading, usingFallback } = useApiData<DashboardData>(
+  const { data, loading, usingFallback } = useApiData(
     url,
     workbookDashboard,
   );
-  const cashCoverage =
-    data.kpis.cashOut > 0 ? data.kpis.cashIn / data.kpis.cashOut : 0;
-  const coveragePercent =
-    data.kpis.cashOut > 0
-      ? (data.kpis.cashIn / data.kpis.cashOut) * 100
-      : data.kpis.cashIn > 0
-        ? 100
-        : 0;
-  const cashFlowDifference = Math.abs(data.kpis.netCashFlow);
-  const divestmentSuggestion = data.divestmentSuggestion;
-  const healthStatus =
-    data.health.status === "ready"
-      ? {
-          color: "success",
-          label: "Sẵn sàng vận hành",
-          description: "Các dữ liệu nền và đối soát quan trọng đều đang ổn.",
-        }
-      : data.health.status === "setup-required"
-        ? {
-            color: "error",
-            label: "Cần hoàn tất thiết lập",
-            description:
-              "Có dữ liệu nền bắt buộc còn thiếu nên một số chức năng sẽ bị khóa.",
-          }
-        : {
-            color: "warning",
-            label: "Cần đối soát",
-            description:
-              "Hệ thống vẫn vận hành được, nhưng có số liệu nên kiểm tra để báo cáo chính xác hơn.",
-          };
-  const divestmentReady = divestmentSuggestion.status === "ready";
-  const divestmentStatusLabel =
-    divestmentSuggestion.status === "ready"
-      ? "Có thể cân nhắc"
-      : divestmentSuggestion.status === "capital-recovered"
-        ? "Đã thu hồi đủ vốn"
-        : divestmentSuggestion.status === "insufficient-data"
-          ? "Chờ thêm dữ liệu"
-          : "Chưa nên thoái vốn";
-  const eligibilityDate =
-    divestmentSuggestion.estimatedDaysUntilEligible !== null &&
-    divestmentSuggestion.estimatedDaysUntilEligible > 0
-      ? dayjs(range[1])
-          .add(divestmentSuggestion.estimatedDaysUntilEligible, "day")
-          .format("DD/MM/YYYY")
-      : null;
-  const divestmentChecks = [
-    {
-      label: "Dòng tiền lũy kế sau các lần rút đang dương",
-      passed: divestmentSuggestion.checks.hasPositiveRecordedCash,
-    },
-    {
-      label: "Dòng tiền vận hành trong kỳ đang dương",
-      passed: divestmentSuggestion.checks.hasPositiveOperatingCashFlow,
-    },
-    {
-      label: `Có ít nhất ${divestmentSuggestion.minimumSalesDays} ngày bán để làm mẫu`,
-      passed: divestmentSuggestion.checks.hasEnoughSalesData,
-    },
-    {
-      label: `Sau khi rút vẫn giữ quỹ vận hành ${divestmentSuggestion.reserveDays} ngày`,
-      passed: divestmentSuggestion.checks.keepsOperatingReserve,
-    },
-  ];
+  const periodDays = Math.max(1, dayjs(range[1]).diff(dayjs(range[0]), "day") + 1);
+  const averageDailyRevenue = data.kpis.revenue / periodDays;
+  const hasCashIn = data.kpis.cashIn > 0;
+  const hasCashMovement = hasCashIn || data.kpis.cashOut > 0;
+  const remainingCash = Math.max(0, data.kpis.cashIn - data.kpis.cashOut);
+  const cashDeficit = Math.max(0, data.kpis.cashOut - data.kpis.cashIn);
+  const spentPercent = hasCashIn
+    ? Math.round((data.kpis.cashOut / data.kpis.cashIn) * 1000) / 10
+    : 0;
+  const remainingPercent = hasCashIn
+    ? Math.max(0, Math.round((100 - spentPercent) * 10) / 10)
+    : 0;
+  const spentPercentLabel = !hasCashIn && hasCashMovement
+    ? "—"
+    : `${spentPercent.toLocaleString("vi-VN", { maximumFractionDigits: 1 })}%`;
+  const remainingPercentLabel = !hasCashIn && hasCashMovement
+    ? "—"
+    : `${remainingPercent.toLocaleString("vi-VN", { maximumFractionDigits: 1 })}%`;
+  const cashShareLabel = !hasCashMovement
+    ? "Chưa có giao dịch trong kỳ"
+    : !hasCashIn
+      ? "Chỉ có tiền ra, chưa có tiền vào"
+      : cashDeficit > 0
+        ? "Chi vượt tiền vào"
+        : remainingCash === 0
+          ? "Đã chi hết tiền vào"
+          : remainingCash === data.kpis.cashOut
+            ? "Phần còn lại và đã chi bằng nhau"
+            : remainingCash > data.kpis.cashOut
+              ? "Phần còn lại chiếm tỷ trọng cao hơn"
+              : "Phần đã chi chiếm tỷ trọng cao hơn";
+  const cashShareColor = !hasCashMovement || remainingCash === data.kpis.cashOut
+    ? "default"
+    : remainingCash > data.kpis.cashOut
+      ? "success"
+      : "error";
   const kpis = [
     {
       label: "Tổng doanh thu",
@@ -209,37 +146,8 @@ export default function DashboardPage() {
       icon: <DollarOutlined />,
       money: true,
       description:
-        "Tổng doanh thu thuần của các giao dịch hoặc bản chốt ngày trong khoảng thời gian đang chọn.",
-      formula: "Doanh thu sữa tuyết + Doanh thu sữa tươi",
-      note: "Nếu một ngày đã có bản chốt tổng, hệ thống bỏ qua các dòng bán lẻ cùng ngày để tránh tính hai lần.",
-    },
-    {
-      label: "Doanh thu sữa tuyết",
-      value: data.kpis.snowMilkRevenue,
-      icon: <CloudOutlined />,
-      money: true,
-      description:
-        "Phần doanh thu bán sữa tuyết trong khoảng thời gian đang chọn.",
-      formula: "Σ Doanh thu sữa tuyết trong kỳ",
-      note: "Các bản chốt cũ chưa tách doanh thu được xem là doanh thu sữa tuyết để giữ tương thích.",
-    },
-    {
-      label: "Doanh thu sữa tươi",
-      value: data.kpis.freshMilkRevenue,
-      icon: <ShoppingOutlined />,
-      money: true,
-      description:
-        "Phần doanh thu bán sữa tươi đóng chai trong khoảng thời gian đang chọn.",
-      formula: "Σ Doanh thu sữa tươi trong kỳ",
-    },
-    {
-      label: "Chai sữa tươi đã bán",
-      value: data.kpis.freshMilkBottleCount,
-      icon: <ShoppingOutlined />,
-      money: false,
-      description:
-        "Tổng số chai sữa tươi đã nhập khi chốt bán hàng trong kỳ.",
-      formula: "Σ Số chai sữa tươi đã bán",
+        "Tổng tiền mặt và chuyển khoản đã chốt trong khoảng thời gian đang chọn.",
+      formula: "Tiền mặt + Tiền chuyển khoản",
     },
     {
       label: "Tiền còn lại trong tiệm",
@@ -263,18 +171,6 @@ export default function DashboardPage() {
       formula: "Σ Thành tiền của các phiếu nhập hàng trong kỳ",
     },
     {
-      label: "Lợi nhuận sữa tuyết tạm tính",
-      value: data.kpis.estimatedProfit,
-      icon: <RiseOutlined />,
-      money: true,
-      profit: true,
-      description:
-        "Khoản lãi sữa tuyết ước tính sau giá vốn biến đổi, phần chi phí cố định được phân bổ trong bản chốt và các chi phí khác đã ghi nhận.",
-      formula:
-        "Σ Lãi sữa tuyết ước tính từng bản bán − Chi phí khác trong kỳ",
-      note: "Chưa cộng lợi nhuận sữa tươi vì hiện chưa có giá vốn theo chai; tổng doanh thu vẫn bao gồm đầy đủ cả hai loại.",
-    },
-    {
       label: "Tổng vốn đã bỏ lũy kế",
       value: data.kpis.investmentTotal,
       icon: <TrophyOutlined />,
@@ -285,27 +181,6 @@ export default function DashboardPage() {
         "Tiền cá nhân đang mở + Các khoản Tiền cá nhân đã được thu hồi",
       note: "Khoản đã claim vẫn được giữ trong nguyên giá vốn ban đầu nhưng không bị tính hai lần khi nguồn tiền của phiếu gốc thay đổi.",
     },
-    {
-      label: "Đầu tư thiết bị",
-      value: data.kpis.equipmentTotal,
-      icon: <BankOutlined />,
-      money: true,
-      description:
-        "Tổng số tiền mua thiết bị có ngày mua nằm trong khoảng thời gian đang chọn.",
-      formula: "Σ Thành tiền thiết bị mua trong kỳ",
-      note: "Khoản này luôn được tính vào tiền ra; chỉ tài sản dùng Tiền cá nhân mới làm tăng Tổng vốn đã bỏ lũy kế.",
-    },
-    {
-      label: "Vốn còn cần thu hồi",
-      value: data.kpis.remainingCapital,
-      icon: <RiseOutlined />,
-      money: true,
-      attention: true,
-      description:
-        "Phần tiền cá nhân ban đầu chưa được ghi nhận là đã rút về qua các lần thu hồi vốn.",
-      formula: "Tổng vốn đã bỏ lũy kế − Tổng vốn đã thu hồi",
-      note: "Chỉ số này không đổi khi bạn thay khoảng ngày trên dashboard; nó chỉ đổi khi vốn gốc hoặc lịch sử thu hồi vốn thay đổi.",
-    },
   ];
 
   if (loading) return <RouteSkeleton />;
@@ -314,7 +189,7 @@ export default function DashboardPage() {
     <div className="page-wrap dashboard-page">
       <PageHeader
         title="Tổng quan"
-        description="Theo dõi doanh thu, giá vốn và tiến độ thu hồi vốn trên một màn hình."
+        description="Theo dõi doanh thu, giá vốn và dòng tiền trên một màn hình."
         actions={
           <Space wrap>
             <Tag color="blue">Dữ liệu theo khoảng ngày</Tag>
@@ -342,62 +217,7 @@ export default function DashboardPage() {
           description="MongoDB chưa kết nối hoặc chưa import dữ liệu. Các số dưới đây giữ nguyên giá trị đang hiển thị trong workbook để bạn đối chiếu."
         />
       )}
-      <Card
-        className="surface-card operations-health-card"
-        title="Trạng thái sẵn sàng vận hành"
-        extra={<Tag color={healthStatus.color}>{healthStatus.label}</Tag>}
-      >
-        <Text type="secondary">{healthStatus.description}</Text>
-        {data.health.issues.length > 0 ? (
-          <div className="operations-health-list">
-            {data.health.issues.map((issue) => (
-              <div
-                className={`operations-health-item is-${issue.severity}`}
-                key={issue.key}
-              >
-                {issue.severity === "error" ? (
-                  <ExclamationCircleOutlined aria-hidden />
-                ) : issue.severity === "warning" ? (
-                  <ClockCircleOutlined aria-hidden />
-                ) : (
-                  <InfoCircleOutlined aria-hidden />
-                )}
-                <div>
-                  <Text strong>{issue.title}</Text>
-                  <Text type="secondary">{issue.description}</Text>
-                </div>
-                {issue.href ? (
-                  <Button href={issue.href} size="small">
-                    Kiểm tra
-                  </Button>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <Alert
-            showIcon
-            type="success"
-            title="Không phát hiện điểm chặn vận hành"
-            style={{ marginTop: 16 }}
-          />
-        )}
-        <div className="operations-health-meta">
-          <Text type="secondary">
-            Chốt bán gần nhất:{" "}
-            {data.health.lastSaleDate
-              ? dayjs(data.health.lastSaleDate).format("DD/MM/YYYY")
-              : "chưa có"}
-          </Text>
-          <Text type="secondary">
-            Kiểm kho gần nhất:{" "}
-            {data.health.lastInventoryDate
-              ? dayjs(data.health.lastInventoryDate).format("DD/MM/YYYY")
-              : "chưa có"}
-          </Text>
-        </div>
-      </Card>
-      <div className="kpi-grid">
+      <div className="kpi-grid dashboard-kpi-grid">
         {kpis.map((item) => (
           <Card key={item.label} className="surface-card kpi-card">
             <Statistic
@@ -429,74 +249,30 @@ export default function DashboardPage() {
                             : "var(--success)",
                       },
                     }
-                  : item.attention
-                    ? {
-                        content: {
-                          color:
-                            Number(item.value) > 0
-                              ? "var(--amber)"
-                              : "var(--success)",
-                        },
-                      }
                   : undefined
               }
             />
           </Card>
         ))}
-      </div>
-      <Card className="surface-card capital-recovery-card">
-        <div className="cash-flow-heading">
-          <div>
-            <Title level={3}>Tiến độ thu hồi vốn</Title>
-            <Text type="secondary">
-              Theo dõi lũy kế, không bị thay đổi bởi khoảng ngày đang xem.
-            </Text>
-          </div>
-          <Tag
-            color={
-              data.kpis.remainingCapital <= 0
-                ? "success"
-                : data.kpis.capitalRecoveryRate > 0
-                  ? "processing"
-                  : "default"
+        <Card className="surface-card kpi-card dashboard-average-revenue-card">
+          <Statistic
+            title={
+              <MetricTitle
+                description="Doanh thu bình quân mỗi ngày lịch trong khoảng đang chọn, kể cả ngày không phát sinh doanh thu."
+                formula="Tổng doanh thu trong kỳ ÷ Số ngày trong kỳ (tính cả ngày đầu và ngày cuối)"
+                icon={<CalendarOutlined />}
+                label="Doanh thu trung bình/ngày"
+                note={`Khoảng đang chọn gồm ${formatNumber(periodDays)} ngày.`}
+              />
             }
-          >
-            {Math.min(100, data.kpis.capitalRecoveryRate).toLocaleString(
-              "vi-VN",
-              { maximumFractionDigits: 1 },
-            )}
-            %
-          </Tag>
-        </div>
-        <Progress
-          percent={Math.min(100, data.kpis.capitalRecoveryRate)}
-          status={data.kpis.remainingCapital <= 0 ? "success" : "active"}
-          strokeColor="var(--brand)"
-          format={(percent) =>
-            `${Number(percent ?? 0).toLocaleString("vi-VN", {
-              maximumFractionDigits: 1,
-            })}%`
-          }
-        />
-        <div className="capital-recovery-summary">
-          <div>
-            <Text type="secondary">Vốn gốc</Text>
-            <Text strong>{formatVnd(data.kpis.investmentTotal)}</Text>
-          </div>
-          <div>
-            <Text type="secondary">Đã thu hồi</Text>
-            <Text strong type="success">
-              {formatVnd(data.kpis.withdrawnTotal)}
-            </Text>
-          </div>
-          <div>
-            <Text type="secondary">Còn lại</Text>
-            <Text strong type={data.kpis.remainingCapital > 0 ? "warning" : "success"}>
-              {formatVnd(data.kpis.remainingCapital)}
-            </Text>
-          </div>
-        </div>
-      </Card>
+            value={averageDailyRevenue}
+            formatter={(value) => formatVnd(Number(value))}
+          />
+          <Text type="secondary" className="dashboard-average-revenue-note">
+            Trong {formatNumber(periodDays)} ngày đang chọn
+          </Text>
+        </Card>
+      </div>
       <section className="cash-flow-section" aria-labelledby="cash-flow-title">
         <div className="cash-flow-heading">
           <div>
@@ -584,212 +360,41 @@ export default function DashboardPage() {
             />
           </Card>
         </div>
-        <div className="cash-flow-detail-grid">
-          <Card
-            className="surface-card"
-            title="Cơ cấu tiền ra"
-            extra={<Text strong>{formatVnd(data.kpis.cashOut)}</Text>}
-          >
-            <div className="summary-row">
-              <Text type="secondary">Nhập nguyên liệu &amp; bao bì</Text>
-              <Text strong>{formatVnd(data.kpis.purchaseTotal)}</Text>
-            </div>
-            <div className="summary-row">
-              <Text type="secondary">Chi phí đã thanh toán</Text>
-              <Text strong>
-                {formatVnd(data.kpis.cashExpenseTotal ?? data.kpis.expenseTotal)}
-              </Text>
-            </div>
-            <div className="summary-row">
-              <Text type="secondary">Đầu tư thiết bị</Text>
-              <Text strong>{formatVnd(data.kpis.equipmentTotal)}</Text>
-            </div>
-            <div className="summary-row">
-              <Text type="secondary">Quỹ lương đã chốt</Text>
-              <Text strong>{formatVnd(data.kpis.payrollTotal ?? 0)}</Text>
-            </div>
-            <div className="summary-row">
-              <Text type="secondary">Chuyển vào các quỹ đã tách</Text>
-              <Text strong>
-                {formatVnd(data.kpis.reserveFundTransferTotal ?? 0)}
-              </Text>
-            </div>
-          </Card>
-          <Card
-            className="surface-card"
-            title="Khả năng bù chi"
-            extra={
-              <Text strong>
-                {data.kpis.cashOut > 0
-                  ? `${cashCoverage.toLocaleString("vi-VN", {
-                      maximumFractionDigits: 2,
-                    })} lần`
-                  : "Chưa phát sinh chi"}
-              </Text>
-            }
-          >
-            <Progress
-              percent={Math.min(100, Math.round(coveragePercent))}
-              status={coveragePercent >= 100 ? "success" : "exception"}
-              strokeColor={
-                coveragePercent >= 100 ? "var(--success)" : "var(--amber)"
-              }
-              format={() => `${Math.round(coveragePercent)}%`}
-            />
-            <Text type="secondary" className="cash-flow-days">
-              {data.kpis.positiveCashFlowDays}/{data.kpis.activeCashFlowDays} ngày
-              có hoạt động đạt dòng tiền dương
+        <Card className="surface-card cash-flow-share-card">
+          <div className="cash-flow-share-heading">
+            <Text strong>Tỷ lệ đã chi và còn lại</Text>
+            <Tag color={cashShareColor}>{cashShareLabel}</Tag>
+          </div>
+          <div className="cash-flow-share-labels">
+            <Text className="cash-flow-share-remaining">
+              <WalletOutlined aria-hidden /> Còn lại <strong>{remainingPercentLabel}</strong>
             </Text>
-            <Alert
-              showIcon
-              type={data.kpis.netCashFlow >= 0 ? "success" : "warning"}
-              title={
-                data.kpis.netCashFlow >= 0
-                  ? `Tiền vào đang cao hơn tiền ra ${formatVnd(cashFlowDifference)}.`
-                  : `Tiền ra đang cao hơn tiền vào ${formatVnd(cashFlowDifference)}.`
-              }
-              style={{ marginTop: 14 }}
-            />
-          </Card>
-        </div>
-      </section>
-      <section
-        className="divestment-advice-section"
-        aria-labelledby="divestment-advice-title"
-      >
-        <div className="cash-flow-heading">
-          <div>
-            <Title level={3} id="divestment-advice-title">
-              Gợi ý thoái vốn
-            </Title>
-            <Text type="secondary">
-              Ước tính bảo thủ từ dòng tiền đã ghi nhận, quỹ dự phòng vận hành
-              và số vốn còn cần thu hồi.
+            <Text className="cash-flow-share-spent">
+              <ArrowUpOutlined aria-hidden /> Đã chi <strong>{spentPercentLabel}</strong>
             </Text>
           </div>
-          <Tag color={divestmentReady ? "success" : "warning"}>
-            {divestmentStatusLabel}
-          </Tag>
-        </div>
-        <div className="divestment-advice-grid">
-          <Card className="surface-card divestment-advice-hero">
-            <Statistic
-              title={
-                <MetricTitle
-                  description="Mức tối đa hệ thống đề xuất có thể rút mà vẫn giữ quỹ vận hành và không vượt phần vốn còn cần thu hồi."
-                  formula="min(Số dư ghi nhận − Quỹ dự phòng 30 ngày, Vốn còn cần thu hồi)"
-                  icon={<WalletOutlined />}
-                  label="Số tiền gợi ý rút lúc này"
-                  note="Chỉ có giá trị lớn hơn 0 khi đủ dữ liệu bán, dòng tiền lũy kế và dòng tiền vận hành đều dương; kết quả được làm tròn xuống 1.000 ₫."
-                />
-              }
-              value={divestmentSuggestion.suggestedAmount}
-              formatter={(value) => formatVnd(Number(value))}
-              styles={{
-                content: {
-                  color: divestmentReady
-                    ? "var(--success)"
-                    : "var(--muted)",
-                },
-              }}
-            />
-            <Alert
-              showIcon
-              type={divestmentReady ? "success" : "warning"}
-              title={
-                divestmentReady
-                  ? `Có thể cân nhắc rút ${formatVnd(divestmentSuggestion.suggestedAmount)}.`
-                  : divestmentSuggestion.status === "capital-recovered"
-                    ? "Vốn ban đầu đã được thu hồi đủ."
-                    : divestmentSuggestion.status === "insufficient-data"
-                      ? `Mới có ${divestmentSuggestion.salesDays}/${divestmentSuggestion.minimumSalesDays} ngày bán cần thiết để đưa ra gợi ý.`
-                      : divestmentSuggestion.recordedCashBalance <= 0
-                        ? `Dòng tiền lũy kế sau các lần rút còn âm ${formatVnd(Math.abs(divestmentSuggestion.recordedCashBalance))}.`
-                        : "Chưa đạt đủ các điều kiện an toàn để thoái vốn."
-              }
-              description={
-                eligibilityDate
-                  ? `Nếu mức thặng dư vận hành hiện tại được giữ ổn định, có thể kiểm tra lại vào khoảng ${eligibilityDate}.`
-                  : "Hệ thống sẽ gợi ý lại khi dữ liệu bán đủ dài, dòng tiền vận hành dương và phần tiền còn lại vượt quỹ dự phòng."
-              }
-              style={{ marginTop: 18 }}
-            />
-          </Card>
-          <Card
-            className="surface-card"
-            title="Cơ sở tính gợi ý"
-            extra={
-              <Button href="/divestments" type="primary">
-                Mở trang thoái vốn
-              </Button>
-            }
-          >
-            <div className="summary-row">
-              <Text type="secondary">Dòng tiền lũy kế sau các lần rút</Text>
-              <Text
-                strong
-                type={
-                  divestmentSuggestion.recordedCashBalance < 0
-                    ? "danger"
-                    : "success"
-                }
-              >
-                {formatVnd(divestmentSuggestion.recordedCashBalance)}
-              </Text>
-            </div>
-            <div className="summary-row">
-              <Text type="secondary">
-                Quỹ dự phòng {divestmentSuggestion.reserveDays} ngày
-              </Text>
-              <Text strong>{formatVnd(divestmentSuggestion.reserveTarget)}</Text>
-            </div>
-            <div className="summary-row">
-              <Text type="secondary">Vốn còn cần thu hồi</Text>
-              <Text strong>
-                {formatVnd(divestmentSuggestion.remainingCapital)}
-              </Text>
-            </div>
-            <div className="summary-row">
-              <Text type="secondary">Dòng tiền vận hành kỳ này</Text>
-              <Text
-                strong
-                type={
-                  divestmentSuggestion.periodOperatingNetCashFlow < 0
-                    ? "danger"
-                    : "success"
-                }
-              >
-                {formatVnd(
-                  divestmentSuggestion.periodOperatingNetCashFlow,
-                )}
-              </Text>
-            </div>
-          </Card>
-        </div>
-        <Card className="surface-card divestment-check-card">
-          <div className="divestment-check-list">
-            {divestmentChecks.map((check) => (
-              <div
-                className={`divestment-check ${check.passed ? "is-passed" : ""}`}
-                key={check.label}
-              >
-                {check.passed ? (
-                  <CheckCircleOutlined aria-hidden />
-                ) : (
-                  <ClockCircleOutlined aria-hidden />
-                )}
-                <Text>{check.label}</Text>
-              </div>
-            ))}
-          </div>
-          <div className="divestment-method-note">
-            <SafetyCertificateOutlined aria-hidden />
-            <Text type="secondary">
-              Đây là quy tắc vận hành tham khảo, không tự tạo giao dịch. Hãy
-              đối chiếu số dư ngân hàng, khoản phải trả và nghĩa vụ thuế trước
-              khi rút tiền thực tế.
+          <Progress
+            aria-label={hasCashIn
+              ? `Trên tổng tiền vào 100%: còn lại ${remainingPercentLabel}, đã chi ${spentPercentLabel}`
+              : hasCashMovement
+                ? "Chưa có tiền vào để tính tỷ lệ đã chi và còn lại"
+                : "Chưa có giao dịch trong kỳ"}
+            percent={remainingPercent}
+            strokeColor="var(--success)"
+            railColor={hasCashMovement ? "var(--danger)" : "var(--line)"}
+            showInfo={false}
+            status="normal"
+            size={{ height: 14 }}
+            styles={{ rail: { overflow: "hidden" }, track: { borderRadius: 0 } }}
+          />
+          <Text type="secondary" className="cash-flow-share-total">
+            Tổng tiền vào{hasCashIn ? " (100%)" : ""}: {formatVnd(data.kpis.cashIn)}
+          </Text>
+          {cashDeficit > 0 ? (
+            <Text type="danger" className="cash-flow-share-total">
+              Chi vượt tiền vào: {formatVnd(cashDeficit)}
             </Text>
-          </div>
+          ) : null}
         </Card>
       </section>
       <div className="dashboard-charts-grid">
@@ -828,78 +433,6 @@ export default function DashboardPage() {
                 value: item.purchaseTotal,
               }))}
           />
-        </Card>
-      </div>
-      <div className="dashboard-grid">
-        <Card className="surface-card" title="Hiệu quả kỳ này">
-          <div className="summary-row">
-            <Text type="secondary">Doanh thu sữa tuyết</Text>
-            <Text>{formatVnd(data.kpis.snowMilkRevenue)}</Text>
-          </div>
-          <div className="summary-row">
-            <Text type="secondary">Doanh thu sữa tươi</Text>
-            <Text>{formatVnd(data.kpis.freshMilkRevenue)}</Text>
-          </div>
-          <div className="summary-row summary-total">
-            <Text strong>Tổng doanh thu</Text>
-            <Text strong>{formatVnd(data.kpis.revenue)}</Text>
-          </div>
-          <div className="summary-row">
-            <Text type="secondary">Cost biến đổi</Text>
-            <Text>{formatVnd(data.kpis.variableCost)}</Text>
-          </div>
-          <div className="summary-row">
-            <Text type="secondary">Chi phí cố định phân bổ</Text>
-            <Text>{formatVnd(data.kpis.allocatedFixedCost)}</Text>
-          </div>
-          <div className="summary-row">
-            <Text type="secondary">Chi phí khác</Text>
-            <Text>
-              {formatVnd(
-                data.kpis.operatingExpenseTotal ?? data.kpis.expenseTotal,
-              )}
-            </Text>
-          </div>
-          <div className="summary-row summary-total">
-            <Title level={5}>Lợi nhuận sữa tuyết tạm tính</Title>
-            <Title level={4}>{formatVnd(data.kpis.estimatedProfit)}</Title>
-          </div>
-          <Alert
-            type="info"
-            showIcon
-            title="Lợi nhuận có phần ước tính"
-            description={
-              data.kpis.estimatedSalesDays > 0
-                ? `${data.kpis.estimatedSalesDays} ngày chốt doanh thu đang dùng doanh thu sữa tuyết, giá bán tham chiếu và định mức hiện có để ước tính giá vốn. Lợi nhuận sữa tươi chưa được cộng vì chưa có giá vốn theo chai.`
-                : "Khi chốt doanh thu, hệ thống chỉ dùng phần sữa tuyết để ước tính giá vốn. Doanh thu sữa tươi vẫn nằm trong tổng doanh thu nhưng chưa có lợi nhuận ước tính."
-            }
-            style={{ marginTop: 16 }}
-          />
-        </Card>
-        <Card
-          className="surface-card"
-          title="Doanh thu theo nhóm sản phẩm"
-          extra={<Tag>{data.groups?.length ?? 0} nhóm</Tag>}
-        >
-          {data.groups?.length ? (
-            data.groups.map((group) => (
-              <div className="summary-row" key={group.name}>
-                <span>
-                  <Text strong>{group.name}</Text>
-                  <br />
-                  <Text type="secondary">{formatNumber(group.quantity)} sản phẩm</Text>
-                </span>
-                <Text strong>{formatVnd(group.revenue)}</Text>
-              </div>
-            ))
-          ) : (
-            <Alert
-              type="info"
-              showIcon
-              title="Chưa có doanh thu theo nhóm"
-              description="Nhóm sẽ xuất hiện sau khi chốt ngày có nhập số lượng sản phẩm."
-            />
-          )}
         </Card>
       </div>
     </div>

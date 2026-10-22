@@ -17,13 +17,9 @@ import {
   payrollPeriodEndDateKey,
   summarizeClosedPayrollFunds,
 } from "@/lib/payroll";
-import { normalizeProductGroupName } from "@/lib/product-groups";
 import { Divestment } from "@/models/Divestment";
 import { Equipment } from "@/models/Equipment";
 import { Expense } from "@/models/Expense";
-import { InventorySnapshot } from "@/models/InventorySnapshot";
-import { MilkBatch } from "@/models/MilkBatch";
-import { Product } from "@/models/Product";
 import { Purchase } from "@/models/Purchase";
 import { PayrollPeriodSettlement } from "@/models/PayrollPeriodSettlement";
 import { Sale } from "@/models/Sale";
@@ -34,19 +30,9 @@ import {
   vietnamDayBoundary,
 } from "@/lib/vietnam-date";
 
-type DashboardSizeSummary = {
-  sizeName: string;
-  quantity: number;
-  referenceSellingPrice: number;
-};
-
 type DashboardDailySummary = {
   date: string;
   revenue: number;
-  snowMilkRevenue: number;
-  freshMilkRevenue: number;
-  freshMilkBottleCount: number;
-  cups: number;
   purchaseTotal: number;
   expenseTotal: number;
   cashExpenseTotal: number;
@@ -55,22 +41,10 @@ type DashboardDailySummary = {
   reserveFundTransferTotal: number;
 };
 
-type HealthIssue = {
-  key: string;
-  severity: "error" | "warning" | "info";
-  title: string;
-  description: string;
-  href?: string;
-};
-
 function emptyDailySummary(date: string): DashboardDailySummary {
   return {
     date,
     revenue: 0,
-    snowMilkRevenue: 0,
-    freshMilkRevenue: 0,
-    freshMilkBottleCount: 0,
-    cups: 0,
     purchaseTotal: 0,
     expenseTotal: 0,
     cashExpenseTotal: 0,
@@ -105,13 +79,10 @@ export async function GET(request: Request) {
       payrollSettlements,
       cumulativeSales,
       divestments,
-      activeProductRecords,
-      validBatch,
-      latestInventorySnapshot,
     ] = await Promise.all([
       Sale.find({ saleDate: dateFilter })
         .select(
-          "saleDate entryMode netRevenue snowMilkRevenue freshMilkRevenue freshMilkBottleCount totalCups totalVariableCost allocatedFixedCost estimatedProfit contributionProfit sizeSummaries.sizeName sizeSummaries.quantity sizeSummaries.referenceSellingPrice items.productName items.groupName items.quantity items.revenue",
+          "saleDate cashReceived bankTransferReceived -_id",
         )
         .lean(),
       Purchase.aggregate<InvestmentFacet>(investmentFacetPipeline(dateFilter)),
@@ -124,14 +95,6 @@ export async function GET(request: Request) {
       Divestment.find({})
         .select("amount claims.sourceId claims.sourceType claims.amount")
         .lean(),
-      Product.find({ isActive: true })
-        .select("hasCostWarning fullCost sellingPrice")
-        .lean(),
-      MilkBatch.exists({ costPerMl: { $gt: 0 } }),
-      InventorySnapshot.findOne({})
-        .sort({ snapshotDate: -1 })
-        .select("snapshotDate milkBatches")
-        .lean(),
     ]);
     const purchases = purchaseFacets[0]?.period ?? [];
     const expenses = expenseFacets[0]?.period ?? [];
@@ -141,150 +104,19 @@ export async function GET(request: Request) {
     const purchaseFinance = purchaseFacets[0]?.summary[0] ?? emptyFinanceSummary;
     const expenseFinance = expenseFacets[0]?.summary[0] ?? emptyFinanceSummary;
     const equipmentFinance = equipmentFacets[0]?.summary[0] ?? emptyFinanceSummary;
-    const missingPurchaseFunding = purchaseFinance.missingFunding;
-    const missingExpenseFunding = expenseFinance.missingFunding;
-    const missingEquipmentFunding = equipmentFinance.missingFunding;
     const salesSummary = cumulativeSales[0];
 
-    const dailySummaryDates = new Set(
-      sales
-        .filter((sale) => sale.entryMode === "daily-summary")
-        .map((sale) => vietnamDateKey(new Date(sale.saleDate))),
-    );
-    const effectiveSales = sales.filter((sale) => {
+    const totals = { revenue: 0, cashReceived: 0, bankTransferReceived: 0, daily: new Map<string, DashboardDailySummary>() };
+    for (const sale of sales) {
+      const revenue = sale.cashReceived + sale.bankTransferReceived;
+      totals.revenue += revenue;
+      totals.cashReceived += sale.cashReceived;
+      totals.bankTransferReceived += sale.bankTransferReceived;
       const day = vietnamDateKey(new Date(sale.saleDate));
-      return (
-        sale.entryMode === "daily-summary" || !dailySummaryDates.has(day)
-      );
-    });
-    const totals = effectiveSales.reduce(
-      (acc, sale) => {
-        const saleFreshMilkRevenue =
-          sale.entryMode === "daily-summary"
-            ? Number(sale.freshMilkRevenue ?? 0)
-            : 0;
-        const saleSnowMilkRevenue =
-          sale.entryMode === "daily-summary"
-            ? Number(
-                sale.snowMilkRevenue ??
-                  Math.max(
-                    0,
-                    Number(sale.netRevenue ?? 0) - saleFreshMilkRevenue,
-                  ),
-              )
-            : Number(sale.netRevenue ?? 0);
-        const saleFreshMilkBottleCount =
-          sale.entryMode === "daily-summary"
-            ? Number(sale.freshMilkBottleCount ?? 0)
-            : 0;
-        const saleCountedProductRevenue = (sale.items ?? []).reduce(
-          (sum: number, item: { revenue?: number }) =>
-            sum + Number(item.revenue ?? 0),
-          0,
-        );
-        const saleSnowMilkRevenueForSizes = Math.max(
-          0,
-          saleSnowMilkRevenue - saleCountedProductRevenue,
-        );
-        acc.totalCups += sale.totalCups ?? 0;
-        acc.revenue += sale.netRevenue ?? 0;
-        acc.snowMilkRevenue += saleSnowMilkRevenue;
-        acc.freshMilkRevenue += saleFreshMilkRevenue;
-        acc.freshMilkBottleCount += saleFreshMilkBottleCount;
-        acc.variableCost += sale.totalVariableCost ?? 0;
-        acc.allocatedFixedCost += sale.allocatedFixedCost ?? 0;
-        acc.profit +=
-          sale.entryMode === "daily-summary"
-            ? (sale.estimatedProfit ?? sale.contributionProfit ?? 0)
-            : (sale.contributionProfit ?? 0);
-        if (sale.entryMode === "daily-summary") {
-          acc.estimatedSalesDays += saleSnowMilkRevenue > 0 ? 1 : 0;
-          const sizeWeights = (
-            (sale.sizeSummaries ?? []) as DashboardSizeSummary[]
-          ).map((summary) => ({
-            ...summary,
-            weight:
-              Number(summary.quantity ?? 0) *
-              Number(summary.referenceSellingPrice ?? 0),
-          }));
-          const totalWeight = sizeWeights.reduce(
-            (sum, summary) => sum + summary.weight,
-            0,
-          );
-          for (const summary of sizeWeights) {
-            const current = acc.products.get(summary.sizeName) ?? {
-              product: summary.sizeName,
-              cups: 0,
-              revenue: 0,
-            };
-            current.cups += summary.quantity;
-            current.revenue +=
-              totalWeight > 0
-                ? (saleSnowMilkRevenueForSizes * summary.weight) / totalWeight
-                : 0;
-            acc.products.set(summary.sizeName, current);
-          }
-          if (saleFreshMilkRevenue > 0 || saleFreshMilkBottleCount > 0) {
-            const current = acc.products.get("Sữa tươi") ?? {
-              product: "Sữa tươi",
-              cups: 0,
-              revenue: 0,
-            };
-            current.cups += saleFreshMilkBottleCount;
-            current.revenue += saleFreshMilkRevenue;
-            acc.products.set("Sữa tươi", current);
-          }
-        }
-        for (const item of sale.items ?? []) {
-          const itemRevenue = Number(item.revenue ?? 0);
-          const itemQuantity = Number(item.quantity ?? 0);
-          const current = acc.products.get(item.productName) ?? {
-            product: item.productName,
-            cups: 0,
-            revenue: 0,
-          };
-          current.cups += itemQuantity;
-          current.revenue += itemRevenue;
-          acc.products.set(item.productName, current);
-
-          const groupName = normalizeProductGroupName(item.groupName);
-          const group = acc.groups.get(groupName) ?? {
-            name: groupName,
-            quantity: 0,
-            revenue: 0,
-          };
-          group.quantity += itemQuantity;
-          group.revenue += itemRevenue;
-          acc.groups.set(groupName, group);
-        }
-        const day = vietnamDateKey(new Date(sale.saleDate));
-        const daily = acc.daily.get(day) ?? emptyDailySummary(day);
-        daily.revenue += sale.netRevenue ?? 0;
-        daily.snowMilkRevenue += saleSnowMilkRevenue;
-        daily.freshMilkRevenue += saleFreshMilkRevenue;
-        daily.freshMilkBottleCount += saleFreshMilkBottleCount;
-        daily.cups += sale.totalCups ?? 0;
-        acc.daily.set(day, daily);
-        return acc;
-      },
-      {
-        totalCups: 0,
-        revenue: 0,
-        snowMilkRevenue: 0,
-        freshMilkRevenue: 0,
-        freshMilkBottleCount: 0,
-        variableCost: 0,
-        allocatedFixedCost: 0,
-        profit: 0,
-        estimatedSalesDays: 0,
-        products: new Map<string, { product: string; cups: number; revenue: number }>(),
-        groups: new Map<
-          string,
-          { name: string; quantity: number; revenue: number }
-        >(),
-        daily: new Map<string, DashboardDailySummary>(),
-      },
-    );
+      const daily = totals.daily.get(day) ?? emptyDailySummary(day);
+      daily.revenue += revenue;
+      totals.daily.set(day, daily);
+    }
     const purchaseTotal = purchases.reduce(
       (sum, purchase) => {
         const day = vietnamDateKey(new Date(purchase.purchaseDate));
@@ -377,7 +209,6 @@ export async function GET(request: Request) {
       withdrawnTotal,
     );
     const remainingCapital = capitalRecovery.remainingCapital;
-    const estimatedProfit = totals.profit - expenseTotals.operating;
     const cashOut =
       purchaseTotal +
       cashExpenseTotal +
@@ -446,143 +277,11 @@ export async function GET(request: Request) {
       periodDays,
       salesDays,
     });
-    const healthIssues: HealthIssue[] = [];
-    if (activeProductRecords.length === 0) {
-      healthIssues.push({
-        key: "products",
-        severity: "error",
-        title: "Chưa có sản phẩm đang hoạt động",
-        description:
-          "Cần tạo sản phẩm để hệ thống có định mức topping, bao bì và giá vốn.",
-        href: "/products",
-      });
-    }
-    if (!validBatch) {
-      healthIssues.push({
-        key: "batches",
-        severity: "error",
-        title: "Chưa có mẻ sữa có giá vốn hợp lệ",
-        description:
-          "Chốt bán hàng sẽ bị khóa nếu không có ít nhất một công thức/mẻ có cost trên 0.",
-        href: "/batches",
-      });
-    }
-    const costWarningCount = activeProductRecords.filter(
-      (product) =>
-        product.hasCostWarning ||
-        Number(product.fullCost ?? 0) > Number(product.sellingPrice ?? 0),
-    ).length;
-    if (costWarningCount > 0) {
-      healthIssues.push({
-        key: "product-cost",
-        severity: "warning",
-        title: `${costWarningCount} sản phẩm có giá vốn cần kiểm tra`,
-        description:
-          "Giá vốn bất thường hoặc cao hơn giá bán có thể làm sai lợi nhuận ước tính.",
-        href: "/costing",
-      });
-    }
-    if (missingPurchaseFunding > 0) {
-      healthIssues.push({
-        key: "purchase-funding-source",
-        severity: "warning",
-        title: `${missingPurchaseFunding} phiếu nhập cũ chưa ghi nguồn tiền`,
-        description:
-          "Hệ thống đang tạm coi các phiếu này là Tiền cá nhân; hãy đối soát để tổng vốn và tiền tiệm chính xác.",
-        href: "/purchases",
-      });
-    }
-    if (missingExpenseFunding > 0) {
-      healthIssues.push({
-        key: "expense-funding-source",
-        severity: "warning",
-        title: `${missingExpenseFunding} chi phí cũ chưa ghi nguồn tiền`,
-        description:
-          "Hãy xác nhận chi phí được thanh toán từ tiền bán hàng, tiền cá nhân, tiền vay hay nguồn khác.",
-        href: "/expenses",
-      });
-    }
-    if (missingEquipmentFunding > 0) {
-      healthIssues.push({
-        key: "equipment-funding-source",
-        severity: "warning",
-        title: `${missingEquipmentFunding} tài sản cũ chưa ghi nguồn tiền`,
-        description:
-          "Hệ thống đang tạm coi các tài sản này là Tiền cá nhân; hãy đối soát để tiến độ thu hồi vốn chính xác.",
-        href: "/equipment",
-      });
-    }
-    const paymentMismatchCount = salesSummary?.paymentMismatchCount ?? 0;
-    if (paymentMismatchCount > 0) {
-      healthIssues.push({
-        key: "payment-reconciliation",
-        severity: "error",
-        title: `${paymentMismatchCount} ngày lệch tiền nhận và doanh thu`,
-        description:
-          "Cần sửa bản chốt ngày để tiền mặt + chuyển khoản bằng đúng doanh thu thực nhận.",
-        href: "/sales",
-      });
-    }
-    const inventoryQuantityWarningCount = (
-      latestInventorySnapshot?.milkBatches ?? []
-    ).filter(
-      (batch: { remainingLiters?: unknown; producedLiters?: unknown }) =>
-        Number(batch.remainingLiters ?? 0) >
-        Number(batch.producedLiters ?? 0),
-    ).length;
-    if (inventoryQuantityWarningCount > 0) {
-      const latestInventoryDate = latestInventorySnapshot?.snapshotDate
-        ? vietnamDateKey(new Date(latestInventorySnapshot.snapshotDate))
-        : null;
-      healthIssues.push({
-        key: "inventory-milk-basis",
-        severity: "warning",
-        title: "Tồn sữa đang lớn hơn sản lượng một mẻ",
-        description:
-          "Giá trị tồn vẫn dùng số kiểm thực tế, nhưng đối chiếu số ly theo sữa không còn đáng tin cho mốc kiểm kho mới nhất.",
-        href: latestInventoryDate
-          ? `/ingredients?date=${latestInventoryDate}#inventory-milk-basis`
-          : "/ingredients#inventory-milk-basis",
-      });
-    }
-    if (!latestInventorySnapshot) {
-      healthIssues.push({
-        key: "inventory",
-        severity: "info",
-        title: "Chưa có mốc kiểm kho",
-        description:
-          "Chốt kiểm kho đầu tiên để theo dõi giá trị tồn và hao hụt giữa các ngày.",
-        href: "/inventory",
-      });
-    }
-    const setupRequired =
-      activeProductRecords.length === 0 || !validBatch;
-    const hasError = healthIssues.some((issue) => issue.severity === "error");
-    const hasWarning = healthIssues.some(
-      (issue) => issue.severity === "warning",
-    );
-
     return apiSuccess({
-      health: {
-        status: setupRequired
-          ? ("setup-required" as const)
-          : hasError || hasWarning
-            ? ("attention" as const)
-            : ("ready" as const),
-        issues: healthIssues,
-        lastSaleDate: salesSummary?.lastSaleDate
-          ? vietnamDateKey(new Date(salesSummary.lastSaleDate))
-          : null,
-        lastInventoryDate: latestInventorySnapshot?.snapshotDate
-          ? vietnamDateKey(new Date(latestInventorySnapshot.snapshotDate))
-          : null,
-      },
       kpis: {
         revenue: totals.revenue,
-        snowMilkRevenue: totals.snowMilkRevenue,
-        freshMilkRevenue: totals.freshMilkRevenue,
-        freshMilkBottleCount: totals.freshMilkBottleCount,
-        totalCups: totals.totalCups,
+        cashReceived: totals.cashReceived,
+        bankTransferReceived: totals.bankTransferReceived,
         businessCashBalance: businessCash.remainingBalance,
         purchaseTotal,
         expenseTotal,
@@ -591,18 +290,11 @@ export async function GET(request: Request) {
         payrollTotal,
         reserveFundTransferTotal,
         outstandingExpenseTotal: Math.max(0, expenseTotal - cashExpenseTotal),
-        variableCost: totals.variableCost,
-        allocatedFixedCost: totals.allocatedFixedCost,
-        estimatedProfit,
-        averageCostPerCup:
-          totals.totalCups > 0 ? totals.variableCost / totals.totalCups : 0,
         investmentTotal,
         withdrawnTotal: capitalRecovery.withdrawnTotal,
         remainingCapital,
         capitalRecoveryRate: capitalRecovery.recoveryRate,
         capitalRecoveryBalance: -remainingCapital,
-        activeProducts: activeProductRecords.length,
-        estimatedSalesDays: totals.estimatedSalesDays,
         cashIn: totals.revenue,
         cashOut,
         netCashFlow,
@@ -613,10 +305,6 @@ export async function GET(request: Request) {
       },
       divestmentSuggestion,
       daily,
-      products: [...totals.products.values()].sort((a, b) => b.cups - a.cups),
-      groups: [...totals.groups.values()].sort(
-        (a, b) => b.revenue - a.revenue,
-      ),
     });
   } catch (error) {
     return apiError(errorMessage(error), 503);

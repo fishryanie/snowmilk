@@ -122,7 +122,6 @@ async function buildSourcePlan(db: Db) {
     sales,
     milkBatches,
     purchases,
-    inventorySnapshots,
     expenses,
     equipment,
   ] = await Promise.all([
@@ -132,7 +131,6 @@ async function buildSourcePlan(db: Db) {
     db.collection("sales").find({}).sort({ saleDate: 1, _id: 1 }).toArray(),
     db.collection("milkbatches").find({}).sort({ code: 1, _id: 1 }).toArray(),
     db.collection("purchases").find({}).sort({ purchaseDate: 1, _id: 1 }).toArray(),
-    db.collection("inventorysnapshots").find({}).sort({ snapshotDate: 1, _id: 1 }).toArray(),
     db.collection("expenses").find({}).sort({ expenseDate: 1, _id: 1 }).toArray(),
     db.collection("equipment").find({}).sort({ purchaseDate: 1, _id: 1 }).toArray(),
   ]);
@@ -144,7 +142,6 @@ async function buildSourcePlan(db: Db) {
     sales,
     milkBatches,
     purchases,
-    inventorySnapshots,
     expenses,
     equipment,
     explicitCatalogMappings: await loadMappings(),
@@ -176,19 +173,12 @@ function publicReport(plan: Awaited<ReturnType<typeof buildSourcePlan>>) {
       issues: plan.recipeBackfill.issues,
     },
     sourceManifest: plan.sourceManifest,
-    inventoryOpening: {
-      legacySnapshotsReplayed: false,
-      instruction:
-        "Các inventory snapshot cũ chỉ được giữ làm tham chiếu. Sau cutover, người vận hành phải kiểm kho vật lý để tạo opening stock count/lots/movements/balances mới.",
-    },
     sourceValidation: plan.sourceValidation,
     sales: {
       ...plan.sales.totals,
       frozenBaseline: plan.sales.baselineTotals,
       canApply: plan.sales.canApply,
       issues: plan.sales.issues,
-      noRetroactiveStockMovements:
-        plan.sales.stockMovements.length === 0,
     },
     canApply: plan.canApply,
     nextStep: plan.canApply
@@ -316,20 +306,6 @@ async function ensureIndexes(db: Db) {
     { organizationId: 1, itemType: 1, isActive: 1, name: 1 },
     { name: "ix_inventory_item_type" },
   );
-  await db.collection(V2_COLLECTIONS.inventoryLots).createIndex(
-    { organizationId: 1, locationId: 1, inventoryItemId: 1, lotCode: 1 },
-    { unique: true, name: "uq_inventory_lot_code" },
-  );
-  await db.collection(V2_COLLECTIONS.inventoryLots).createIndex(
-    {
-      organizationId: 1,
-      locationId: 1,
-      inventoryItemId: 1,
-      status: 1,
-      expiresAt: 1,
-    },
-    { name: "ix_inventory_lot_fefo" },
-  );
   await db.collection(V2_COLLECTIONS.recipes).createIndex(
     { organizationId: 1, skuId: 1, isActive: 1 },
     { name: "ix_recipe_sku_active" },
@@ -352,10 +328,6 @@ async function ensureIndexes(db: Db) {
       name: "uq_recipe_configuration_idempotency",
     },
   );
-  await db.collection(V2_COLLECTIONS.productionBatches).createIndex(
-    { organizationId: 1, locationId: 1, batchCode: 1 },
-    { unique: true, name: "uq_production_batch_code" },
-  );
   await db.collection(V2_COLLECTIONS.purchaseReceipts).createIndex(
     { organizationId: 1, locationId: 1, receiptCode: 1 },
     { unique: true, name: "uq_purchase_receipt_code" },
@@ -371,84 +343,6 @@ async function ensureIndexes(db: Db) {
   await db.collection(V2_COLLECTIONS.purchaseReceipts).createIndex(
     { organizationId: 1, locationId: 1, businessDate: -1, receivedAt: -1 },
     { name: "ix_purchase_receipt_history" },
-  );
-  await db.collection(V2_COLLECTIONS.productionBatches).createIndex(
-    { organizationId: 1, locationId: 1, completionIdempotencyKey: 1 },
-    {
-      unique: true,
-      partialFilterExpression: { completionIdempotencyKey: { $type: "string" } },
-      name: "uq_production_batch_completion_idempotency",
-    },
-  );
-  await db.collection(V2_COLLECTIONS.productionBatches).createIndex(
-    { organizationId: 1, locationId: 1, businessDate: -1, status: 1 },
-    { name: "ix_production_batch_date_status" },
-  );
-  await db.collection(V2_COLLECTIONS.productionBatches).createIndex(
-    { organizationId: 1, locationId: 1, idempotencyKey: 1 },
-    {
-      unique: true,
-      partialFilterExpression: { idempotencyKey: { $type: "string" } },
-      name: "uq_production_batch_idempotency",
-    },
-  );
-  await db.collection(V2_COLLECTIONS.stockMovements).createIndex(
-    { organizationId: 1, idempotencyKey: 1 },
-    { unique: true, name: "uq_stock_movement_idempotency" },
-  );
-  await db.collection(V2_COLLECTIONS.stockMovements).createIndex(
-    {
-      organizationId: 1,
-      locationId: 1,
-      inventoryItemId: 1,
-      inventoryLotId: 1,
-      occurredAt: 1,
-    },
-    { name: "ix_stock_movement_ledger" },
-  );
-  await db.collection(V2_COLLECTIONS.stockMovements).createIndex(
-    { organizationId: 1, sourceType: 1, sourceId: 1, sourceLineKey: 1 },
-    { unique: true, name: "uq_stock_movement_source_line" },
-  );
-  await db.collection(V2_COLLECTIONS.stockMovements).createIndex(
-    { organizationId: 1, reversalOfId: 1 },
-    {
-      unique: true,
-      partialFilterExpression: { reversalOfId: { $type: "objectId" } },
-      name: "uq_stock_movement_reversal",
-    },
-  );
-  await db.collection(V2_COLLECTIONS.inventoryBalances).createIndex(
-    { organizationId: 1, locationId: 1, inventoryItemId: 1, inventoryLotId: 1 },
-    { unique: true, name: "uq_inventory_balance_dimension" },
-  );
-  await db.collection(V2_COLLECTIONS.inventoryBalances).createIndex(
-    { organizationId: 1, locationId: 1, availableQuantity: 1 },
-    { name: "ix_inventory_balance_available" },
-  );
-  await db.collection(V2_COLLECTIONS.stockCounts).createIndex(
-    { organizationId: 1, locationId: 1, countCode: 1 },
-    { unique: true, name: "uq_stock_count_code" },
-  );
-  await db.collection(V2_COLLECTIONS.stockCounts).createIndex(
-    { organizationId: 1, locationId: 1, businessDate: -1, status: 1 },
-    { name: "ix_stock_count_date_status" },
-  );
-  await db.collection(V2_COLLECTIONS.stockCounts).createIndex(
-    { organizationId: 1, locationId: 1, idempotencyKey: 1 },
-    {
-      unique: true,
-      partialFilterExpression: { idempotencyKey: { $type: "string" } },
-      name: "uq_stock_count_idempotency",
-    },
-  );
-  await db.collection(V2_COLLECTIONS.stockCounts).createIndex(
-    { organizationId: 1, locationId: 1, countType: 1 },
-    {
-      unique: true,
-      partialFilterExpression: { countType: "opening" },
-      name: "uq_stock_count_one_opening_per_location",
-    },
   );
   await db.collection(V2_COLLECTIONS.salesDays).createIndex(
     { organizationId: 1, locationId: 1, status: 1, businessDate: -1 },
@@ -583,22 +477,11 @@ async function readAppliedMigrationSnapshot(db: Db, session?: ClientSession) {
       .toArray(),
   ]);
   const migratedSalesDayIds = salesDays.map(({ _id }) => _id);
-  const [dailyFacts, retroactiveStockMovementCount] = await Promise.all([
-    db
-      .collection(V2_COLLECTIONS.dailyRevenueFacts)
-      .find({
-        organizationId: organization._id,
-        locationId: location._id,
-        salesDayId: { $in: migratedSalesDayIds },
-      }, { session })
-      .toArray(),
-    db.collection(V2_COLLECTIONS.stockMovements).countDocuments({
-      organizationId: organization._id,
-      locationId: location._id,
-      sourceType: "sales_day",
-      sourceId: { $in: migratedSalesDayIds },
-    }, { session }),
-  ]);
+  const dailyFacts = await db.collection(V2_COLLECTIONS.dailyRevenueFacts).find({
+    organizationId: organization._id,
+    locationId: location._id,
+    salesDayId: { $in: migratedSalesDayIds },
+  }, { session }).toArray();
   const isFrozenBaseline = (document: Document) => {
     const date = String(document.businessDate ?? "");
     return (
@@ -630,7 +513,6 @@ async function readAppliedMigrationSnapshot(db: Db, session?: ClientSession) {
       dailyFacts.filter(isFrozenBaseline),
     ),
     overall: summarizeLayer(salesDays, revenueEntries, dailyFacts),
-    retroactiveStockMovementCount,
   };
 }
 
@@ -904,10 +786,6 @@ async function applyPlan(
               name: `${source.name} thành phẩm`,
               itemType: "finished_good",
               baseUnit: "each",
-              costingMethod: "fifo",
-              lotTracked: true,
-              expiryTracked: true,
-              allowNegativeStock: false,
               linkedSkuId: skuId,
               legacySource: legacySource("products", source.legacySourceId),
               isActive: source.isActive,
@@ -970,10 +848,6 @@ async function applyPlan(
             name: item.name,
             itemType: item.itemType,
             baseUnit: item.baseUnit,
-            costingMethod: "weighted_average",
-            lotTracked: true,
-            expiryTracked: false,
-            allowNegativeStock: false,
             linkedSkuId: null,
             legacySource: legacySource("ingredients", item.legacySourceId),
             legacyCostSnapshot: item.legacyCostSnapshot,
@@ -999,10 +873,6 @@ async function applyPlan(
             name: item.name,
             itemType: "finished_good",
             baseUnit: "each",
-            costingMethod: "fifo",
-            lotTracked: true,
-            expiryTracked: true,
-            allowNegativeStock: false,
             linkedSkuId: skuId,
             legacySource: legacySource("products", String(item.legacySourceId)),
             isActive: item.isActive,
@@ -1033,10 +903,6 @@ async function applyPlan(
             name: item.name,
             itemType: item.kind,
             baseUnit: item.baseUnit,
-            costingMethod: isFinished ? "fifo" : "weighted_average",
-            lotTracked: true,
-            expiryTracked: isFinished,
-            allowNegativeStock: false,
             linkedSkuId: isFinished ? healthySkuId : null,
             isActive: true,
             version: 1,

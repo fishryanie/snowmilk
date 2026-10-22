@@ -42,7 +42,6 @@ import { Expense } from "@/models/Expense";
 import { MilkBatch } from "@/models/MilkBatch";
 import { Product } from "@/models/Product";
 import { Purchase } from "@/models/Purchase";
-import { Sale } from "@/models/Sale";
 import { Setting } from "@/models/Setting";
 import { ProductSize } from "@/models/Size";
 import {
@@ -1199,17 +1198,6 @@ export async function updateResource(
     await Promise.all([
       recalculateProductCosts(),
       recalculateComposedProductCosts(id),
-      batch
-        ? Sale.updateMany(
-            { batchId: batch._id },
-            {
-              $set: {
-                batchCode: batch.code,
-                batchName: batch.name,
-              },
-            },
-          )
-        : null,
     ]);
     return batch;
   }
@@ -1397,30 +1385,7 @@ export async function deleteResource(resource: ResourceName, id: string) {
     }
     const deleted = await MilkBatch.findByIdAndDelete(id);
     if (!deleted) return null;
-    const replacement = await MilkBatch.findOne()
-      .sort({ cookedAt: -1, createdAt: -1 })
-      .lean();
-    await Promise.all([
-      recalculateProductCosts(),
-      replacement
-        ? Sale.updateMany(
-            {
-              $or: [
-                { batchId: deleted._id },
-                { batchCode: deleted.code },
-                { batchName: deleted.name },
-              ],
-            },
-            {
-              $set: {
-                batchId: replacement._id,
-                batchCode: replacement.code,
-                batchName: replacement.name,
-              },
-            },
-          )
-        : null,
-    ]);
+    await recalculateProductCosts();
     return deleted;
   }
   const deleted = await resourceModels[resource].findByIdAndDelete(id);

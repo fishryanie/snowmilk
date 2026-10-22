@@ -36,19 +36,9 @@ const InventoryItemSchema = new Schema(
     name: { type: String, required: true, trim: true },
     itemType: { type: String, enum: INVENTORY_ITEM_TYPES, required: true },
     baseUnit: { type: String, enum: UNIT_VALUES, required: true, immutable: true },
-    costingMethod: {
-      type: String,
-      enum: ["weighted_average", "fifo"],
-      required: true,
-      default: "weighted_average",
-    },
-    lotTracked: { type: Boolean, required: true, default: false },
-    expiryTracked: { type: Boolean, required: true, default: false },
-    allowNegativeStock: { type: Boolean, required: true, default: false },
     linkedSkuId: { type: Schema.Types.ObjectId, ref: "V2Sku", default: null },
     legacySource: { type: LegacySourceSchema },
-    // Historical source reference only; an owner-confirmed opening count must
-    // explicitly choose whether to use a cost for the operational ledger.
+    // Historical purchase-cost reference for migrated catalogue records.
     legacyCostSnapshot: { type: Schema.Types.Mixed, immutable: true },
     note: { type: String, trim: true },
     isActive: activeField,
@@ -84,9 +74,6 @@ InventoryItemSchema.index(
 
 InventoryItemSchema.pre("validate", function () {
   const doc = this as V2HookDocument;
-  if (doc.expiryTracked && !doc.lotTracked) {
-    doc.invalidate("expiryTracked", "Theo dõi hạn dùng yêu cầu theo dõi lot.");
-  }
   if (doc.itemType === "finished_good" && !doc.linkedSkuId) {
     doc.invalidate("linkedSkuId", "Thành phẩm bán phải liên kết với SKU.");
   }

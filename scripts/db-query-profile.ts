@@ -18,8 +18,8 @@ const queries: Array<{
 }> = [
   { name: "purchase-list", collection: "purchases", filter: {}, sort: { purchaseDate: -1, createdAt: -1 } },
   { name: "ingredients-list", collection: "ingredients", filter: {}, sort: { createdAt: -1 } },
-  { name: "sales-history", collection: "sales", filter: { entryMode: "daily-summary" }, sort: { saleDate: -1, _id: -1 } },
-  { name: "inventory-ingredients", collection: "ingredients", filter: { isActive: true }, sort: { category: 1, name: 1 } },
+  { name: "sales-history", collection: "sales", filter: {}, sort: { saleDate: -1 } },
+  { name: "catalogue-ingredients", collection: "ingredients", filter: { isActive: true }, sort: { category: 1, name: 1 } },
   { name: "products-list", collection: "products", filter: {}, sort: { createdAt: -1 } },
   { name: "expenses-list", collection: "expenses", filter: {}, sort: { createdAt: -1 } },
   { name: "equipment-list", collection: "equipment", filter: {}, sort: { createdAt: -1 } },

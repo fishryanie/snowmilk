@@ -16,6 +16,8 @@ import {
   type PaymentMethod,
   type CartLine,
   type Customer,
+  type AdminOrderSummary,
+  type AdminOrderDetail,
 } from "./types";
 import {
   CommerceError,
@@ -49,6 +51,7 @@ type OrderDoc = Omit<
   expiresAt: Date;
   receipt?: { data: Binary | Buffer; mime: string; uploadedAt: Date };
 };
+type OrderStateDoc = Pick<OrderDoc, "_id" | "status">;
 const productDto = ({
   _id,
   name,
@@ -60,7 +63,6 @@ const productDto = ({
   badge,
   unit,
   status,
-  stock,
   toppings,
   toppingSelection,
   maxToppings,
@@ -77,7 +79,6 @@ const productDto = ({
   badge,
   unit,
   status,
-  stock,
   toppings,
   maxToppings: getMaxToppings({ maxToppings, toppingSelection }),
   sortOrder,
@@ -170,7 +171,7 @@ export class CommerceStore {
       );
       if (!result.matchedCount)
         throw new CommerceError(
-          "Món vừa có đơn mới hoặc đã được sửa. Giữ bản nháp, tải lại menu và kiểm tra số lượng trước khi lưu.",
+          "Món vừa được sửa. Giữ bản nháp và tải lại menu trước khi lưu.",
           409,
         );
       return { id };
@@ -198,7 +199,7 @@ export class CommerceStore {
     });
     if (!result.deletedCount)
       throw new CommerceError(
-        "Món vừa có đơn mới, đã được sửa hoặc đã bị xóa. Tải lại menu trước khi xóa.",
+        "Món đã được sửa hoặc đã bị xóa. Tải lại menu trước khi xóa.",
         409,
       );
     return { deleted: true };
@@ -226,22 +227,6 @@ export class CommerceStore {
       await session.endSession();
     }
   }
-  async release(o: OrderDoc, session: ClientSession) {
-    for (const line of o.quote.lines) {
-      await this.products.updateOne(
-        {
-          _id: new ObjectId(line.productId),
-          storeId: this.storeId,
-          stock: { $gte: 0 },
-        },
-        {
-          $inc: { stock: line.quantity, revision: 1 },
-          $set: { updatedAt: new Date() },
-        },
-        { session },
-      );
-    }
-  }
   async expire() {
     const stale = await this.orders
       .find(
@@ -256,14 +241,14 @@ export class CommerceStore {
       .toArray();
     for (const item of stale) {
       await this.transaction(async (session) => {
-        const o = await this.orders.findOne(
+        const o = await this.orders.findOne<OrderStateDoc>(
           {
             _id: item._id,
             storeId: this.storeId,
             status: "awaiting_payment",
             expiresAt: { $lte: new Date() },
           },
-          { session },
+          { session, projection: { status: 1 } },
         );
         if (!o) return;
         await this.orders.updateOne(
@@ -274,13 +259,12 @@ export class CommerceStore {
               events: {
                 status: "expired",
                 at: new Date().toISOString(),
-                note: "Quá 30 phút chưa gửi bill. Tiệm đã trả lại số lượng.",
+                note: "Quá 30 phút chưa gửi bill. Đơn đã hết hạn thanh toán.",
               },
             },
           },
           { session },
         );
-        await this.release(o, session);
       });
     }
   }
@@ -328,48 +312,10 @@ export class CommerceStore {
       const quote = await this.quote(input.cart, session);
       if (!quote.valid || quote.digest !== input.digest)
         throw new CommerceError(
-          "Giá, topping hoặc tồn hàng vừa thay đổi. Vui lòng kiểm tra lại giỏ hàng.",
+          "Giá, topping hoặc trạng thái món vừa thay đổi. Vui lòng kiểm tra lại giỏ hàng.",
           409,
           "CART_CHANGED",
         );
-      const quantities = new Map<string, number>();
-      for (const l of input.cart)
-        quantities.set(
-          l.productId,
-          (quantities.get(l.productId) || 0) + l.quantity,
-        );
-      for (const [id, quantity] of quantities) {
-        const result = await this.products.updateOne(
-          {
-            _id: new ObjectId(id),
-            storeId: this.storeId,
-            status: "available",
-            $or: [{ stock: null }, { stock: { $gte: quantity } }],
-          },
-          [
-            {
-              $set: {
-                stock: {
-                  $cond: [
-                    { $isNumber: "$stock" },
-                    { $subtract: ["$stock", quantity] },
-                    null,
-                  ],
-                },
-                revision: { $add: ["$revision", 1] },
-                updatedAt: new Date(),
-              },
-            },
-          ],
-          { session },
-        );
-        if (!result.matchedCount)
-          throw new CommerceError(
-            "Món vừa hết hàng. Vui lòng kiểm tra lại giỏ.",
-            409,
-            "CART_CHANGED",
-          );
-      }
       const now = new Date();
       const isCod = input.paymentMethod === "cod";
       const o: OrderDoc = {
@@ -395,7 +341,7 @@ export class CommerceStore {
             at: now.toISOString(),
             note: isCod
               ? "Đã nhận đơn (thanh toán khi nhận hàng). Tiệm đang chuẩn bị món."
-              : "Đã nhận đơn. Tiệm giữ món 30 phút để bạn chuyển khoản và gửi bill.",
+              : "Đã nhận đơn. Bạn có 30 phút để chuyển khoản và gửi bill.",
           },
         ],
       };
@@ -403,7 +349,13 @@ export class CommerceStore {
       return orderDto(o);
     });
   }
-  async listOrders(owner?: string, phone?: string, before?: string, status?: OrderStatus) {
+  async listOrders(
+    owner?: string,
+    phone?: string,
+    before?: string,
+    status?: OrderStatus,
+    { includeImages = true }: { includeImages?: boolean } = {},
+  ) {
     await this.expire();
     const rows = await this.orders
       .find(
@@ -416,7 +368,13 @@ export class CommerceStore {
             ? { _id: { $lt: new ObjectId(before) } }
             : {}),
         },
-        { projection: { receipt: 0, payment: 0 } },
+        {
+          projection: {
+            receipt: 0,
+            payment: 0,
+            ...(!includeImages ? { "quote.lines.imageUrl": 0 } : {}),
+          },
+        },
       )
       .sort({ _id: -1 })
       .limit(51)
@@ -426,12 +384,86 @@ export class CommerceStore {
         .slice(0, 50)
         .map((o) => ({
           ...orderDto(o),
+          quote: includeImages
+            ? o.quote
+            : {
+                ...o.quote,
+                lines: o.quote.lines.map((line) => ({ ...line, imageUrl: "" })),
+              },
           hasReceipt:
             o.status !== "awaiting_payment" &&
             o.events.some((e) => e.status === "payment_review"),
         })),
       nextCursor: rows.length > 50 ? String(rows[49]._id) : null,
     };
+  }
+  async listAdminOrders(phone?: string, before?: string, status?: OrderStatus) {
+    await this.expire();
+    const rows = await this.orders
+      .find<Pick<OrderDoc, "_id" | "code" | "createdAt" | "status"> & {
+        customer: AdminOrderSummary["customer"];
+        quote: { total: number };
+      }>(
+        {
+          storeId: this.storeId,
+          ...(phone ? { "customer.phone": phone } : {}),
+          ...(status ? { status } : {}),
+          ...(before && ObjectId.isValid(before) ? { _id: { $lt: new ObjectId(before) } } : {}),
+        },
+        { projection: { code: 1, createdAt: 1, status: 1, "customer.name": 1, "customer.phone": 1, "quote.total": 1 } },
+      )
+      .sort({ _id: -1 })
+      .limit(51)
+      .toArray();
+    const orders: AdminOrderSummary[] = rows.slice(0, 50).map((o) => ({
+      id: String(o._id),
+      code: o.code,
+      createdAt: o.createdAt.toISOString(),
+      status: o.status,
+      customer: o.customer,
+      total: o.quote.total,
+    }));
+    return { orders, nextCursor: rows.length > 50 ? String(rows[49]._id) : null };
+  }
+  async adminOrder(id: string): Promise<AdminOrderDetail> {
+    if (!ObjectId.isValid(id)) throw new CommerceError("Không tìm thấy đơn hàng.", 404);
+    await this.expire();
+    const o = await this.orders.findOne<Omit<OrderDoc, "quote" | "receipt" | "payment"> & {
+      quote: AdminOrderDetail["quote"];
+      hasReceipt: boolean;
+      hasPaymentQr: boolean;
+    }>(
+      { _id: new ObjectId(id), storeId: this.storeId },
+      { projection: {
+        code: 1, status: 1, paymentMethod: 1, customer: 1,
+        createdAt: 1, updatedAt: 1, expiresAt: 1, events: 1,
+        "quote.subtotal": 1, "quote.deliveryFee": 1, "quote.total": 1,
+        "quote.lines.key": 1, "quote.lines.name": 1, "quote.lines.quantity": 1,
+        "quote.lines.unitPrice": 1, "quote.lines.total": 1, "quote.lines.toppings.name": 1,
+        hasReceipt: { $toBool: { $ifNull: ["$receipt", false] } },
+        hasPaymentQr: { $ne: [{ $ifNull: ["$payment.qrImage", ""] }, ""] },
+      } },
+    );
+    if (!o) throw new CommerceError("Không tìm thấy đơn hàng.", 404);
+    return {
+      id: String(o._id), code: o.code, status: o.status,
+      paymentMethod: o.paymentMethod || (o.hasPaymentQr || o.events.some((event) => event.status === "awaiting_payment" || event.status === "payment_review") ? "bank_transfer" : "cod"),
+      customer: o.customer, quote: o.quote,
+      createdAt: o.createdAt.toISOString(), updatedAt: o.updatedAt.toISOString(), expiresAt: o.expiresAt.toISOString(),
+      events: o.events, hasReceipt: o.hasReceipt,
+    };
+  }
+  async deleteOrder(id: string) {
+    if (!ObjectId.isValid(id)) throw new CommerceError("Không tìm thấy đơn hàng.", 404);
+    return this.transaction(async (session) => {
+      const o = await this.orders.findOne<OrderStateDoc>(
+        { _id: new ObjectId(id), storeId: this.storeId },
+        { session, projection: { status: 1 } },
+      );
+      if (!o) throw new CommerceError("Không tìm thấy đơn hàng.", 404);
+      await this.orders.deleteOne({ _id: o._id, storeId: this.storeId }, { session });
+      return { deleted: true };
+    });
   }
   async getOrder(id: string, owner?: string) {
     if (!ObjectId.isValid(id))
@@ -486,9 +518,9 @@ export class CommerceStore {
     return this.transaction(async (session) => {
       if (!ObjectId.isValid(id))
         throw new CommerceError("Không tìm thấy đơn.", 404);
-      const o = await this.orders.findOne(
+      const o = await this.orders.findOne<OrderStateDoc>(
         { _id: new ObjectId(id), storeId: this.storeId },
-        { session },
+        { session, projection: { status: 1 } },
       );
       if (!o) throw new CommerceError("Không tìm thấy đơn.", 404);
       if (!transitions[o.status].includes(status))
@@ -507,7 +539,6 @@ export class CommerceStore {
         },
         { session },
       );
-      if (status === "cancelled") await this.release(o, session);
       return { saved: true };
     });
   }

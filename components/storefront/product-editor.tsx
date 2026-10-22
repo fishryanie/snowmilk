@@ -11,7 +11,7 @@ type ProductValues = Omit<ShopProduct, 'id' | 'revision'>;
 
 export const availabilityOptions = [
   { value: 'available', label: 'Đang bán' },
-  { value: 'sold_out', label: 'Hết hàng' },
+  { value: 'sold_out', label: 'Tạm ngừng bán' },
   { value: 'hidden', label: 'Ẩn khỏi app' },
 ];
 
@@ -33,7 +33,6 @@ export function ProductEditor({ product, onClose, onSaved }: { product: ShopProd
         badge: product.badge,
         unit: product.unit,
         status: product.status,
-        stock: product.stock,
         toppings: product.toppings,
         maxToppings: getMaxToppings(product) ?? 1,
         sortOrder: product.sortOrder,
@@ -48,7 +47,6 @@ export function ProductEditor({ product, onClose, onSaved }: { product: ShopProd
         badge: '',
         unit: 'ly',
         status: 'available',
-        stock: null,
         toppings: [],
         maxToppings: 1,
         sortOrder: 0,
@@ -61,7 +59,6 @@ export function ProductEditor({ product, onClose, onSaved }: { product: ShopProd
     try {
       await saveOnline(product ? `products/${product.id}` : 'products', {
         ...values,
-        stock: values.stock ?? null,
         maxToppings: unlimitedToppings ? null : values.maxToppings,
         ...(product ? { expectedRevision: product.revision } : {}),
       });
@@ -102,9 +99,6 @@ export function ProductEditor({ product, onClose, onSaved }: { product: ShopProd
           </Form.Item>
           <Form.Item name='price' label='Giá bán (đ)' rules={[{ required: true, message: 'Nhập giá bán.' }]}>
             <InputNumber min={0} max={10000000} precision={0} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name='stock' label='Số lượng còn bán' extra='Để trống nếu không giới hạn; nhập 0 khi hết hàng.'>
-            <InputNumber min={0} max={100000} precision={0} style={{ width: '100%' }} placeholder='Không giới hạn' />
           </Form.Item>
           <Form.Item name='status' label='Trạng thái'>
             <Select options={availabilityOptions} />
@@ -162,7 +156,7 @@ export function ProductEditor({ product, onClose, onSaved }: { product: ShopProd
                     </Form.Item>
                   </div>
                   <Space wrap>
-                    <Form.Item {...rest} name={[name, 'available']} label='Còn topping' valuePropName='checked' style={{ marginBottom: 0 }}>
+                    <Form.Item {...rest} name={[name, 'available']} label='Cho phép chọn topping' valuePropName='checked' style={{ marginBottom: 0 }}>
                       <Switch />
                     </Form.Item>
                     <Button danger type='text' icon={<MinusCircleOutlined />} onClick={() => remove(name)}>

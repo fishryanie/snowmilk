@@ -487,7 +487,6 @@ export function buildLegacySalesBackfillPlan(
     salesDays,
     revenueEntries,
     dailyRevenueFacts,
-    stockMovements: [] as never[],
     totals,
     baselineTotals,
     issues,
@@ -503,7 +502,6 @@ export function buildMigrationPlan(input: {
   ingredients?: readonly LegacyIngredientRecord[];
   milkBatches?: readonly Record<string, unknown>[];
   purchases?: readonly Record<string, unknown>[];
-  inventorySnapshots?: readonly Record<string, unknown>[];
   expenses?: readonly Record<string, unknown>[];
   equipment?: readonly Record<string, unknown>[];
   explicitCatalogMappings?: readonly ExplicitCatalogMapping[];
@@ -526,7 +524,6 @@ export function buildMigrationPlan(input: {
     sales: input.sales,
     milkBatches: input.milkBatches ?? [],
     purchases: input.purchases ?? [],
-    inventorySnapshots: input.inventorySnapshots ?? [],
     expenses: input.expenses ?? [],
     equipment: input.equipment ?? [],
   };
@@ -558,7 +555,6 @@ export function buildMigrationPlan(input: {
     sourceCounts: sourceCountsFromManifest(sourceManifest),
     invariants: {
       noSkuFabrication: true,
-      noRetroactiveStockMovements: true,
       localDatabaseIsNotProductionBaseline: true,
     },
     canApply:

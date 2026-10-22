@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { sha256Canonical } from "@/lib/v2/canonical";
-import { multiplyDecimalRateToVnd } from "@/lib/v2/money";
 
 export type PersistedSalesTotals = {
   grossRevenueVnd: number;
@@ -81,45 +80,4 @@ export function reversalRevenueSnapshot(entry: {
     cogsVnd: entry.cogsVnd == null ? null : -entry.cogsVnd,
     profitVnd: entry.profitVnd == null ? null : -entry.profitVnd,
   };
-}
-
-export function stockCountAmounts({
-  expectedQuantity,
-  countedQuantity,
-  averageUnitCostVnd,
-  costDataQuality,
-}: {
-  expectedQuantity: string;
-  countedQuantity: string;
-  averageUnitCostVnd: string | null;
-  costDataQuality: string | null | undefined;
-}) {
-  const varianceQuantity = decimalDifference(
-    countedQuantity,
-    expectedQuantity,
-  );
-  const hasKnownCost =
-    costDataQuality === "complete" && averageUnitCostVnd != null;
-  const varianceValueAbsolute = hasKnownCost
-    ? multiplyDecimalRateToVnd(
-        varianceQuantity.replace(/^-/, ""),
-        averageUnitCostVnd,
-      )
-    : null;
-  const varianceValueVnd =
-    varianceValueAbsolute == null
-      ? null
-      : varianceQuantity.startsWith("-")
-        ? -varianceValueAbsolute
-        : varianceValueAbsolute;
-  const countedInventoryValueVnd = hasKnownCost
-    ? multiplyDecimalRateToVnd(countedQuantity, averageUnitCostVnd)
-    : null;
-  return {
-    varianceQuantity,
-    unitCostVnd: hasKnownCost ? averageUnitCostVnd : null,
-    varianceValueVnd,
-    countedInventoryValueVnd,
-    costDataQuality: hasKnownCost ? "complete" : "missing_cost",
-  } as const;
 }

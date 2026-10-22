@@ -1,1057 +1,217 @@
-"use client";
+'use client';
 
-import { apiFetch } from "@/lib/api-client";
+import { EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Space, Table, Tooltip } from 'antd';
+import { useState } from 'react';
+import { PageHeader } from '@/components/common/page-header';
+import { useCurrentAccess } from '@/components/v2/access-context';
+import { useApiQuery } from '@/hooks/use-api-data';
+import { apiFetch } from '@/lib/api-client';
+import { formatDate, formatVnd, formatVndInput, parseVndInput } from '@/lib/formatters';
+import { isVietnamDateKey, vietnamDateKey } from '@/lib/vietnam-date';
 
-import {
-  BankOutlined,
-  CalendarOutlined,
-  DollarOutlined,
-  EditOutlined,
-  ShoppingOutlined,
-  RightOutlined,
-  SaveOutlined,
-  WalletOutlined,
-} from "@ant-design/icons";
-import {
-  Alert,
-  App,
-  Button,
-  Card,
-  DatePicker,
-  Descriptions,
-  Input,
-  InputNumber,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography,
-} from "antd";
-import dayjs from "dayjs";
-import { useMemo, useState } from "react";
-import { PageHeader } from "@/components/common/page-header";
-import { RouteSkeleton } from "@/components/common/route-skeleton";
-import {
-  calculateDailyCountedProducts,
-  type DailyCountedProduct,
-} from "@/lib/calculations/daily-counted-products";
-import {
-  calculateDailySaleEstimateFromRevenue,
-  deriveDailyRevenueSplit,
-  type DailySaleAssumption,
-} from "@/lib/calculations/daily-sales";
-import {
-  formatDate,
-  formatVnd,
-  formatVndInput,
-  parseVndInput,
-} from "@/lib/formatters";
-import { normalizeProductGroupName } from "@/lib/product-groups";
-import { useApiData } from "@/hooks/use-api-data";
-import { workbookBatches } from "@/lib/workbook-snapshot";
-
-const { Text, Title } = Typography;
-
-type SaleHistory = {
-  id?: string;
-  _id?: string;
+type SaleRecord = {
   saleDate: string;
-  batchId?: string;
-  batchCode?: string;
-  batchName?: string;
-  netRevenue: number;
-  snowMilkRevenue?: number;
-  freshMilkRevenue?: number;
-  freshMilkBottleCount?: number;
-  freshMilkBottleUnitPrice?: number;
-  items?: Array<{
-    productId?: string;
-    productCode: string;
-    productName: string;
-    groupName?: string;
-    quantity: number;
-    unitPrice: number;
-    revenue: number;
-  }>;
-  cashReceived?: number | null;
-  bankTransferReceived?: number | null;
-  totalVariableCost: number;
-  allocatedFixedCost: number;
-  estimatedProfit: number;
-  estimatedProfitLow: number;
-  estimatedProfitHigh: number;
-  estimatedMargin: number;
-  note?: string;
+  cashReceived: number;
+  bankTransferReceived: number;
 };
-
-type MilkBatchOption = {
-  id: string;
-  code: string;
-  name: string;
-  actualLiters: number;
-  cookedAt?: string;
-  costPerLiter: number;
-  costPerMl: number;
-};
-
-type SalesData = {
-  history: SaleHistory[];
-  assumptions: DailySaleAssumption[];
-  batches: MilkBatchOption[];
-  freshMilkProduct: {
-    id: string;
-    code: string;
-    name: string;
-    sellingPrice: number;
-  } | null;
-  countedProducts: DailyCountedProduct[];
-};
-
-type SalesQuantityProduct = {
-  kind: "fresh-milk" | "counted";
-  id: string;
-  code: string;
-  name: string;
-  groupName: string;
-  sellingPrice: number;
-  unit: "chai" | "món";
-};
-
-const fallbackAssumptions: DailySaleAssumption[] = [
-  {
-    sizeCode: "400ml",
-    sizeName: "400 ml",
-    milkMl: 400,
-    referenceSellingPrice: 35_000,
-    milkCostPerCup: 11_862.08333,
-    packagingCostPerCup: 900,
-    toppingCostPerCup: 2_572.159091,
-    toppingCostLowPerCup: 1_581.818182,
-    toppingCostHighPerCup: 3_562.5,
-    overheadRate: 0.05,
-    fixedCostPerCup: 91.36388889,
-    sampleCount: 2,
-  },
-  {
-    sizeCode: "550ml",
-    sizeName: "550 ml",
-    milkMl: 550,
-    referenceSellingPrice: 40_000,
-    milkCostPerCup: 16_310.36458,
-    packagingCostPerCup: 900,
-    toppingCostPerCup: 2_572.159091,
-    toppingCostLowPerCup: 1_581.818182,
-    toppingCostHighPerCup: 3_562.5,
-    overheadRate: 0.05,
-    fixedCostPerCup: 91.36388889,
-    sampleCount: 2,
-  },
-];
-
-function recordId(record: SaleHistory) {
-  return record.id ?? record._id ?? record.saleDate;
-}
-
-function batchRecordId(record: { id?: string; _id?: string }) {
-  return record.id ?? record._id ?? "";
-}
-
-function freshMilkRevenueFor(record: SaleHistory) {
-  return record.freshMilkRevenue ?? 0;
-}
-
-function countedProductRevenueFor(record: SaleHistory) {
-  return (record.items ?? []).reduce(
-    (sum, item) => sum + Number(item.revenue ?? item.quantity * item.unitPrice),
-    0,
-  );
-}
-
-function snowMilkRevenueFor(record: SaleHistory) {
-  return Math.max(
-    0,
-    (record.snowMilkRevenue ??
-      record.netRevenue - freshMilkRevenueFor(record)) -
-      countedProductRevenueFor(record),
-  );
-}
+type History = { history: SaleRecord[]; nextCursor: string | null };
 
 export default function SalesPage() {
   const { message, modal } = App.useApp();
-  const {
-    data,
-    loading,
-    usingFallback,
-    setData,
-  } = useApiData<SalesData>("/api/sales", {
-    history: [],
-    assumptions: fallbackAssumptions,
-    batches: workbookBatches.map((batch) => ({
-      ...batch,
-      id: batchRecordId(batch),
-    })),
-    freshMilkProduct: null,
-    countedProducts: [],
-  });
-  const [saleDate, setSaleDate] = useState(() => dayjs());
-  const [selectedBatchId, setSelectedBatchId] = useState("");
-  const [freshMilkBottleCount, setFreshMilkBottleCount] = useState<
-    number | null
-  >(null);
-  const [productQuantities, setProductQuantities] = useState<
-    Record<string, number>
-  >({});
-  const [cashReceived, setCashReceived] = useState<number | null>(null);
-  const [bankTransferReceived, setBankTransferReceived] = useState<
-    number | null
-  >(null);
-  const [note, setNote] = useState("");
+  const { can, error: accessError } = useCurrentAccess();
+  const [cursors, setCursors] = useState<Array<string | null>>([null]);
+  const cursor = cursors.at(-1);
+  const history = useApiQuery<History>(`/api/sales?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { refreshIntervalMs: 0 });
+  const [form] = Form.useForm<SaleRecord>();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const freshMilkBottleUnitPrice =
-    data.freshMilkProduct?.sellingPrice ?? 0;
-  const hasPaymentBreakdown =
-    cashReceived !== null || bankTransferReceived !== null;
-  const netRevenueValue =
-    (cashReceived ?? 0) + (bankTransferReceived ?? 0);
-  const countedProductSales = useMemo(
-    () =>
-      calculateDailyCountedProducts(
-        data.countedProducts,
-        Object.entries(productQuantities).map(([productId, quantity]) => ({
-          productId,
-          quantity,
-        })),
-      ),
-    [data.countedProducts, productQuantities],
-  );
-  const salesProductGroups = useMemo(() => {
-    const groups = new Map<string, SalesQuantityProduct[]>();
-    for (const product of data.countedProducts) {
-      const groupName = normalizeProductGroupName(product.groupName);
-      const group = groups.get(groupName) ?? [];
-      group.push({
-        kind: "counted",
-        id: product.id,
-        code: product.code,
-        name: product.name,
-        groupName,
-        sellingPrice: product.sellingPrice,
-        unit: groupName === "Sữa tươi" ? "chai" : "món",
-      });
-      groups.set(groupName, group);
-    }
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const canSave = can('sales:close');
 
-    if (data.freshMilkProduct) {
-      const groupName = "Sữa tươi";
-      const group = groups.get(groupName) ?? [];
-      group.unshift({
-        kind: "fresh-milk",
-        ...data.freshMilkProduct,
-        groupName,
-        unit: "chai",
-      });
-      groups.set(groupName, group);
-    }
-
-    return [...groups].map(([name, products]) => ({ name, products }));
-  }, [data.countedProducts, data.freshMilkProduct]);
-  const countedProductGroupSales = useMemo(() => {
-    const groups = new Map<
-      string,
-      { name: string; revenue: number; items: typeof countedProductSales.items }
-    >();
-    for (const item of countedProductSales.items) {
-      const groupName = normalizeProductGroupName(item.groupName);
-      const group = groups.get(groupName) ?? {
-        name: groupName,
-        revenue: 0,
-        items: [],
-      };
-      group.revenue += item.revenue;
-      group.items.push(item);
-      groups.set(groupName, group);
-    }
-    return [...groups.values()];
-  }, [countedProductSales]);
-  const revenueSplit = deriveDailyRevenueSplit(
-    netRevenueValue,
-    freshMilkBottleCount ?? 0,
-    freshMilkBottleUnitPrice,
-  );
-  const snowMilkRevenueValue =
-    revenueSplit.snowMilkRevenue - countedProductSales.revenue;
-  const { freshMilkRevenue: freshMilkRevenueValue } = revenueSplit;
-  const revenueSplitIsValid = snowMilkRevenueValue >= 0;
-  const defaultBatchId = useMemo(() => {
-    const latestSale = data.history[0];
-    const previousBatch = latestSale
-      ? data.batches.find(
-          (batch) =>
-            batchRecordId(batch) === String(latestSale.batchId ?? "") ||
-            batch.code === latestSale.batchCode,
-        )
-      : null;
-    return batchRecordId(
-      previousBatch ??
-        data.batches
-          .toReversed()
-          .find((batch) => batch.costPerMl > 0) ?? { id: "" },
+  function openForm(record?: SaleRecord) {
+    form.resetFields();
+    form.setFieldsValue(
+      record
+        ? {
+            ...record,
+            saleDate: vietnamDateKey(new Date(record.saleDate)),
+          }
+        : { saleDate: vietnamDateKey(new Date()), cashReceived: 0, bankTransferReceived: 0 },
     );
-  }, [data.batches, data.history]);
-  const activeBatchId = selectedBatchId || defaultBatchId;
-  const selectedBatch = useMemo(
-    () =>
-      data.batches.find((batch) => batchRecordId(batch) === activeBatchId) ??
-      null,
-    [activeBatchId, data.batches],
-  );
-  const selectedAssumptions = useMemo(
-    () =>
-      selectedBatch
-        ? data.assumptions.map((assumption) => ({
-            ...assumption,
-            milkCostPerCup: assumption.milkMl * selectedBatch.costPerMl,
-          }))
-        : data.assumptions,
-    [data.assumptions, selectedBatch],
-  );
-  const estimate = useMemo(
-    () =>
-      calculateDailySaleEstimateFromRevenue(
-        snowMilkRevenueValue,
-        selectedAssumptions,
-      ),
-    [snowMilkRevenueValue, selectedAssumptions],
-  );
-  const estimatedProfitValue =
-    estimate.estimatedProfit + countedProductSales.profit;
-  const estimatedProfitLowValue =
-    estimate.estimatedProfitLow + countedProductSales.profit;
-  const estimatedProfitHighValue =
-    estimate.estimatedProfitHigh + countedProductSales.profit;
-  const estimatedMarginValue =
-    netRevenueValue > 0 ? estimatedProfitValue / netRevenueValue : 0;
-
-  const canSubmit =
-    (snowMilkRevenueValue === 0 ||
-      (Boolean(selectedBatch) && (selectedBatch?.costPerMl ?? 0) > 0)) &&
-    ((freshMilkBottleCount ?? 0) === 0 ||
-      freshMilkBottleUnitPrice > 0) &&
-    countedProductSales.items.every((item) => item.unitPrice > 0) &&
-    revenueSplitIsValid &&
-    hasPaymentBreakdown &&
-    netRevenueValue > 0;
-
-  function clearForm() {
-    setSaleDate(dayjs());
-    setFreshMilkBottleCount(null);
-    setProductQuantities({});
-    setCashReceived(null);
-    setBankTransferReceived(null);
-    setNote("");
+    setEditing(Boolean(record));
+    setSubmitError(null);
+    setOpen(true);
   }
 
-  async function submit(overwrite = false) {
-    if (snowMilkRevenueValue > 0 && !selectedBatch) {
-      message.warning("Hãy chọn mẻ sữa tuyết đã bán.");
-      return;
-    }
-    if (snowMilkRevenueValue > 0 && (selectedBatch?.costPerMl ?? 0) <= 0) {
-      message.warning(
-        "Mẻ sữa này chưa có giá vốn hợp lệ. Hãy cập nhật lại mẻ sữa.",
-      );
-      return;
-    }
-    if ((freshMilkBottleCount ?? 0) > 0 && freshMilkBottleUnitPrice <= 0) {
-      message.warning(
-        "Chưa tìm thấy sản phẩm sữa tươi đóng chai có giá bán hợp lệ.",
-      );
-      return;
-    }
-    if (!revenueSplitIsValid) {
-      message.warning(
-        "Doanh thu theo số lượng sản phẩm đang lớn hơn tổng tiền cuối ngày.",
-      );
-      return;
-    }
-    if (!hasPaymentBreakdown) {
-      message.warning("Hãy nhập tiền mặt hoặc tiền chuyển khoản đã nhận.");
-      return;
-    }
-    if (netRevenueValue <= 0) {
-      message.warning("Tổng doanh thu cuối ngày phải lớn hơn 0.");
-      return;
-    }
+  async function save(values: SaleRecord, overwrite: boolean) {
     setSaving(true);
+    setSubmitError(null);
     try {
-      const response = await apiFetch("/api/sales", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          saleDate: saleDate.format("YYYY-MM-DD"),
-          ...(snowMilkRevenueValue > 0 ? { batchId: activeBatchId } : {}),
-          freshMilkBottleCount: freshMilkBottleCount ?? 0,
-          productQuantities: Object.entries(productQuantities).flatMap(
-            ([productId, quantity]) =>
-              quantity > 0 ? [{ productId, quantity }] : [],
-          ),
-          cashReceived: cashReceived ?? 0,
-          bankTransferReceived: bankTransferReceived ?? 0,
-          note,
-          overwrite,
-        }),
+      const response = await apiFetch('/api/sales', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...values, overwrite }),
       });
-      const body = (await response.json()) as {
-        success: boolean;
-        message: string;
-        data?: SaleHistory;
-      };
+      const body = await response.json();
       if (response.status === 409 && !overwrite) {
         modal.confirm({
-          title: "Ngày này đã được chốt",
+          title: 'Ngày này đã được chốt',
           content: body.message,
-          okText: "Cập nhật",
-          cancelText: "Hủy",
-          onOk: () => submit(true),
+          okText: 'Cập nhật',
+          cancelText: 'Hủy',
+          onOk: () => save(values, true),
         });
         return;
       }
-      if (!response.ok || !body.success || !body.data) {
-        throw new Error(body.message);
-      }
-      const saved = body.data;
-      setData((current) => ({
-        ...current,
-        history: [
-          saved,
-          ...current.history.filter(
-            (record) => recordId(record) !== recordId(saved),
-          ),
-        ].sort(
-          (a, b) =>
-            new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime(),
-        ),
-      }));
+      if (!response.ok || !body.success) throw new Error(body.message ?? 'Không thể lưu chốt ngày.');
       message.success(body.message);
-      clearForm();
+      setOpen(false);
+      setCursors([null]);
     } catch (error) {
-      message.error(
-        error instanceof Error
-          ? error.message
-          : "Không thể chốt bán hàng cuối ngày",
-      );
+      setSubmitError(error instanceof Error ? error.message : 'Không thể lưu chốt ngày.');
     } finally {
       setSaving(false);
     }
   }
 
-  function editRecord(record: SaleHistory) {
-    setSaleDate(dayjs(record.saleDate));
-    const matchingBatch = data.batches.find(
-      (batch) =>
-        batchRecordId(batch) === String(record.batchId ?? "") ||
-        batch.code === record.batchCode,
-    );
-    setSelectedBatchId(matchingBatch ? batchRecordId(matchingBatch) : "");
-    setFreshMilkBottleCount(record.freshMilkBottleCount ?? 0);
-    setProductQuantities(
-      Object.fromEntries(
-        (record.items ?? []).flatMap((item) =>
-          item.productId
-            ? [[String(item.productId), Number(item.quantity ?? 0)]]
-            : [],
-        ),
-      ),
-    );
-    const hasSavedPaymentBreakdown =
-      record.cashReceived != null || record.bankTransferReceived != null;
-    setCashReceived(
-      hasSavedPaymentBreakdown
-        ? (record.cashReceived ?? 0)
-        : record.netRevenue,
-    );
-    setBankTransferReceived(
-      hasSavedPaymentBreakdown ? (record.bankTransferReceived ?? 0) : 0,
-    );
-    setNote(record.note ?? "");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  if (loading) return <RouteSkeleton />;
-
   return (
-    <div className="page-wrap sales-page">
+    <div className='page-wrap sales-page'>
       <PageHeader
-        title="Chốt doanh thu"
-        description="Nhập tiền mặt và chuyển khoản là chính; số lượng sản phẩm chỉ cần nhập khi bạn đếm được."
+        title='Chốt doanh thu'
+        description='Lưu ngày, tiền mặt và tiền chuyển khoản.'
         actions={
-          <Button
-            className="sales-header-submit"
-            type="primary"
-            icon={<SaveOutlined />}
-            loading={saving}
-            disabled={!canSubmit}
-            onClick={() => submit()}
-          >
-            Lưu chốt ngày
+          <Button type='primary' icon={<PlusOutlined />} disabled={!canSave} onClick={() => openForm()}>
+            Chốt doanh thu
           </Button>
         }
       />
-      {usingFallback ? (
+      {accessError ? <Alert type='error' showIcon title={accessError} /> : null}
+      {history.error ? (
         <Alert
-          type="info"
+          type='error'
           showIcon
-          title="Đang dùng giả định từ workbook"
-          description="Để lưu và lấy cost mới nhất, hãy bảo đảm MongoDB đang chạy và workbook đã được import."
-          style={{ marginBottom: 16 }}
+          title='Không tải được lịch sử chốt ngày'
+          description={history.error.message}
+          action={<Button onClick={history.refresh}>Thử lại</Button>}
         />
       ) : null}
-
-      <div className="sales-grid">
-        <Card className="surface-card sales-entry-card" title="Thông tin chốt ca">
-          <section className="sales-form-section">
-            <div className="sales-section-heading">
-              <span className="workflow-step">1</span>
-              <div>
-                <Text strong>Chọn ngày và mẻ sữa</Text>
-                <Text type="secondary">Dùng để tính đúng giá vốn của ca bán.</Text>
-              </div>
-            </div>
-            <div className="sales-context-grid">
-              <label className="sales-field daily-sales-date">
-                <Text type="secondary">Ngày bán</Text>
-                <DatePicker
-                  aria-label="Ngày bán"
-                  value={saleDate}
-                  format="DD/MM/YYYY"
-                  suffixIcon={<CalendarOutlined />}
-                  onChange={(value) => value && setSaleDate(value)}
-                  style={{ width: "100%" }}
-                />
-              </label>
-              <label className="sales-field daily-sales-batch">
-                <Text type="secondary">Mẻ sữa tuyết (nếu có bán)</Text>
-                <Select
-                  aria-label="Mẻ sữa tuyết đã bán"
-                  showSearch
-                  optionFilterProp="label"
-                  value={activeBatchId || undefined}
-                  placeholder="Chọn mẻ sữa"
-                  onChange={setSelectedBatchId}
-                  options={data.batches.map((batch) => ({
-                    value: batchRecordId(batch),
-                    label:
-                      batch.costPerMl > 0
-                        ? `${batch.code} · ${batch.name} · ${formatVnd(batch.costPerLiter)}/L`
-                        : `${batch.code} · ${batch.name} · chưa có giá vốn`,
-                    disabled: batch.costPerMl <= 0,
-                  }))}
-                  style={{ width: "100%" }}
-                />
-              </label>
-            </div>
-          </section>
-
-          <section className="sales-form-section">
-            <div className="sales-section-heading">
-              <span className="workflow-step">2</span>
-              <div>
-                <Text strong>Nhập tiền thực nhận</Text>
-                <Text type="secondary">
-                  Tiền mặt cộng chuyển khoản là tổng doanh thu cuối ngày.
-                </Text>
-              </div>
-            </div>
-            <div className="sales-payment-grid">
-              <label className="sales-field daily-sales-cash">
-                <span className="sales-payment-label">
-                  <WalletOutlined /> Tiền mặt
-                </span>
-                <InputNumber
-                  aria-label="Tiền mặt đã nhận"
-                  min={0}
-                  precision={0}
-                  step={1_000}
-                  value={cashReceived}
-                  onChange={(value) =>
-                    setCashReceived(value === null ? null : Number(value))
-                  }
-                  formatter={formatVndInput}
-                  parser={parseVndInput}
-                  placeholder="0"
-                  inputMode="numeric"
-                  style={{ width: "100%" }}
-                />
-              </label>
-              <label className="sales-field daily-sales-transfer">
-                <span className="sales-payment-label">
-                  <BankOutlined /> Chuyển khoản
-                </span>
-                <InputNumber
-                  aria-label="Tiền chuyển khoản đã nhận"
-                  min={0}
-                  precision={0}
-                  step={1_000}
-                  value={bankTransferReceived}
-                  onChange={(value) =>
-                    setBankTransferReceived(
-                      value === null ? null : Number(value),
-                    )
-                  }
-                  formatter={formatVndInput}
-                  parser={parseVndInput}
-                  placeholder="0"
-                  inputMode="numeric"
-                  style={{ width: "100%" }}
-                />
-              </label>
-            </div>
-            {hasPaymentBreakdown ? (
-              <Alert
-                type="success"
-                showIcon
-                title={`Tổng tự động ${formatVnd(netRevenueValue)}`}
-                description="Tiền mặt cộng chuyển khoản được dùng làm tổng doanh thu cuối ngày."
-              />
-            ) : null}
-          </section>
-
-          <section className="sales-form-section">
-            <div className="sales-section-heading">
-              <span className="workflow-step">3</span>
-              <div>
-                <Text strong>Số lượng đếm được (không bắt buộc)</Text>
-                <Text type="secondary">
-                  Không nhớ topping sữa tuyết thì để trống; hệ thống xem là 0.
-                </Text>
-              </div>
-            </div>
-            <div className="sales-revenue-grid">
-              {salesProductGroups.map((group) => {
-                const fields = (
-                  <div className="sales-counted-group-fields">
-                    {group.products.map((product) => (
-                      <label
-                        className="sales-field"
-                        key={`${product.kind}-${product.id}`}
-                      >
-                        <span className="sales-payment-label">
-                          <ShoppingOutlined /> {product.name} ({product.code})
-                        </span>
-                        <InputNumber
-                          aria-label={`Số lượng ${product.name} đã bán`}
-                          min={0}
-                          precision={0}
-                          step={1}
-                          value={
-                            product.kind === "fresh-milk"
-                              ? freshMilkBottleCount
-                              : (productQuantities[product.id] ?? null)
-                          }
-                          onChange={(value) => {
-                            const quantity =
-                              value === null ? null : Number(value);
-                            if (product.kind === "fresh-milk") {
-                              setFreshMilkBottleCount(quantity);
-                              return;
-                            }
-                            setProductQuantities((current) => ({
-                              ...current,
-                              [product.id]: quantity ?? 0,
-                            }));
-                          }}
-                          placeholder="0"
-                          inputMode="numeric"
-                          suffix={
-                            <span className="sales-input-unit">{product.unit}</span>
-                          }
-                          style={{ width: "100%" }}
-                        />
-                        <Text type="secondary">
-                          {formatVnd(product.sellingPrice)} / {product.unit}
-                        </Text>
-                      </label>
-                    ))}
-                  </div>
-                );
-
-                if (group.name === "Sữa tuyết") {
-                  return (
-                    <details
-                      className="sales-counted-group sales-counted-group-optional"
-                      key={group.name}
-                    >
-                      <summary className="sales-counted-group-summary">
-                        <span className="sales-counted-group-summary-copy">
-                          <Text strong>{group.name}</Text>
-                          <Text type="secondary">
-                            Không cần nhập topping; doanh thu lấy từ phần tiền còn
-                            lại.
-                          </Text>
-                        </span>
-                        <span className="sales-counted-group-summary-meta">
-                          <Tag>Không bắt buộc</Tag>
-                          <Tag>{group.products.length} sản phẩm</Tag>
-                          <RightOutlined
-                            className="sales-counted-group-chevron"
-                            aria-hidden="true"
-                          />
-                        </span>
-                      </summary>
-                      {fields}
-                    </details>
-                  );
-                }
-
-                return (
-                  <section className="sales-counted-group" key={group.name}>
-                    <div className="sales-counted-group-heading">
-                      <Text strong>{group.name}</Text>
-                      <Tag>{group.products.length} sản phẩm</Tag>
-                    </div>
-                    {fields}
-                  </section>
-                );
-              })}
-            </div>
-          </section>
-
-          <details className="sales-optional-note">
-            <summary>Thêm ghi chú (không bắt buộc)</summary>
-            <div className="daily-sales-note">
-              <Input.TextArea
-                aria-label="Ghi chú bán hàng"
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                placeholder="Ví dụ: hoàn tiền, đơn biếu tặng..."
-                rows={3}
-              />
-            </div>
-          </details>
-
-        </Card>
-
-        <Card className="surface-card summary-panel" title="Kiểm tra trước khi lưu">
-          <div className="sales-profit-hero">
-            <DollarOutlined />
-            <div>
-              <Text type="secondary">Lợi nhuận ước tính</Text>
-              <Title
-                level={3}
-                type={estimatedProfitValue < 0 ? "danger" : "success"}
-              >
-                {formatVnd(estimatedProfitValue)}
-              </Title>
-              <Text type="secondary">
-                Biên lợi nhuận {(estimatedMarginValue * 100).toFixed(1)}%
-              </Text>
-            </div>
-          </div>
-          <div className="summary-row">
-            <Text type="secondary">Công thức giá vốn</Text>
-            <Text>
-              {selectedBatch
-                ? `${selectedBatch.code} · ${formatVnd(selectedBatch.costPerLiter)}/L`
-                : "Chưa có mẻ sữa"}
-            </Text>
-          </div>
-          <div className="summary-row">
-            <Text type="secondary">Doanh thu sữa tuyết</Text>
-            <Text>{formatVnd(snowMilkRevenueValue)}</Text>
-          </div>
-          <div className="summary-row">
-            <Text type="secondary">Doanh thu sữa tươi</Text>
-            <Text>
-              {formatVnd(freshMilkRevenueValue)} ({freshMilkBottleCount ?? 0} ×{" "}
-              {formatVnd(freshMilkBottleUnitPrice)})
-            </Text>
-          </div>
-          {countedProductGroupSales.map((group) => (
-            <div className="sales-summary-group" key={group.name}>
-              <div className="summary-row sales-summary-group-total">
-                <Text strong>{group.name}</Text>
-                <Text strong>{formatVnd(group.revenue)}</Text>
-              </div>
-              {group.items.map((item) => (
-                <div className="summary-row" key={item.productId}>
-                  <Text type="secondary">{item.productName}</Text>
-                  <Text>
-                    {formatVnd(item.revenue)} ({item.quantity} ×{" "}
-                    {formatVnd(item.unitPrice)})
-                  </Text>
-                </div>
-              ))}
-            </div>
-          ))}
-          <div className="summary-row">
-            <Text type="secondary">Số chai sữa tươi</Text>
-            <Text>{freshMilkBottleCount ?? 0} chai</Text>
-          </div>
-          <div className="summary-row summary-total">
-            <Text strong>Tổng doanh thu</Text>
-            <Text strong>{formatVnd(netRevenueValue)}</Text>
-          </div>
-          {hasPaymentBreakdown ? (
-            <>
-              <div className="summary-row">
-                <Text type="secondary">Tiền mặt đã nhận</Text>
-                <Text>{formatVnd(cashReceived ?? 0)}</Text>
-              </div>
-              <div className="summary-row">
-                <Text type="secondary">Tiền chuyển khoản</Text>
-                <Text>{formatVnd(bankTransferReceived ?? 0)}</Text>
-              </div>
-            </>
-          ) : null}
-          <details className="sales-cost-details">
-            <summary>Xem chi tiết chi phí ước tính</summary>
-            <div className="summary-row">
-              <Text type="secondary">Cost sữa nền</Text>
-              <Text>{formatVnd(estimate.totalMilkCost)}</Text>
-            </div>
-            <div className="summary-row">
-              <Text type="secondary">Cost bao bì</Text>
-              <Text>{formatVnd(estimate.totalPackagingCost)}</Text>
-            </div>
-            <div className="summary-row">
-              <Space size={6}>
-                <Text type="secondary">Cost topping</Text>
-                <Tag color="processing">ước tính</Tag>
-              </Space>
-              <Text>{formatVnd(estimate.estimatedToppingCost)}</Text>
-            </div>
-            <div className="summary-row">
-              <Text type="secondary">Overhead biến đổi</Text>
-              <Text>{formatVnd(estimate.estimatedOverheadCost)}</Text>
-            </div>
-            <div className="summary-row">
-              <Text type="secondary">Cố định + khấu hao</Text>
-              <Text>
-                {formatVnd(
-                  estimate.allocatedFixedCost +
-                    countedProductSales.allocatedFixedCost,
-                )}
-              </Text>
-            </div>
-            {countedProductSales.items.length > 0 ? (
-              <div className="summary-row">
-                <Text type="secondary">Full cost món nhập số lượng</Text>
-                <Text>
-                  {formatVnd(
-                    countedProductSales.variableCost +
-                      countedProductSales.allocatedFixedCost,
-                  )}
-                </Text>
-              </div>
-            ) : null}
-            <Descriptions size="small" column={1} style={{ marginTop: 8 }}>
-              <Descriptions.Item label="Khoảng lợi nhuận">
-                {formatVnd(estimatedProfitLowValue)} –{" "}
-                {formatVnd(estimatedProfitHighValue)}
-              </Descriptions.Item>
-            </Descriptions>
-          </details>
-        </Card>
-      </div>
-
-      <Card
-        className="surface-card table-card"
-        title="Lịch sử chốt ngày"
-        style={{ marginTop: 16 }}
-      >
-        <Table
-          className="sales-history-desktop"
-          size="small"
-          rowKey={recordId}
-          dataSource={data.history}
-          pagination={{ defaultPageSize: 50, showSizeChanger: false }}
-          scroll={{ x: "max-content" }}
-          columns={[
-            { title: "Ngày", dataIndex: "saleDate", render: formatDate },
-            {
-              title: "Mẻ sữa",
-              render: (_, record) => {
-                const batch = data.batches.find(
-                  (candidate) =>
-                    batchRecordId(candidate) ===
-                      String(record.batchId ?? "") ||
-                    candidate.code === record.batchCode,
-                );
-                return batch
-                  ? `${batch.code} · ${batch.name}`
-                  : record.batchCode || record.batchName || "—";
-              },
-            },
-            {
-              title: "Sữa tuyết",
-              align: "right",
-              render: (_, record) => formatVnd(snowMilkRevenueFor(record)),
-            },
-            {
-              title: "Sữa tươi",
-              align: "right",
-              render: (_, record) => formatVnd(freshMilkRevenueFor(record)),
-            },
-            {
-              title: "Món khác",
-              align: "right",
-              render: (_, record) =>
-                record.items?.length ? (
-                  <Space direction="vertical" size={0} align="end">
-                    {record.items.map((item) => (
-                      <Space key={`${item.productCode}-${item.productName}`} size={4}>
-                        <Tag>{normalizeProductGroupName(item.groupName)}</Tag>
-                        <Text>{item.productName}: {item.quantity}</Text>
-                      </Space>
-                    ))}
-                    <Text type="secondary">
-                      {formatVnd(countedProductRevenueFor(record))}
-                    </Text>
-                  </Space>
-                ) : (
-                  "—"
-                ),
-            },
-            {
-              title: "Số chai",
-              dataIndex: "freshMilkBottleCount",
-              align: "right",
-              render: (value) => `${Number(value ?? 0)} chai`,
-            },
-            {
-              title: "Tổng doanh thu",
-              dataIndex: "netRevenue",
-              align: "right",
-              render: (value) => <Text strong>{formatVnd(Number(value))}</Text>,
-            },
-            {
-              title: "Tiền mặt",
-              dataIndex: "cashReceived",
-              align: "right",
-              render: (value) =>
-                typeof value === "number" ? formatVnd(value) : "—",
-            },
-            {
-              title: "Chuyển khoản",
-              dataIndex: "bankTransferReceived",
-              align: "right",
-              render: (value) =>
-                typeof value === "number" ? formatVnd(value) : "—",
-            },
-            {
-              title: "Lãi/lỗ ước tính",
-              dataIndex: "estimatedProfit",
-              align: "right",
-              render: (value) => (
-                <Text type={Number(value) < 0 ? "danger" : "success"} strong>
-                  {formatVnd(Number(value))}
-                </Text>
-              ),
-            },
-            {
-              title: "",
-              fixed: "right",
-              render: (_, record) => (
+      <Table<SaleRecord>
+        bordered
+        size='small'
+        className='rounded-2xl!'
+        rowKey='saleDate'
+        loading={history.loading}
+        dataSource={history.data?.history ?? []}
+        pagination={false}
+        scroll={{ x: 'max-content' }}
+        locale={{ emptyText: 'Chưa có ngày chốt doanh thu' }}
+        columns={[
+          {
+            title: 'Ngày',
+            dataIndex: 'saleDate',
+            render: formatDate,
+          },
+          { title: 'Tiền CK', dataIndex: 'bankTransferReceived', align: 'right', render: formatVnd },
+          { title: 'Tiền mặt', dataIndex: 'cashReceived', align: 'right', render: formatVnd },
+          {
+            title: 'Tổng tiền',
+            key: 'total',
+            align: 'right',
+            render: (_, record) => <strong>{formatVnd(record.cashReceived + record.bankTransferReceived)}</strong>,
+          },
+          {
+            key: 'edit',
+            align: 'center',
+            fixed: 'right',
+            width: 60,
+            render: (_, record) => (
+              <Tooltip title='Sửa'>
                 <Button
-                  type="text"
+                  type='text'
+                  size='small'
                   icon={<EditOutlined />}
                   aria-label={`Sửa chốt ngày ${formatDate(record.saleDate)}`}
-                  onClick={() => editRecord(record)}
+                  disabled={!canSave}
+                  onClick={() => openForm(record)}
                 />
-              ),
-            },
-          ]}
-        />
-        <ul className="sales-history-mobile">
-          {data.history.map((record) => {
-            const batch = data.batches.find(
-              (candidate) =>
-                batchRecordId(candidate) === String(record.batchId ?? "") ||
-                candidate.code === record.batchCode,
-            );
-            return (
-              <li key={recordId(record)}>
-                <div className="sales-history-heading">
-                  <div>
-                    <Text strong>{formatDate(record.saleDate)}</Text>
-                    <Text type="secondary">
-                      {batch
-                        ? `${batch.code} · ${batch.name}`
-                        : record.batchCode || record.batchName || "Chưa rõ mẻ"}
-                    </Text>
-                  </div>
-                  <div>
-                    <Text type="secondary">Doanh thu</Text>
-                    <Text strong>{formatVnd(record.netRevenue)}</Text>
-                  </div>
-                </div>
-                <div className="sales-history-breakdown">
-                  <span>
-                    Sữa tuyết{" "}
-                    <strong>{formatVnd(snowMilkRevenueFor(record))}</strong>
-                  </span>
-                  <span>
-                    Sữa tươi{" "}
-                    <strong>{formatVnd(freshMilkRevenueFor(record))}</strong>
-                  </span>
-                  <span>
-                    Số chai{" "}
-                    <strong>{record.freshMilkBottleCount ?? 0} chai</strong>
-                  </span>
-                  {(record.items ?? []).map((item) => (
-                    <span key={`${item.productCode}-${item.productName}`}>
-                      {normalizeProductGroupName(item.groupName)} · {item.productName}{" "}
-                      <strong>
-                        {item.quantity} món · {formatVnd(item.revenue)}
-                      </strong>
-                    </span>
-                  ))}
-                  <span>
-                    Tiền mặt <strong>{formatVnd(record.cashReceived ?? 0)}</strong>
-                  </span>
-                  <span>
-                    Chuyển khoản{" "}
-                    <strong>{formatVnd(record.bankTransferReceived ?? 0)}</strong>
-                  </span>
-                </div>
-                <Button
-                  type="text"
-                  className="sales-history-edit"
-                  onClick={() => editRecord(record)}
-                >
-                  <span>
-                    Lãi ước tính{" "}
-                    <strong
-                      className={
-                        record.estimatedProfit < 0 ? "is-negative" : ""
-                      }
-                    >
-                      {formatVnd(record.estimatedProfit)}
-                    </strong>
-                  </span>
-                  <RightOutlined />
-                </Button>
-              </li>
-            );
-          })}
-        </ul>
-      </Card>
-      <div className="mobile-workflow-dock sales-mobile-save-dock">
-        <div>
-          <Text type="secondary">Doanh thu</Text>
-          <Text strong>{formatVnd(netRevenueValue)}</Text>
-        </div>
-        <Button
-          type="primary"
-          size="large"
-          icon={<SaveOutlined />}
-          loading={saving}
-          disabled={!canSubmit}
-          onClick={() => submit()}
-        >
-          Lưu bán hàng
+              </Tooltip>
+            ),
+          },
+        ]}
+      />
+      <Space className='sales-pagination'>
+        <Button disabled={cursors.length === 1 || history.loading} onClick={() => setCursors(current => current.slice(0, -1))}>
+          Trang trước
         </Button>
-      </div>
+        <span>Trang {cursors.length}</span>
+        <Button
+          disabled={!history.data?.nextCursor || history.loading || Boolean(history.error)}
+          onClick={() => setCursors(current => [...current, history.data!.nextCursor])}>
+          Trang sau
+        </Button>
+      </Space>
+      <Modal
+        title={editing ? 'Sửa chốt doanh thu' : 'Chốt doanh thu'}
+        open={open}
+        okText='Lưu chốt ngày'
+        cancelText='Hủy'
+        confirmLoading={saving}
+        cancelButtonProps={{ disabled: saving }}
+        closable={!saving}
+        mask={{ closable: !saving }}
+        onCancel={() => setOpen(false)}
+        onOk={() => form.submit()}>
+        <Form form={form} layout='vertical' onFinish={values => save(values, editing)} disabled={saving}>
+          <Form.Item
+            name='saleDate'
+            label='Ngày'
+            rules={[
+              { required: true, message: 'Hãy chọn ngày.' },
+              { validator: (_, value) => (isVietnamDateKey(value) ? Promise.resolve() : Promise.reject(new Error('Ngày không hợp lệ.'))) },
+            ]}>
+            <Input type='date' disabled={editing || saving} />
+          </Form.Item>
+          <Form.Item
+            name='cashReceived'
+            label='Tiền mặt'
+            rules={[
+              { required: true, message: 'Hãy nhập tiền mặt, có thể nhập 0.' },
+              { type: 'integer', min: 0, max: 1_000_000_000_000, message: 'Nhập số tiền nguyên, không âm.' },
+            ]}>
+            <InputNumber
+              min={0}
+              max={1_000_000_000_000}
+              precision={0}
+              step={1000}
+              inputMode='numeric'
+              formatter={formatVndInput}
+              parser={parseVndInput}
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+          <Form.Item
+            name='bankTransferReceived'
+            label='Tiền chuyển khoản'
+            rules={[
+              { required: true, message: 'Hãy nhập tiền chuyển khoản, có thể nhập 0.' },
+              { type: 'integer', min: 0, max: 1_000_000_000_000, message: 'Nhập số tiền nguyên, không âm.' },
+            ]}>
+            <InputNumber
+              min={0}
+              max={1_000_000_000_000}
+              precision={0}
+              step={1000}
+              inputMode='numeric'
+              formatter={formatVndInput}
+              parser={parseVndInput}
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+        </Form>
+        {submitError ? <Alert type='error' showIcon title={submitError} /> : null}
+      </Modal>
     </div>
   );
 }

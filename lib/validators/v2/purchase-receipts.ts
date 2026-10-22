@@ -16,8 +16,6 @@ const purchaseReceiptLineSchema = z.strictObject({
     (value) => value > 0,
     "Thành tiền dòng nhập phải lớn hơn 0",
   ),
-  lotCode: z.string().trim().min(1).max(120).optional(),
-  expiresAt: isoDateTimeSchema.optional(),
 });
 
 export const createPurchaseReceiptSchema = z
@@ -33,27 +31,15 @@ export const createPurchaseReceiptSchema = z
     note: noteSchema,
   })
   .superRefine((input, context) => {
-    const keys = input.lines.map(
-      ({ inventoryItemId, lotCode }) =>
-        `${inventoryItemId}:${lotCode?.trim().toLocaleUpperCase("vi-VN") ?? "no-lot"}`,
-    );
+    const keys = input.lines.map(({ inventoryItemId }) => inventoryItemId);
     if (new Set(keys).size !== keys.length) {
       context.addIssue({
         code: "custom",
         path: ["lines"],
-        message: "Một hàng hóa/lot chỉ được nhập một lần trong phiếu.",
+        message: "Một hàng hóa chỉ được nhập một lần trong phiếu.",
       });
     }
-    const receivedAt = new Date(input.receivedAt);
-    input.lines.forEach((line, index) => {
-      if (line.expiresAt && new Date(line.expiresAt) <= receivedAt) {
-        context.addIssue({
-          code: "custom",
-          path: ["lines", index, "expiresAt"],
-          message: "Hạn dùng phải sau thời điểm nhận hàng.",
-        });
-      }
-    });
+
   });
 
 export type CreatePurchaseReceiptInput = z.infer<

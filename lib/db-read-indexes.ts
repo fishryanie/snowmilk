@@ -6,14 +6,15 @@ export type ReadIndex = {
 // Used by both Mongoose schemas and the additive deployment script.
 // Do not use syncIndexes(): it can drop indexes outside this manifest.
 export const dbReadIndexes: Record<string, ReadIndex[]> = {
+  storefront_orders: [
+    { name: "ix_storefront_order_history", key: { storeId: 1, _id: -1 } },
+    { name: "ix_storefront_order_status_history", key: { storeId: 1, status: 1, _id: -1 } },
+  ],
   purchases: [
     { name: "ix_purchase_history", key: { purchaseDate: -1, createdAt: -1 } },
     { name: "ix_purchase_ingredient_date", key: { ingredientId: 1, purchaseDate: -1 } },
     { name: "ix_purchase_item_date", key: { itemCode: 1, purchaseDate: -1 } },
     { name: "ix_purchase_category_date", key: { category: 1, purchaseDate: -1 } },
-  ],
-  sales: [
-    { name: "ix_sale_mode_date", key: { entryMode: 1, saleDate: -1, _id: -1 } },
   ],
   ingredients: [
     { name: "ix_ingredient_created", key: { createdAt: -1 } },

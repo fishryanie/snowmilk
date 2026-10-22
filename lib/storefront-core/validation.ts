@@ -21,7 +21,6 @@ export const productSchema = z.strictObject({
   badge: z.string().trim().max(30),
   unit: z.string().trim().min(1).max(40),
   status: z.enum(["available", "sold_out", "hidden"]),
-  stock: z.number().int().min(0).max(100_000).nullable(),
   toppingSelection: z.enum(["single", "multiple"]).optional(),
   maxToppings: z.number().int().positive().nullable().optional(),
   toppings: z

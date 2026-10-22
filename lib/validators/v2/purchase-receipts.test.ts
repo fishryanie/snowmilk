@@ -27,24 +27,24 @@ describe("createPurchaseReceiptSchema", () => {
     expect(() => createPurchaseReceiptSchema.parse(input)).toThrow();
   });
 
-  it("rejects duplicate item and lot lines", () => {
+  it("rejects duplicate purchase items", () => {
     const input = validInput();
     input.lines = [
-      { ...input.lines[0], lotCode: "LOT-01" } as never,
-      { ...input.lines[0], lotCode: "lot-01" } as never,
+      { ...input.lines[0] },
+      { ...input.lines[0] },
     ];
     expect(() => createPurchaseReceiptSchema.parse(input)).toThrow(
-      "Một hàng hóa/lot chỉ được nhập một lần",
+      "Một hàng hóa chỉ được nhập một lần",
     );
   });
 
-  it("rejects an expiry at or before receiving", () => {
+  it("rejects removed warehouse metadata", () => {
     const input = validInput();
     input.lines = [
       { ...input.lines[0], expiresAt: "2026-08-12T07:59:00+07:00" } as never,
     ];
     expect(() => createPurchaseReceiptSchema.parse(input)).toThrow(
-      "Hạn dùng phải sau thời điểm nhận hàng",
+      "Unrecognized key",
     );
   });
 });

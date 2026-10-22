@@ -68,7 +68,7 @@ trường `actualLiters`, `costPerLiter`, `costPerMl` được duy trì cho mẻ
 
 ### `sales`
 
-Một document cho mỗi tổ hợp ngày + mẻ + phương thức thanh toán. Client chỉ gửi `batchId`, `productId` và số lượng; API tra lại sản phẩm/mẻ rồi tạo `items[]` với snapshot giá bán và cost tại thời điểm bán.
+Một document cho mỗi ngày Việt Nam, chỉ có `_id`, `saleDate`, `cashReceived` và `bankTransferReceived`. `saleDate` là đầu ngày tại múi giờ Việt Nam và có unique index. Không lưu timestamps, bản sao tổng doanh thu, sản phẩm/mẻ, ghi chú hay các phép tính giá vốn/lợi nhuận. API lịch sử chỉ trả ba trường nghiệp vụ, mặc định 50 dòng, cursor theo ngày.
 
 ### `equipment`
 
@@ -76,7 +76,7 @@ Một document cho mỗi tổ hợp ngày + mẻ + phương thức thanh toán. 
 
 ### `expenses`
 
-Chi phí ngoài nhập hàng/tài sản: điện, nước, mặt bằng, vận chuyển, marketing, sửa chữa hoặc khác. Mỗi chi phí ghi `paymentStatus` (`paid` hoặc `unpaid`) và `fundingSource`; bản ghi cũ không có trạng thái được coi là `paid`, không có nguồn tiền được coi là `owner_capital`. Chi phí tiệt trùng tự sinh từ phiếu nhập có `sourceType=purchase_sterilization`, `sourcePurchaseId`, `provider` và `accountingTreatment=inventory_cost`; nó là công nợ nhưng không được trừ thêm khỏi lợi nhuận sau khi đã vốn hóa vào hàng tồn kho.
+Chi phí ngoài nhập hàng/tài sản: điện, nước, mặt bằng, vận chuyển, marketing, sửa chữa hoặc khác. Mỗi chi phí ghi `paymentStatus` (`paid` hoặc `unpaid`) và `fundingSource`; bản ghi cũ không có trạng thái được coi là `paid`, không có nguồn tiền được coi là `owner_capital`. Chi phí tiệt trùng tự sinh từ phiếu nhập có `sourceType=purchase_sterilization`, `sourcePurchaseId`, `provider` và `accountingTreatment=inventory_cost`; nó là công nợ nhưng không được trừ thêm khỏi lợi nhuận sau khi đã đưa vào giá vốn mua hàng.
 
 ### `expensepayments`
 
@@ -97,7 +97,7 @@ Lưu hash file, thời điểm import, tổng dòng hợp lệ/lỗi theo sheet.
 ## Chỉ mục
 
 - Unique: `products.code`, `productsizes.code`, `productsizes.name`, `ingredients.code`, `equipment.code`, `milkbatches.code`, `settings.key`.
-- Unique compound: `sales(saleDate, batchName, paymentMethod)`.
+- Unique: `sales.saleDate` (mỗi ngày một bản chốt).
 - Sparse/index: `legacyId` trên các bản ghi có nguồn Excel.
 - Date index: `sales.saleDate`, `purchases.purchaseDate`, `expenses.expenseDate`.
 

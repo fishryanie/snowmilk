@@ -8,7 +8,7 @@ import { productSchema } from "./validation";
 const product: ShopProduct = {
   id: "507f1f77bcf86cd799439012", name: "Sữa tuyết", category: "Sữa",
   description: "", price: 25_000, imageUrl: "", badge: "", unit: "ly",
-  status: "available", stock: null, sortOrder: 0,
+  status: "available", sortOrder: 0,
   toppings: [
     { id: "oreo", name: "Oreo", price: 5_000, available: true },
     { id: "flan", name: "Flan", price: 6_000, available: true },
