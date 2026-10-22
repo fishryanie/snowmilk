@@ -1,5 +1,7 @@
 'use client';
 
+import { useApiQuery } from '@/hooks/use-api-data';
+
 import {
   CheckOutlined,
   ExperimentOutlined,
@@ -19,7 +21,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { PageHeader } from '@/components/common/page-header';
 import { useCurrentAccess } from '@/components/v2/access-context';
 import { RecipeConfigurationCard } from '@/components/v2/recipe-configuration-card';
@@ -121,9 +123,6 @@ function productionStatus(status: string) {
 export function ProductionWorkspace() {
   const { message } = App.useApp();
   const { can, loading: accessLoading, error: accessError } = useCurrentAccess();
-  const [recipes, setRecipes] = useState<RecipeVersion[]>([]);
-  const [batches, setBatches] = useState<ProductionBatch[]>([]);
-  const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [selectedRecipeId, setSelectedRecipeId] = useState('');
   const [expectedOutputQuantity, setExpectedOutputQuantity] = useState(1);
   const [goodOutputQuantity, setGoodOutputQuantity] = useState(1);
@@ -134,42 +133,23 @@ export function ProductionWorkspace() {
   const [note, setNote] = useState('');
   const [componentQuantities, setComponentQuantities] = useState<Record<string, number>>({});
   const [pendingBatch, setPendingBatch] = useState<ProductionBatch | null>(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
   const createRequest = useRef<PendingIdempotencyRequest>(null);
   const completeRequest = useRef<PendingIdempotencyRequest>(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    Promise.allSettled([
-      requestV2<ProductionResponse>('/api/v2/production-batches', {
-        signal: controller.signal,
-      }),
-      requestV2<InventoryResponse>('/api/v2/inventory/balances', {
-        signal: controller.signal,
-      }),
-    ]).then(([productionResult, inventoryResult]) => {
-      if (controller.signal.aborted) return;
-      const errors: string[] = [];
-      if (productionResult.status === 'fulfilled') {
-        setRecipes(productionResult.value.recipeVersions ?? []);
-        setBatches(productionResult.value.batches ?? []);
-      } else {
-        errors.push(errorText(productionResult.reason, 'Không tải được công thức sản xuất.'));
-      }
-      if (inventoryResult.status === 'fulfilled') {
-        setBalances(inventoryResult.value.balances ?? []);
-      } else {
-        errors.push(errorText(inventoryResult.reason, 'Không tải được tồn nguyên liệu.'));
-      }
-      setLoadError(errors.length > 0 ? errors.join(' ') : null);
-      setLoading(false);
-    });
-    return () => controller.abort();
-  }, [refreshKey]);
+  const production = useApiQuery<ProductionResponse>('/api/v2/production-batches');
+  const inventory = useApiQuery<InventoryResponse>('/api/v2/inventory/balances');
+  const recipes = useMemo(() => production.data?.recipeVersions ?? [], [production.data]);
+  const batches = production.data?.batches ?? [];
+  const balances = useMemo(() => inventory.data?.balances ?? [], [inventory.data]);
+  const loading = production.loading || inventory.loading;
+  const loadError = production.error || inventory.error
+    ? errorText(production.error ?? inventory.error, 'Không tải được công thức hoặc tồn kho.') : null;
+  function refreshData() {
+    production.refresh();
+    inventory.refresh();
+  }
 
   const defaultRecipe =
     recipes.find((recipe) => recipe.skuCode === 'HBF-BOX-001') ?? recipes[0] ?? null;
@@ -351,8 +331,6 @@ export function ProductionWorkspace() {
         `Đã ghi nhận ${formatNumber(result.goodOutputQuantity ?? goodOutputQuantity)} hộp đạt.`,
       );
       resetForm();
-      setLoading(true);
-      setRefreshKey((value) => value + 1);
     } catch (error) {
       const text = errorText(
         error,
@@ -384,8 +362,7 @@ export function ProductionWorkspace() {
           <Button
             icon={<ReloadOutlined />}
             onClick={() => {
-              setLoading(true);
-              setRefreshKey((value) => value + 1);
+              refreshData();
             }}
           >
             Làm mới
@@ -434,8 +411,7 @@ export function ProductionWorkspace() {
 
       <RecipeConfigurationCard
         onReleased={() => {
-          setLoading(true);
-          setRefreshKey((value) => value + 1);
+          refreshData();
         }}
       />
 

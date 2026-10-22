@@ -1,5 +1,7 @@
 'use client';
 
+import { useApiQuery } from '@/hooks/use-api-data';
+
 import {
   DeleteOutlined,
   InboxOutlined,
@@ -23,7 +25,7 @@ import {
   Typography,
 } from 'antd';
 import dayjs from 'dayjs';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { PageHeader } from '@/components/common/page-header';
 import { useCurrentAccess } from '@/components/v2/access-context';
 import {
@@ -118,63 +120,38 @@ function kindLabel(kind: string) {
 export function PurchaseReceivingWorkspace() {
   const { message } = App.useApp();
   const { can, loading: accessLoading, error: accessError } = useCurrentAccess();
-  const [items, setItems] = useState<InventoryItemOption[]>([]);
-  const [receipts, setReceipts] = useState<PurchaseReceipt[]>([]);
-  const [openingRequired, setOpeningRequired] = useState(false);
   const [supplierName, setSupplierName] = useState('');
   const [supplierContact, setSupplierContact] = useState('');
   const [businessDate, setBusinessDate] = useState(businessDateToday);
   const [receivedAt, setReceivedAt] = useState(localDateTimeInput);
   const [note, setNote] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([newLine()]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
   const pendingRequest = useRef<PendingIdempotencyRequest>(null);
 
   const canRead = can('purchases:read');
   const canReceive = can('purchases:write');
 
-  useEffect(() => {
-    if (accessLoading) return;
-    if (!canRead) return;
-    const controller = new AbortController();
-    Promise.all([
-      requestV2<InventoryResponse>('/api/v2/inventory/balances', {
-        signal: controller.signal,
-      }),
-      requestV2<ReceiptResponse>('/api/v2/purchase-receipts', {
-        signal: controller.signal,
-      }),
-    ])
-      .then(([inventory, history]) => {
-        const uniqueItems = new Map<string, InventoryItemOption>();
-        for (const balance of inventory.balances ?? []) {
-          if (!uniqueItems.has(balance.inventoryItemId)) {
-            uniqueItems.set(balance.inventoryItemId, balance);
-          }
-        }
-        setItems(
-          [...uniqueItems.values()].sort(
-            (left, right) =>
-              left.kind.localeCompare(right.kind) ||
-              left.name.localeCompare(right.name, 'vi'),
-          ),
-        );
-        setOpeningRequired(Boolean(inventory.openingRequired));
-        setReceipts(history.receipts ?? []);
-        setError(null);
-      })
-      .catch((requestError: unknown) => {
-        if (requestError instanceof DOMException && requestError.name === 'AbortError') return;
-        setError(errorText(requestError, 'Không tải được danh mục hoặc lịch sử nhập hàng.'));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [accessLoading, canRead, refreshKey]);
+  const enabled = !accessLoading && canRead;
+  const inventory = useApiQuery<InventoryResponse>(enabled ? '/api/v2/inventory/balances' : null);
+  const history = useApiQuery<ReceiptResponse>(enabled ? '/api/v2/purchase-receipts' : null);
+  const openingRequired = Boolean(inventory.data?.openingRequired);
+  const receipts = history.data?.receipts ?? [];
+  const items = useMemo(() => {
+    const unique = new Map<string, InventoryItemOption>();
+    for (const balance of inventory.data?.balances ?? []) {
+      if (!unique.has(balance.inventoryItemId)) unique.set(balance.inventoryItemId, balance);
+    }
+    return [...unique.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name, 'vi'));
+  }, [inventory.data]);
+  const loading = accessLoading || inventory.loading || history.loading;
+  const loadError = inventory.error || history.error
+    ? errorText(inventory.error ?? history.error, 'Không tải được danh mục hoặc lịch sử nhập hàng.') : null;
+  function refreshData() {
+    inventory.refresh();
+    history.refresh();
+  }
 
   const itemById = useMemo(
     () => new Map(items.map((item) => [item.inventoryItemId, item])),
@@ -264,7 +241,7 @@ export function PurchaseReceivingWorkspace() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idempotencyKey, ...payloadWithoutKey }),
       });
-      setReceipts((current) => [receipt, ...current.filter((row) => row.id !== receipt.id)]);
+      void history.mutate((current) => ({ ...current, receipts: [receipt, ...(current?.receipts ?? []).filter((row) => row.id !== receipt.id)] }), { revalidate: false });
       setSupplierName('');
       setSupplierContact('');
       setNote('');
@@ -294,8 +271,7 @@ export function PurchaseReceivingWorkspace() {
           <Button
             icon={<ReloadOutlined />}
             onClick={() => {
-              setLoading(true);
-              setRefreshKey((value) => value + 1);
+              refreshData();
             }}
             disabled={!canRead}
           >
@@ -332,14 +308,14 @@ export function PurchaseReceivingWorkspace() {
           action={<Button href='/inventory'>Đến Kho</Button>}
         />
       ) : null}
-      {error ? (
+      {error || loadError ? (
         <Alert
           type='error'
           showIcon
           closable
           onClose={() => setError(null)}
           title='Chưa thể hoàn tất phiếu nhập'
-          description={error}
+          description={error ?? loadError}
         />
       ) : null}
 

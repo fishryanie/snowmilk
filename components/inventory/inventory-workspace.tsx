@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch } from "@/lib/api-client";
+
 import { CheckCircleFilled, InboxOutlined, InfoCircleOutlined, SaveOutlined, SearchOutlined } from '@ant-design/icons';
 import {
   Alert,
@@ -200,7 +202,7 @@ function InventoryEditor({
     }
     setSaving(true);
     try {
-      const response = await fetch('/api/inventory', {
+      const response = await apiFetch('/api/inventory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -314,7 +316,7 @@ function InventoryEditor({
               <Text>Theo vỏ ly đã dùng</Text>
               <Text strong>{formatNumber(preview.inferredCupsFromPackaging)} ly</Text>
             </div>
-            <Progress percent={(preview.inferredCupsFromPackaging / cupReconciliation) * 100} showInfo={false} strokeColor='#287f96' />
+            <Progress percent={(preview.inferredCupsFromPackaging / cupReconciliation) * 100} showInfo={false} strokeColor='#0862c0' />
           </div>
           <div>
             <div className='inventory-progress-label'>

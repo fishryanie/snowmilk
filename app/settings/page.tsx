@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
 import {
   ArrowRightOutlined,
   CalendarOutlined,
@@ -264,7 +266,7 @@ function PayrollReserveSettingsCard({
   async function save(values: PayrollReserveForm) {
     setSaving(true);
     try {
-      const response = await fetch("/api/settings/payroll-funds", {
+      const response = await apiFetch("/api/settings/payroll-funds", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ period, funds: values.funds }),
@@ -452,7 +454,7 @@ export default function SettingsPage() {
         key: setting.key,
         value: values[setting.key],
       }));
-      const response = await fetch("/api/settings", {
+      const response = await apiFetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

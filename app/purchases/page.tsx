@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch } from "@/lib/api-client";
+
 import {
   BarChartOutlined,
   CalendarOutlined,
@@ -493,7 +495,7 @@ export default function PurchasesPage() {
 
     setExportingPdf(true);
     try {
-      const response = await fetch('/api/export/purchases/pdf', {
+      const response = await apiFetch('/api/export/purchases/pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -604,7 +606,7 @@ export default function PurchasesPage() {
             values.sterilizationOutsourcedLiters,
           )
         : 0;
-      const response = await fetch(id ? `/api/purchases/${id}` : '/api/purchases', {
+      const response = await apiFetch(id ? `/api/purchases/${id}` : '/api/purchases', {
         method: id ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -650,7 +652,7 @@ export default function PurchasesPage() {
       }
       setPurchases(current => (id ? current.map(item => (recordId(item) === id ? (body.data as Purchase) : item)) : [body.data as Purchase, ...current]));
       if (values.source === 'new' && values.saveToCatalog !== false) {
-        const ingredientResponse = await fetch('/api/ingredients?limit=500', {
+        const ingredientResponse = await apiFetch('/api/ingredients?limit=500', {
           cache: 'no-store',
         });
         if (ingredientResponse.ok) {
@@ -677,7 +679,7 @@ export default function PurchasesPage() {
     const id = recordId(record);
     if (!id) return;
     try {
-      const response = await fetch(`/api/purchases/${id}`, {
+      const response = await apiFetch(`/api/purchases/${id}`, {
         method: 'DELETE',
       });
       const body = (await response.json()) as {

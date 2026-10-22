@@ -1,5 +1,7 @@
 'use client';
 
+import { useApiQuery } from '@/hooks/use-api-data';
+
 import {
   BankOutlined,
   CheckCircleOutlined,
@@ -21,7 +23,7 @@ import {
   Typography,
 } from 'antd';
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type SetStateAction } from 'react';
 import { PageHeader } from '@/components/common/page-header';
 import { useCurrentAccess } from '@/components/v2/access-context';
 import { formatVnd, formatVndInput, parseVndInput } from '@/lib/formatters';
@@ -126,15 +128,23 @@ export function SalesDayWorkspace({ initialDate }: { initialDate?: string }) {
   const { message } = App.useApp();
   const { can, loading: accessLoading, error: accessError } = useCurrentAccess();
   const [businessDate, setBusinessDate] = useState(initialDate ?? businessDateToday);
-  const [skus, setSkus] = useState<CatalogSku[]>([]);
-  const [day, setDay] = useState<SalesDay>(() =>
-    emptySalesDay(initialDate ?? businessDateToday()),
-  );
-  const [catalogLoading, setCatalogLoading] = useState(true);
-  const [dayLoading, setDayLoading] = useState(true);
+  const catalog = useApiQuery<CatalogResponse>('/api/v2/catalog/skus');
+  const dayQuery = useApiQuery<SalesDayResponse>(`/api/v2/sales-days/${businessDate}`);
+  const skus = useMemo(() => catalog.data?.skus ?? [], [catalog.data]);
+  const [draft, setDraft] = useState<SalesDay | null>(null);
+  const day = draft?.businessDate === businessDate ? draft
+    : dayQuery.data ? normalizeSalesDay(dayQuery.data) : emptySalesDay(businessDate);
+  function setDay(value: SetStateAction<SalesDay>) {
+    setDraft((current) => typeof value === 'function'
+      ? value(current?.businessDate === businessDate ? current : day)
+      : value);
+  }
+  const catalogLoading = catalog.loading;
+  const dayLoading = dayQuery.loading;
+  const catalogError = catalog.error ? errorText(catalog.error, 'Không thể tải danh sách món.') : null;
+  const dayErrorText = dayQuery.error ? errorText(dayQuery.error, 'Không thể tải bản chốt ngày.') : null;
+  const dayError = dayErrorText && !/không tìm thấy|not found|chưa có/i.test(dayErrorText) ? dayErrorText : null;
   const [saving, setSaving] = useState(false);
-  const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [dayError, setDayError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [reopenReason, setReopenReason] = useState('');
   const saveRequest = useRef<PendingIdempotencyRequest>(null);
@@ -144,47 +154,6 @@ export function SalesDayWorkspace({ initialDate }: { initialDate?: string }) {
     version: number;
     key: string;
   } | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    requestV2<CatalogResponse>('/api/v2/catalog/skus', { signal: controller.signal })
-      .then((result) => {
-        setSkus(result.skus ?? []);
-        setCatalogError(null);
-      })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return;
-        setCatalogError(errorText(error, 'Không thể tải danh sách món.'));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setCatalogLoading(false);
-      });
-    return () => controller.abort();
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    requestV2<SalesDayResponse>(`/api/v2/sales-days/${businessDate}`, {
-      signal: controller.signal,
-    })
-      .then((result) => {
-        setDay(normalizeSalesDay(result));
-        setDayError(null);
-      })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return;
-        const messageText = errorText(error, 'Không thể tải bản chốt ngày.');
-        if (/không tìm thấy|not found|chưa có/i.test(messageText)) {
-          setDay(emptySalesDay(businessDate));
-        } else {
-          setDayError(messageText);
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setDayLoading(false);
-      });
-    return () => controller.abort();
-  }, [businessDate]);
 
   const lineBySku = useMemo(
     () =>
@@ -506,9 +475,7 @@ export function SalesDayWorkspace({ initialDate }: { initialDate?: string }) {
             onChange={(event) => {
               const nextDate = event.target.value;
               if (!nextDate) return;
-              setDayLoading(true);
-              setDayError(null);
-              setDay(emptySalesDay(nextDate));
+              setDraft(null);
               setBusinessDate(nextDate);
             }}
             aria-label='Ngày bán'

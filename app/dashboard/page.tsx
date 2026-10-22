@@ -800,8 +800,8 @@ export default function DashboardPage() {
         >
           <DailyAreaChart
             ariaLabel="Biểu đồ vùng thể hiện doanh thu theo từng ngày"
-            color="#287f96"
-            fillColor="rgba(40, 127, 150, 0.16)"
+            color="#0862c0"
+            fillColor="rgba(8, 98, 192, 0.16)"
             label="Doanh thu"
             points={data.daily
               .filter((item) => item.revenue > 0)

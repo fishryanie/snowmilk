@@ -27,6 +27,10 @@ export async function connectMongo(): Promise<typeof mongoose> {
       bufferCommands: false,
       dbName,
       serverSelectionTimeoutMS: 5000,
+      // Reports launch up to ten independent reads. Avoid opening a hundred
+      // sockets per serverless instance or handshaking only two at a time.
+      maxPoolSize: 10,
+      maxConnecting: 10,
     })
     .catch((error) => {
       cache.promise = null;

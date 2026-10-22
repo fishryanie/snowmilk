@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
 import {
   BankOutlined,
   CalendarOutlined,
@@ -143,7 +145,7 @@ const dashboardFallback: DashboardData = {
 };
 
 const employeeColors = [
-  "#287f96",
+  "#0862c0",
   "#8b6fc0",
   "#db8b43",
   "#3f936f",
@@ -152,7 +154,7 @@ const employeeColors = [
 ];
 
 async function mutate<T>(url: string, method: "POST" | "PUT", payload: unknown) {
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -171,7 +173,7 @@ async function mutate<T>(url: string, method: "POST" | "PUT", payload: unknown) 
 }
 
 async function query<T>(url: string) {
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await apiFetch(url, { cache: "no-store" });
   if (!response.ok) {
     const errorBody = (await response.json().catch(() => null)) as
       | ApiEnvelope<T>
@@ -481,7 +483,7 @@ export default function PayrollPage() {
 
     setPreviewingPayslip(true);
     try {
-      const response = await fetch("/api/payroll/payslips/preview", {
+      const response = await apiFetch("/api/payroll/payslips/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -514,7 +516,7 @@ export default function PayrollPage() {
   const downloadPayslip = async (withdrawal: PayslipDownloadTarget) => {
     setDownloadingPayslipId(withdrawal.id);
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/payroll/withdrawals/${withdrawal.id}/payslip`,
         { cache: "no-store" },
       );

@@ -1,10 +1,10 @@
 'use client';
 
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Form, Input, InputNumber, Modal, Select, Space, Switch, Typography } from 'antd';
+import { Alert, App, Button, Checkbox, Form, Input, InputNumber, Modal, Select, Space, Switch, Typography } from 'antd';
 import { useState } from 'react';
 import { errorText } from '@/components/v2/api-client';
-import type { ShopProduct } from '@/lib/storefront-core/types';
+import { getMaxToppings, type ShopProduct } from '@/lib/storefront-core/types';
 import { OnlineImageUpload, saveOnline } from './shared';
 
 type ProductValues = Omit<ShopProduct, 'id' | 'revision'>;
@@ -21,6 +21,7 @@ export function ProductEditor({ product, onClose, onSaved }: { product: ShopProd
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [unlimitedToppings, setUnlimitedToppings] = useState(() => product ? getMaxToppings(product) === null : false);
   const initial: ProductValues = product
     ? {
         name: product.name,
@@ -34,6 +35,7 @@ export function ProductEditor({ product, onClose, onSaved }: { product: ShopProd
         status: product.status,
         stock: product.stock,
         toppings: product.toppings,
+        maxToppings: getMaxToppings(product) ?? 1,
         sortOrder: product.sortOrder,
       }
     : {
@@ -48,6 +50,7 @@ export function ProductEditor({ product, onClose, onSaved }: { product: ShopProd
         status: 'available',
         stock: null,
         toppings: [],
+        maxToppings: 1,
         sortOrder: 0,
       };
 
@@ -59,6 +62,7 @@ export function ProductEditor({ product, onClose, onSaved }: { product: ShopProd
       await saveOnline(product ? `products/${product.id}` : 'products', {
         ...values,
         stock: values.stock ?? null,
+        maxToppings: unlimitedToppings ? null : values.maxToppings,
         ...(product ? { expectedRevision: product.revision } : {}),
       });
       void message.success(product ? 'Đã cập nhật món trên app.' : 'Đã thêm món lên app.');
@@ -128,6 +132,19 @@ export function ProductEditor({ product, onClose, onSaved }: { product: ShopProd
           />
         </Form.Item>
         <Typography.Title level={5}>Topping tùy chọn</Typography.Title>
+        <Form.Item label='Số lượng chọn tối đa' extra='Giới hạn số loại topping khách có thể chọn cho mỗi phần.'>
+          <Space wrap align='start'>
+            <Form.Item
+              name='maxToppings'
+              rules={unlimitedToppings ? [] : [{ required: true, type: 'integer', min: 1, message: 'Nhập số nguyên từ 1 trở lên.' }]}
+              style={{ marginBottom: 0 }}>
+              <InputNumber min={1} precision={0} disabled={saving || unlimitedToppings} aria-label='Số lượng topping chọn tối đa' />
+            </Form.Item>
+            <Checkbox checked={unlimitedToppings} onChange={event => setUnlimitedToppings(event.target.checked)}>
+              Không giới hạn
+            </Checkbox>
+          </Space>
+        </Form.Item>
         <Form.List name='toppings'>
           {(fields, { add, remove }) => (
             <Space orientation='vertical' size={12} style={{ width: '100%' }}>

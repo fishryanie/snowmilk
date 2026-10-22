@@ -18,9 +18,16 @@ export type ShopProduct = {
   status: Availability;
   stock: number | null;
   toppings: Topping[];
+  toppingSelection?: "single" | "multiple";
+  maxToppings?: number | null;
   sortOrder: number;
   revision?: number;
 };
+export const getMaxToppings = (
+  product: Pick<ShopProduct, "maxToppings" | "toppingSelection">,
+) => product.maxToppings !== undefined
+  ? product.maxToppings
+  : product.toppingSelection === "multiple" ? null : 1;
 export type ShopSettings = {
   name: string;
   tagline: string;

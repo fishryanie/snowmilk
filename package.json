@@ -21,7 +21,9 @@
     "recalculate:estimated-sales": "bun scripts/recalculate-estimated-sales.ts",
     "recalculate:products": "bun scripts/recalculate-product-costs.ts",
     "repair:cost-units": "bun scripts/repair-cost-units.ts",
-    "migrate:v2": "bun scripts/migrate-v2.ts"
+    "migrate:v2": "bun scripts/migrate-v2.ts",
+    "profile:app": "bun scripts/app-read-profile.ts",
+    "test:api-navigation": "bun build scripts/test-api-navigation.tsx --target=node --external=react --external=react-dom/client --external=react/jsx-runtime --external=swr --external=happy-dom --outfile=node_modules/.cache/snowmilk-api-navigation.mjs && node node_modules/.cache/snowmilk-api-navigation.mjs"
   },
   "dependencies": {
     "@ant-design/charts": "^2.6.7",
@@ -44,8 +46,9 @@
     "react-dom": "19.2.4",
     "react-hook-form": "^7.82.0",
     "server-only": "^0.0.1",
-    "zod": "^4.4.3",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "swr": "^2.5.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -56,6 +59,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
+    "happy-dom": "^21.0.4",
     "tailwindcss": "^4",
     "typescript": "^5"
   },

@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
 import {
   CopyOutlined,
   DeleteOutlined,
@@ -694,7 +696,7 @@ export function ProductOnboardingWorkspace() {
   }
 
   async function refreshData() {
-    const response = await fetch("/api/product-onboarding", { cache: "no-store" });
+    const response = await apiFetch("/api/product-onboarding", { cache: "no-store" });
     if (!response.ok) {
       const errorBody = (await response.json().catch(() => null)) as {
         message?: string;
@@ -763,7 +765,7 @@ export function ProductOnboardingWorkspace() {
   async function saveRawIngredient(rawValues: QuickRawIngredientForm) {
     setSavingPreparedIngredient(true);
     try {
-      const response = await fetch("/api/purchases", {
+      const response = await apiFetch("/api/purchases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -828,7 +830,7 @@ export function ProductOnboardingWorkspace() {
       )
         ? "milk_base"
         : "topping";
-      const response = await fetch("/api/batches", {
+      const response = await apiFetch("/api/batches", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -888,7 +890,7 @@ export function ProductOnboardingWorkspace() {
     }
     setExportingPdf(true);
     try {
-      const response = await fetch("/api/export/products/pdf", {
+      const response = await apiFetch("/api/export/products/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -968,7 +970,7 @@ export function ProductOnboardingWorkspace() {
             })(),
       );
       const id = editing ? recordId(editing) : "";
-      const response = await fetch(
+      const response = await apiFetch(
         id ? `/api/product-onboarding/${id}` : "/api/product-onboarding",
         {
           method: id ? "PUT" : "POST",
@@ -1023,7 +1025,7 @@ export function ProductOnboardingWorkspace() {
     const id = recordId(product);
     if (!id) return;
     try {
-      const response = await fetch(`/api/products/${id}`, { method: "DELETE" });
+      const response = await apiFetch(`/api/products/${id}`, { method: "DELETE" });
       if (!response.ok) {
         const errorBody = (await response.json().catch(() => null)) as {
           message?: string;

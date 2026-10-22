@@ -87,6 +87,7 @@ async function inventoryContext(date: string) {
   ] = await Promise.all([
     Ingredient.find({ isActive: true }).sort({ category: 1, name: 1 }).lean(),
     Purchase.find({ purchaseDate: { $lte: endOfDay } })
+      .batchSize(500)
       .select(
         "ingredientId itemCode packageCount costUnit convertedQuantity totalAmount inventoryCostAmount",
       )

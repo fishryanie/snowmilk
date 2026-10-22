@@ -6,7 +6,7 @@ import type {
   ShopProduct,
   ShopSettings,
 } from "./types";
-import { cartKey } from "./types";
+import { cartKey, getMaxToppings } from "./types";
 export function quoteCart(
   cart: CartLine[],
   products: ShopProduct[],
@@ -20,6 +20,7 @@ export function quoteCart(
     );
   const lines: QuotedLine[] = cart.map((line) => {
     const product = products.find((p) => p.id === line.productId);
+    const maxToppings = product ? getMaxToppings(product) : null;
     const toppings = line.toppingIds
       .map((id) => product?.toppings.find((t) => t.id === id))
       .filter((t) => t != null);
@@ -31,10 +32,12 @@ export function quoteCart(
           : product.stock != null &&
               product.stock < (amounts.get(line.productId) || 0)
             ? `Tiệm chỉ còn ${product.stock} phần.`
-            : toppings.length !== line.toppingIds.length ||
-                toppings.some((t) => !t.available)
-              ? "Topping đã thay đổi hoặc hết hàng. Vui lòng chọn lại."
-              : undefined;
+            : maxToppings !== null && line.toppingIds.length > maxToppings
+              ? `Chỉ được chọn tối đa ${maxToppings} topping cho mỗi ${product.unit}.`
+              : toppings.length !== line.toppingIds.length ||
+                  toppings.some((t) => !t.available)
+                ? "Topping đã thay đổi hoặc hết hàng. Vui lòng chọn lại."
+                : undefined;
     const unitPrice =
       (product?.price || 0) + toppings.reduce((sum, t) => sum + t.price, 0);
     return {

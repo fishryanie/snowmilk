@@ -14,10 +14,10 @@ describe("BusinessProfile", () => {
       "làm ở nhà, ngon thiệt nè.",
     );
     expect(profile.brandColors).toEqual({
-      cream: "#eef7fa",
-      terracotta: "#287f96",
-      green: "#25845d",
-      ink: "#17323a",
+      cream: "#f5faff",
+      terracotta: "#0862c0",
+      green: "#4c775a",
+      ink: "#153454",
     });
   });
 
@@ -50,7 +50,7 @@ describe("BusinessProfile", () => {
     );
   });
 
-  test("upgrades a persisted brown palette to the legacy blue palette", () => {
+  test("upgrades a persisted brown palette to the royal blue palette", () => {
     const profile = normalizeBusinessProfile({
       brandColors: {
         cream: "#FFF8ED",
@@ -63,6 +63,19 @@ describe("BusinessProfile", () => {
     expect(profile.brandColors).toEqual(
       DEFAULT_BUSINESS_PROFILE.brandColors,
     );
+  });
+
+  test("upgrades persisted teal colors regardless of case or whitespace", () => {
+    const profile = normalizeBusinessProfile({
+      brandColors: {
+        cream: " #EEF7FA ",
+        terracotta: "#287F96",
+        green: "#25845D",
+        ink: "#17323A",
+      },
+    });
+
+    expect(profile.brandColors).toEqual(DEFAULT_BUSINESS_PROFILE.brandColors);
   });
 
   test("upgrades every brown brand variant used during the redesign", () => {

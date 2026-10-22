@@ -23,6 +23,7 @@ import {
 } from '@ant-design/icons';
 import { Button, Drawer, Grid, Layout, Menu, Space, Tag, Typography } from 'antd';
 import type { MenuProps } from 'antd';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -32,7 +33,7 @@ import {
   type PropsWithChildren,
   type ReactNode,
 } from 'react';
-import { RouteSkeleton } from '@/components/common/route-skeleton';
+import { prefetchRouteData } from '@/lib/route-data';
 import {
   CurrentAccessProvider,
   roleLabel,
@@ -45,7 +46,7 @@ import {
 } from '@/lib/business-profile';
 
 const { Header, Content, Sider } = Layout;
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 type NavigationItem = {
   key: string;
@@ -236,56 +237,19 @@ function Brand({
   compact?: boolean;
   profile: BusinessProfile;
 }) {
-  const markText = profile.wordmark.trim();
-  const compactMark =
-    markText.length <= 4
-      ? markText
-      : markText
-          .split(/\s+/)
-          .map((part) => part[0])
-          .join('')
-          .slice(0, 3)
-          .toLocaleUpperCase('vi-VN');
   return (
-    <div className='brand'>
-      <div
-        className={`brand-mark${profile.logoUrl ? ' has-logo' : ''}`}
-        style={
-          profile.logoUrl
-            ? ({ '--brand-logo-url': `url("${profile.logoUrl}")` } as CSSProperties)
-            : undefined
-        }
-        aria-hidden='true'
-      >
-        {!profile.logoUrl ? (
-          <span>{compactMark || DEFAULT_BUSINESS_PROFILE.wordmark.slice(0, 1)}</span>
-        ) : null}
-      </div>
-      {!compact ? (
-        <div className='brand-copy'>
-          <Title level={5}>{profile.displayName}</Title>
-          <Text>{profile.tagline}</Text>
-        </div>
-      ) : null}
+    <div className={`brand${compact ? ' brand--compact' : ''}`}>
+      <Image
+        className='brand-logo'
+        src='/cai-tiem-sua-logo.png'
+        alt={profile.displayName}
+        width={2172}
+        height={724}
+        loading='eager'
+        unoptimized
+      />
     </div>
   );
-}
-
-function useNavigationProgress(pathname: string) {
-  const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => setNavigatingTo(null));
-    return () => window.cancelAnimationFrame(frame);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (!navigatingTo) return;
-    const timeout = window.setTimeout(() => setNavigatingTo(null), 10_000);
-    return () => window.clearTimeout(timeout);
-  }, [navigatingTo]);
-
-  return [navigatingTo, setNavigatingTo] as const;
 }
 
 function useHeaderScrollState() {
@@ -441,7 +405,6 @@ function AuthenticatedShell({
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const headerScrolled = useHeaderScrollState();
-  const [navigatingTo, setNavigatingTo] = useNavigationProgress(pathname);
   useMobileViewportHandling();
   useSelectDropdownScrollGuard();
   const { access, loading: accessLoading, error: accessError, can } = useCurrentAccess();
@@ -449,7 +412,6 @@ function AuthenticatedShell({
     menuDefinitions.find((item) => pathname.startsWith(item.key)) ?? menuDefinitions[0];
   const currentKey = currentItem.key;
   const currentPageTitle = currentItem.pageTitle ?? currentItem.label;
-  const selectedKey = navigatingTo ?? currentKey;
 
   const rolloutGroups = navigationGroups.flatMap((group) => {
     const items = group.items.filter(
@@ -475,9 +437,12 @@ function AuthenticatedShell({
       label: (
         <Link
           href={item.key}
+          onPointerEnter={() => prefetchRouteData(item.key, v2OperationsEnabled)}
+          onFocus={() => prefetchRouteData(item.key, v2OperationsEnabled)}
+          onTouchStart={() => prefetchRouteData(item.key, v2OperationsEnabled)}
           onNavigate={() => {
             if (item.key === currentKey) return;
-            setNavigatingTo(item.key);
+            prefetchRouteData(item.key, v2OperationsEnabled);
             setDrawerOpen(false);
           }}
         >
@@ -506,7 +471,7 @@ function AuthenticatedShell({
     <Menu
       mode='inline'
       theme={theme}
-      selectedKeys={[selectedKey]}
+      selectedKeys={[currentKey]}
       items={menuItems}
       onClick={() => setDrawerOpen(false)}
       className='app-menu'
@@ -517,7 +482,9 @@ function AuthenticatedShell({
     '--canvas': businessProfile.brandColors.cream,
     '--ink': businessProfile.brandColors.ink,
     '--brand': businessProfile.brandColors.terracotta,
-    '--brand-soft': `color-mix(in srgb, ${businessProfile.brandColors.terracotta} 14%, white)`,
+    '--brand-soft': businessProfile.brandColors.terracotta === DEFAULT_BUSINESS_PROFILE.brandColors.terracotta
+      ? '#e8f3ff'
+      : `color-mix(in srgb, ${businessProfile.brandColors.terracotta} 10%, white)`,
     '--success': businessProfile.brandColors.green,
   } as CSSProperties;
 
@@ -528,12 +495,12 @@ function AuthenticatedShell({
           width={252}
           collapsedWidth={80}
           collapsed={collapsed}
-          theme='dark'
+          theme='light'
           className='app-sider'
           id='desktop-navigation'
         >
           <Brand compact={collapsed} profile={businessProfile} />
-          {navigation('dark')}
+          {navigation('light')}
         </Sider>
       ) : null}
       <Layout>
@@ -579,8 +546,8 @@ function AuthenticatedShell({
             <Text className='desktop-only'>MongoDB Atlas</Text>
           </Space>
         </Header>
-        <Content className='app-content' aria-busy={Boolean(navigatingTo)}>
-          {navigatingTo ? <RouteSkeleton /> : children}
+        <Content className='app-content'>
+          {children}
         </Content>
       </Layout>
       <Drawer
@@ -609,8 +576,11 @@ function AuthenticatedShell({
               href={item.key}
               className={active ? 'is-active' : undefined}
               aria-current={active ? 'page' : undefined}
+              onPointerEnter={() => prefetchRouteData(item.key, v2OperationsEnabled)}
+              onFocus={() => prefetchRouteData(item.key, v2OperationsEnabled)}
+              onTouchStart={() => prefetchRouteData(item.key, v2OperationsEnabled)}
               onNavigate={() => {
-                if (!active) setNavigatingTo(item.key);
+                prefetchRouteData(item.key, v2OperationsEnabled);
               }}
             >
               <span className='mobile-quick-nav-icon' aria-hidden='true'>

@@ -1,5 +1,7 @@
 'use client';
 
+import { useApiQuery } from '@/hooks/use-api-data';
+
 import {
   CheckCircleOutlined,
   FilterOutlined,
@@ -17,14 +19,13 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { PageHeader } from '@/components/common/page-header';
 import { formatDate, formatNumber, formatVnd } from '@/lib/formatters';
 import {
   businessDateToday,
   dateDaysAgo,
   errorText,
-  requestV2,
 } from '@/components/v2/api-client';
 
 const { Text, Title } = Typography;
@@ -150,56 +151,20 @@ export function RevenueReportWorkspace() {
   };
   const [draftFilters, setDraftFilters] = useState<ReportFilters>(initialFilters);
   const [appliedFilters, setAppliedFilters] = useState<ReportFilters>(initialFilters);
-  const [catalog, setCatalog] = useState<CatalogSku[]>([]);
-  const [allReport, setAllReport] = useState<RevenueReport | null>(null);
-  const [detailReport, setDetailReport] = useState<RevenueReport | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    requestV2<CatalogResponse>('/api/v2/catalog/skus', { signal: controller.signal })
-      .then((result) => setCatalog(result.skus ?? []))
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const hasDetailFilter = Boolean(
-      appliedFilters.businessLineId || appliedFilters.skuId,
-    );
-    const overallRequest = requestV2<RevenueReport>(
-      reportUrl(appliedFilters, false),
-      { signal: controller.signal },
-    );
-    const detailRequest = hasDetailFilter
-      ? requestV2<RevenueReport>(reportUrl(appliedFilters, true), {
-          signal: controller.signal,
-        })
-      : overallRequest;
-
-    Promise.all([overallRequest, detailRequest])
-      .then(([overall, detail]) => {
-        setAllReport(overall);
-        setDetailReport(detail);
-      })
-      .catch((requestError: unknown) => {
-        if (requestError instanceof DOMException && requestError.name === 'AbortError') return;
-        setError(
-          `${errorText(requestError, 'Không thể tải báo cáo.')} Báo cáo gần nhất vẫn được giữ trên màn hình.`,
-        );
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-          setRefreshing(false);
-        }
-      });
-
-    return () => controller.abort();
-  }, [appliedFilters]);
+  const catalogQuery = useApiQuery<CatalogResponse>('/api/v2/catalog/skus');
+  const catalog = useMemo(() => catalogQuery.data?.skus ?? [], [catalogQuery.data]);
+  const overall = useApiQuery<RevenueReport>(reportUrl(appliedFilters, false));
+  const filtered = useApiQuery<RevenueReport>(
+    appliedFilters.businessLineId || appliedFilters.skuId ? reportUrl(appliedFilters, true) : null,
+  );
+  const allReport = overall.data ?? null;
+  const detailReport = filtered.data ?? null;
+  const loading = overall.loading || filtered.loading;
+  const refreshing = overall.refreshing || filtered.refreshing;
+  const loadError = overall.error || filtered.error
+    ? errorText(overall.error ?? filtered.error, 'Không thể tải báo cáo.') : null;
 
   const businessLineOptions = useMemo(() => {
     const byKey = new Map<string, { value: string; label: string }>();
@@ -238,15 +203,22 @@ export function RevenueReportWorkspace() {
       setError('Khoảng ngày không hợp lệ. Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.');
       return;
     }
-    setRefreshing(true);
     setError(null);
-    setAppliedFilters({ ...draftFilters });
+    if (
+      appliedFilters.from === draftFilters.from && appliedFilters.to === draftFilters.to &&
+      appliedFilters.businessLineId === draftFilters.businessLineId && appliedFilters.skuId === draftFilters.skuId
+    ) {
+      overall.refresh();
+      filtered.refresh();
+    } else {
+      setAppliedFilters({ ...draftFilters });
+    }
   }
 
   const detailIsFiltered = Boolean(
     appliedFilters.businessLineId || appliedFilters.skuId,
   );
-  const details = detailReport ?? allReport;
+  const details = detailIsFiltered ? detailReport : allReport;
 
   return (
     <div className='page-wrap v2-workspace report-v2'>
@@ -321,14 +293,14 @@ export function RevenueReportWorkspace() {
         </div>
       </Card>
 
-      {error ? (
+      {error || loadError ? (
         <Alert
           type='error'
           showIcon
           closable
           onClose={() => setError(null)}
           title='Chưa thể cập nhật báo cáo'
-          description={error}
+          description={error ?? loadError}
         />
       ) : null}
 

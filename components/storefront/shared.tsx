@@ -2,8 +2,9 @@
 
 import { ReloadOutlined, UploadOutlined } from '@ant-design/icons';
 import { Alert, Button, Image, Space, Tag, Typography } from 'antd';
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useRef, useState, type ChangeEvent } from 'react';
 import { errorText, requestV2 } from '@/components/v2/api-client';
+import { useApiQuery } from '@/hooks/use-api-data';
 import { statusLabels, type OrderStatus, type ShopProduct, type ShopSettings } from '@/lib/storefront-core/types';
 
 export type Catalog = { products: ShopProduct[]; settings: ShopSettings };
@@ -17,46 +18,13 @@ export function saveOnline<T>(path: string, body: unknown) {
 }
 
 export function useOnlineQuery<T>(url: string, interval = 0) {
-  const [version, setVersion] = useState(0);
-  const key = JSON.stringify([url, version]);
-  const [result, setResult] = useState<{ url: string; key: string; data: T | null; error: string | null } | null>(null);
-  const reload = useCallback(() => setVersion(current => current + 1), []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    requestV2<T>(url, { signal: controller.signal })
-      .then(data => {
-        if (!controller.signal.aborted) setResult({ url, key, data, error: null });
-      })
-      .catch((requestError: unknown) => {
-        if (!controller.signal.aborted)
-          setResult(current => ({
-            url,
-            key,
-            data: current?.url === url ? current.data : null,
-            error: errorText(requestError, 'Không thể tải dữ liệu cửa hàng.'),
-          }));
-      });
-    return () => controller.abort();
-  }, [key, url]);
-
-  useEffect(() => {
-    const refreshVisible = () => {
-      if (document.visibilityState === 'visible') reload();
-    };
-    const timer = interval > 0 ? window.setInterval(refreshVisible, interval) : null;
-    if (interval > 0) window.addEventListener('focus', refreshVisible);
-    return () => {
-      if (timer !== null) window.clearInterval(timer);
-      window.removeEventListener('focus', refreshVisible);
-    };
-  }, [interval, reload]);
-
+  const query = useApiQuery<T>(url, { refreshIntervalMs: interval });
   return {
-    data: result?.url === url ? result.data : null,
-    error: result?.url === url ? result.error : null,
-    loading: result?.key !== key,
-    reload,
+    data: query.data ?? null,
+    error: query.error ? errorText(query.error, 'Không thể tải dữ liệu cửa hàng.') : null,
+    loading: query.loading,
+    refreshing: query.refreshing,
+    reload: query.refresh,
   };
 }
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
 import {
   DeleteOutlined,
   CheckCircleOutlined,
@@ -488,7 +490,7 @@ export function ResourceManager({
 
     setExportingPdf(true);
     try {
-      const response = await fetch(selectionPdfExportUrl, {
+      const response = await apiFetch(selectionPdfExportUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids }),
@@ -574,7 +576,7 @@ export function ResourceManager({
           Number(payload.packageCount ?? 0) * Number(payload.actualPackagePrice ?? 0);
       }
       const id = editing?.id ?? editing?._id;
-      const response = await fetch(id ? `/api/${resource}/${id}` : `/api/${resource}`, {
+      const response = await apiFetch(id ? `/api/${resource}/${id}` : `/api/${resource}`, {
         method: id ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -616,7 +618,7 @@ export function ResourceManager({
     const id = record.id ?? record._id;
     if (!id) return;
     try {
-      const response = await fetch(`/api/${resource}/${id}`, { method: "DELETE" });
+      const response = await apiFetch(`/api/${resource}/${id}`, { method: "DELETE" });
       if (!response.ok) {
         const errorBody = (await response.json().catch(() => null)) as
           | { message?: string }

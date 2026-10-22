@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
 import { PageHeader } from "@/components/common/page-header";
 import { ResourceManager } from "@/components/common/resource-manager";
 import {
@@ -59,7 +61,7 @@ async function settleSterilizationExpenses(records: ExpenseSelectionRecord[]) {
     const id = record.id ?? record._id;
     return id ? [String(id)] : [];
   });
-  const response = await fetch("/api/expenses/settle", {
+  const response = await apiFetch("/api/expenses/settle", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ids }),

@@ -4,6 +4,7 @@ import { Alert, Button, Skeleton, Space, Tabs } from 'antd';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { prefetchRouteData } from '@/lib/route-data';
 import { CurrentAccessProvider, useCurrentAccess } from '@/components/v2/access-context';
 
 const tabs = [
@@ -19,7 +20,10 @@ function StorefrontContent({ children }: { children: ReactNode }) {
 
   return (
     <div className='storefront-workspace'>
-      <Tabs activeKey={pathname} items={tabs} onChange={path => router.push(path)} />
+      <Tabs activeKey={pathname} items={tabs} onChange={path => {
+        prefetchRouteData(path);
+        router.push(path);
+      }} />
       {loading ? (
         <Skeleton active />
       ) : error || !access ? (

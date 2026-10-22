@@ -1,3 +1,5 @@
+import { apiFetch } from "@/lib/api-client";
+
 export type ApiEnvelope<T> = {
   success?: boolean;
   message?: string;
@@ -12,7 +14,7 @@ export async function requestV2<T>(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetch(input, {
+  const response = await apiFetch(input, {
     cache: 'no-store',
     ...init,
     headers: {

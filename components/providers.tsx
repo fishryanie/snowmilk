@@ -1,7 +1,9 @@
 "use client";
 
 import { App, ConfigProvider } from "antd";
-import type { PropsWithChildren } from "react";
+import { useEffect, type PropsWithChildren } from "react";
+import { usePathname } from "next/navigation";
+import { invalidateApiData } from "@/lib/api-client";
 import {
   DEFAULT_BUSINESS_PROFILE,
   type BusinessProfile,
@@ -12,6 +14,10 @@ export function Providers({
   businessProfile = DEFAULT_BUSINESS_PROFILE,
 }: PropsWithChildren<{ businessProfile?: BusinessProfile }>) {
   const { brandColors } = businessProfile;
+  const pathname = usePathname();
+  useEffect(() => {
+    if (pathname.startsWith("/sign-in")) void invalidateApiData(true);
+  }, [pathname]);
   return (
     <ConfigProvider
       theme={{
@@ -20,16 +26,24 @@ export function Providers({
           colorInfo: brandColors.terracotta,
           colorSuccess: brandColors.green,
           colorWarning: "#c87916",
-          colorError: "#c2413b",
-          borderRadius: 12,
+          colorError: "#ad4d3d",
+          colorText: brandColors.ink,
+          colorTextSecondary: "#58718b",
+          colorBgLayout: brandColors.cream,
+          colorBorder: "#d2e3f4",
+          colorBorderSecondary: "#d2e3f4",
+          borderRadius: 8,
           borderRadiusLG: 12,
           controlHeight: 40,
           controlHeightLG: 40,
-          fontFamily:
-            '"Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+          fontFamily: 'var(--font-sans)',
         },
         components: {
-          Table: { headerBg: "#f5f7f6" },
+          Table: {
+            headerBg: "#e8f3ff",
+            headerColor: brandColors.ink,
+            rowHoverBg: "#f5faff",
+          },
         },
       }}
     >

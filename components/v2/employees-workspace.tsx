@@ -1,5 +1,7 @@
 'use client';
 
+import { useApiQuery } from '@/hooks/use-api-data';
+
 import {
   LockOutlined,
   PlusOutlined,
@@ -23,7 +25,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useCurrentAccess } from '@/components/v2/access-context';
 import { errorText, requestV2 } from '@/components/v2/api-client';
 import { PageHeader } from '@/components/common/page-header';
@@ -86,35 +88,19 @@ export function EmployeesWorkspace() {
   const { message } = App.useApp();
   const { can, loading: accessLoading, error: accessError } = useCurrentAccess();
   const [form] = Form.useForm<CreateValues>();
-  const [memberships, setMemberships] = useState<Membership[]>([]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
 
   const allowed = can('team:manage');
 
-  useEffect(() => {
-    if (accessLoading || !allowed) return;
-    const controller = new AbortController();
-    requestV2<MembershipListResponse>('/api/v2/memberships', {
-      signal: controller.signal,
-    })
-      .then((value) => {
-        setMemberships(normalizeList(value));
-        setError(null);
-      })
-      .catch((requestError: unknown) => {
-        if (requestError instanceof DOMException && requestError.name === 'AbortError') return;
-        setError(errorText(requestError, 'Không tải được danh sách nhân viên.'));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [accessLoading, allowed, refreshKey]);
+  const query = useApiQuery<MembershipListResponse>(
+    !accessLoading && allowed ? '/api/v2/memberships' : null,
+  );
+  const memberships = normalizeList(query.data ?? []);
+  const loading = accessLoading || query.loading;
+  const loadError = query.error ? errorText(query.error, 'Không tải được danh sách nhân viên.') : null;
 
   function openCreate() {
     form.setFieldsValue({
@@ -137,7 +123,6 @@ export function EmployeesWorkspace() {
       });
       setModalOpen(false);
       form.resetFields();
-      setRefreshKey((value) => value + 1);
       message.success('Đã tạo tài khoản và thông tin đăng nhập tạm thời.');
     } catch (requestError) {
       const copy = errorText(
@@ -174,11 +159,9 @@ export function EmployeesWorkspace() {
         },
       );
       const updated = normalizeMembership(value);
-      setMemberships((current) =>
-        current.map((candidate) =>
-          membershipId(candidate) === id ? updated : candidate,
-        ),
-      );
+      void query.mutate((current) => normalizeList(current ?? []).map((candidate) =>
+        membershipId(candidate) === id ? updated : candidate,
+      ), { revalidate: false });
       message.success('Đã cập nhật quyền nhân viên.');
     } catch (requestError) {
       const copy = errorText(
@@ -223,8 +206,7 @@ export function EmployeesWorkspace() {
             <Button
               icon={<ReloadOutlined />}
               onClick={() => {
-                setLoading(true);
-                setRefreshKey((value) => value + 1);
+                query.refresh();
               }}
             >
               Làm mới
@@ -236,14 +218,14 @@ export function EmployeesWorkspace() {
         }
       />
 
-      {error ? (
+      {error || loadError ? (
         <Alert
           type='error'
           showIcon
           closable
           onClose={() => setError(null)}
           title='Chưa thể cập nhật nhân viên'
-          description={error}
+          description={error ?? loadError}
         />
       ) : null}
 

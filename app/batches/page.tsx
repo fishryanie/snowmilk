@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
 import {
   DeleteOutlined,
   EditOutlined,
@@ -379,7 +381,7 @@ export default function BatchesPage() {
     setSaving(true);
     try {
       const id = editing ? recordId(editing) : "";
-      const response = await fetch(id ? `/api/batches/${id}` : "/api/batches", {
+      const response = await apiFetch(id ? `/api/batches/${id}` : "/api/batches", {
         method: id ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
@@ -422,7 +424,7 @@ export default function BatchesPage() {
     const id = recordId(record);
     if (!id) return;
     try {
-      const response = await fetch(`/api/batches/${id}`, {
+      const response = await apiFetch(`/api/batches/${id}`, {
         method: "DELETE",
       });
       const body = (await response.json()) as {

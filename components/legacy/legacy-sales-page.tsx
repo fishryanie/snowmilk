@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
 import {
   BankOutlined,
   CalendarOutlined,
@@ -382,7 +384,7 @@ export default function SalesPage() {
     }
     setSaving(true);
     try {
-      const response = await fetch("/api/sales", {
+      const response = await apiFetch("/api/sales", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

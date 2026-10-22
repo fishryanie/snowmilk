@@ -158,7 +158,7 @@ export default function CostingPage() {
                   value={product.fullCost}
                   styles={{
                     content: {
-                      color: costRatio > 100 ? "#c2413b" : "#287f96",
+                      color: costRatio > 100 ? "#c2413b" : "#0862c0",
                     },
                   }}
                   formatter={(value) => formatVnd(Number(value))}

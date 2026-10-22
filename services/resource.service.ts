@@ -970,6 +970,7 @@ export async function listResources(
     .find(filter)
     .sort(sort)
     .limit(Math.min(options.limit ?? 250, 500))
+    .batchSize(500)
     .lean();
   if (resource === "purchases" && records.length > 0) {
     const purchases = records as Array<
@@ -1019,6 +1020,7 @@ export async function listResources(
       { itemCode: { $in: ingredientCodes } },
     ],
   })
+    .batchSize(500)
     .select(
       "ingredientId itemCode packageCount costUnit convertedQuantity totalAmount inventoryCostAmount",
     )

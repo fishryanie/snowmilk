@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
 import {
   DeleteOutlined,
   DownloadOutlined,
@@ -294,7 +296,7 @@ export function DivestmentClaimManager({
     }
     setSaving(true);
     try {
-      const response = await fetch("/api/divestment-claims", {
+      const response = await apiFetch("/api/divestment-claims", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -333,7 +335,7 @@ export function DivestmentClaimManager({
       const claimDate =
         form.getFieldValue("withdrawalDate")?.toISOString() ??
         new Date().toISOString();
-      const response = await fetch("/api/export/divestment-claims/pdf", {
+      const response = await apiFetch("/api/export/divestment-claims/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -379,7 +381,7 @@ export function DivestmentClaimManager({
 
   async function removeRecord(id: string) {
     try {
-      const response = await fetch(`/api/divestments/${id}`, {
+      const response = await apiFetch(`/api/divestments/${id}`, {
         method: "DELETE",
       });
       const body = (await response.json()) as {

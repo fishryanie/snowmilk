@@ -26,10 +26,10 @@ export const DEFAULT_BUSINESS_PROFILE: Readonly<BusinessProfile> = {
   currency: "VND",
   locale: "vi-VN",
   brandColors: {
-    cream: "#eef7fa",
-    terracotta: "#287f96",
-    green: "#25845d",
-    ink: "#17323a",
+    cream: "#f5faff",
+    terracotta: "#0862c0",
+    green: "#4c775a",
+    ink: "#153454",
   },
 };
 
@@ -42,16 +42,17 @@ const DEPRECATED_LOGO_URLS = new Set([
   "/snowmilk-app-icon-transparent-512.png",
 ]);
 
-const DEPRECATED_BROWN_BRAND_COLORS = {
-  cream: new Set(["#fff8ed", "#fffdf8"]),
+const DEPRECATED_BRAND_COLORS = {
+  cream: new Set(["#fff8ed", "#fffdf8", "#eef7fa"]),
   terracotta: new Set([
     "#a84f32",
     "#b65a39",
     "#c96545",
     "#c9694b",
+    "#287f96",
   ]),
-  green: new Set(["#47745a", "#4f7355", "#4f7c52"]),
-  ink: new Set(["#29251f", "#2d2926", "#392820"]),
+  green: new Set(["#47745a", "#4f7355", "#4f7c52", "#25845d"]),
+  ink: new Set(["#29251f", "#2d2926", "#392820", "#17323a"]),
 } as const;
 
 function replaceDeprecatedBrandColor(
@@ -110,22 +111,22 @@ export function normalizeBusinessProfile(
       cream: replaceDeprecatedBrandColor(
         profile?.brandColors?.cream,
         DEFAULT_BUSINESS_PROFILE.brandColors.cream,
-        DEPRECATED_BROWN_BRAND_COLORS.cream,
+        DEPRECATED_BRAND_COLORS.cream,
       ),
       terracotta: replaceDeprecatedBrandColor(
         profile?.brandColors?.terracotta,
         DEFAULT_BUSINESS_PROFILE.brandColors.terracotta,
-        DEPRECATED_BROWN_BRAND_COLORS.terracotta,
+        DEPRECATED_BRAND_COLORS.terracotta,
       ),
       green: replaceDeprecatedBrandColor(
         profile?.brandColors?.green,
         DEFAULT_BUSINESS_PROFILE.brandColors.green,
-        DEPRECATED_BROWN_BRAND_COLORS.green,
+        DEPRECATED_BRAND_COLORS.green,
       ),
       ink: replaceDeprecatedBrandColor(
         profile?.brandColors?.ink,
         DEFAULT_BUSINESS_PROFILE.brandColors.ink,
-        DEPRECATED_BROWN_BRAND_COLORS.ink,
+        DEPRECATED_BRAND_COLORS.ink,
       ),
     },
   };

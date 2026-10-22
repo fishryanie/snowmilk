@@ -1,5 +1,7 @@
 'use client';
 
+import { useApiQuery } from '@/hooks/use-api-data';
+
 import {
   CheckOutlined,
   InboxOutlined,
@@ -18,7 +20,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useCurrentAccess } from '@/components/v2/access-context';
 import {
   errorText,
@@ -82,43 +84,23 @@ function toHcmIso(value: string) {
 export function InventoryWorkspace() {
   const { message } = App.useApp();
   const { can, loading: accessLoading, error: accessError } = useCurrentAccess();
-  const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [counts, setCounts] = useState<Record<string, string | undefined>>({});
   const [unitCosts, setUnitCosts] = useState<Record<string, string | undefined>>({});
-  const [openingRequired, setOpeningRequired] = useState(false);
   const [countedAt, setCountedAt] = useState(localDateTimeInput);
   const [note, setNote] = useState('');
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastCount, setLastCount] = useState<StockCountResponse | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
   const pendingCount = useRef<PendingIdempotencyRequest>(null);
 
+  const query = useApiQuery<InventoryResponse>(accessLoading ? null : '/api/v2/inventory/balances');
+  const balances = useMemo(() => query.data?.balances ?? [], [query.data]);
+  const openingRequired = Boolean(query.data?.openingRequired);
+  const loading = accessLoading || query.loading;
+  const loadError = query.error ? errorText(query.error, 'Không tải được số dư kho.') : null;
   const canCount = can('inventory:count');
   const canOpen = can('inventory:adjust');
   const canSubmit = openingRequired ? canOpen : canCount;
-
-  useEffect(() => {
-    if (accessLoading) return;
-    const controller = new AbortController();
-    requestV2<InventoryResponse>('/api/v2/inventory/balances', {
-      signal: controller.signal,
-    })
-      .then((value) => {
-        setBalances(value.balances ?? []);
-        setOpeningRequired(Boolean(value.openingRequired));
-        setError(null);
-      })
-      .catch((requestError: unknown) => {
-        if (requestError instanceof DOMException && requestError.name === 'AbortError') return;
-        setError(errorText(requestError, 'Không tải được số dư kho.'));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [accessLoading, refreshKey]);
 
   const groups = useMemo(() => {
     const byKind = new Map<string, InventoryBalance[]>();
@@ -211,7 +193,6 @@ export function InventoryWorkspace() {
       setNote('');
       setCountedAt(localDateTimeInput());
       pendingCount.current = null;
-      setRefreshKey((value) => value + 1);
       message.success(`Đã ghi ${result.lineCount} dòng kiểm kho.`);
     } catch (requestError) {
       const copy = errorText(
@@ -234,8 +215,7 @@ export function InventoryWorkspace() {
           <Button
             icon={<ReloadOutlined />}
             onClick={() => {
-              setLoading(true);
-              setRefreshKey((value) => value + 1);
+              query.refresh();
             }}
           >
             Làm mới
@@ -262,14 +242,14 @@ export function InventoryWorkspace() {
           description='Phiếu đầu tiên tạo số dư mở đầu cho toàn bộ sổ kho và có thể xác nhận giá vốn. Nhân viên chưa được phép ghi bước cutover này.'
         />
       ) : null}
-      {error ? (
+      {error || loadError ? (
         <Alert
           type='error'
           showIcon
           closable
           onClose={() => setError(null)}
           title='Chưa thể ghi kiểm kho'
-          description={error}
+          description={error ?? loadError}
         />
       ) : null}
       {lastCount ? (
