@@ -427,7 +427,7 @@ function AuthenticatedShell({
     })),
   }));
   const mobileQuickLinks = (
-    ['/dashboard', '/sales', '/purchases', '/ingredients']
+    ['/dashboard', '/sales', '/purchases']
   ).flatMap((key) => {
     const item = menuDefinitions.find(
       (candidate) =>

@@ -1,13 +1,13 @@
 'use client';
 
 import { EditOutlined, PlusOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Space, Table, Tooltip } from 'antd';
+import { Alert, App, Button, Card, Empty, Form, Input, InputNumber, Modal, Skeleton, Space, Table, Tooltip } from 'antd';
 import { useState } from 'react';
 import { PageHeader } from '@/components/common/page-header';
 import { useCurrentAccess } from '@/components/v2/access-context';
 import { useApiQuery } from '@/hooks/use-api-data';
 import { apiFetch } from '@/lib/api-client';
-import { formatDate, formatVnd, formatVndInput, parseVndInput } from '@/lib/formatters';
+import { formatDate, formatNumber, formatVnd, formatVndInput, parseVndInput } from '@/lib/formatters';
 import { isVietnamDateKey, vietnamDateKey } from '@/lib/vietnam-date';
 
 type SaleRecord = {
@@ -83,7 +83,8 @@ export default function SalesPage() {
         description='Lưu ngày, tiền mặt và tiền chuyển khoản.'
         actions={
           <Button type='primary' icon={<PlusOutlined />} disabled={!canSave} onClick={() => openForm()}>
-            Chốt doanh thu
+            <span className='sales-create-desktop-label'>Chốt doanh thu</span>
+            <span className='sales-create-mobile-label'>Chốt ngày</span>
           </Button>
         }
       />
@@ -100,7 +101,7 @@ export default function SalesPage() {
       <Table<SaleRecord>
         bordered
         size='small'
-        className='rounded-2xl!'
+        className='sales-history-table rounded-2xl!'
         rowKey='saleDate'
         loading={history.loading}
         dataSource={history.data?.history ?? []}
@@ -141,6 +142,58 @@ export default function SalesPage() {
           },
         ]}
       />
+      <div className='sales-mobile-history' aria-busy={history.loading}>
+        {history.loading ? (
+          <Card className='surface-card'>
+            <Skeleton active title paragraph={{ rows: 3 }} />
+          </Card>
+        ) : history.data?.history.length ? (
+          <div className='sales-mobile-table'>
+            <div className='sales-mobile-list-heading' aria-hidden='true'>
+              <span>Ngày</span>
+              <span>TM / CK (₫)</span>
+              <span>Tổng (₫)</span>
+            </div>
+            <ul className='sales-mobile-list' aria-label='Lịch sử chốt doanh thu'>
+              {history.data.history.map(record => (
+                <li className='sales-mobile-row' key={record.saleDate}>
+                  <button
+                    type='button'
+                    className='sales-mobile-edit'
+                    aria-label={`Sửa chốt ngày ${formatDate(record.saleDate)}`}
+                    disabled={!canSave}
+                    onClick={() => openForm(record)}>
+                    <span className='sales-mobile-date'>
+                      {formatDate(record.saleDate).slice(0, 5)} <EditOutlined aria-hidden />
+                    </span>
+                    <span className='sales-mobile-year'>{formatDate(record.saleDate).slice(6)}</span>
+                  </button>
+                  <dl className='sales-mobile-amounts'>
+                    <div>
+                      <dt aria-label='Tiền mặt'>TM</dt>
+                      <dd>{formatNumber(record.cashReceived)}</dd>
+                    </div>
+                    <div>
+                      <dt aria-label='Tiền chuyển khoản'>CK</dt>
+                      <dd>{formatNumber(record.bankTransferReceived)}</dd>
+                    </div>
+                  </dl>
+                  <strong className='sales-mobile-total' aria-label={`Tổng tiền ${formatVnd(record.cashReceived + record.bankTransferReceived)}`}>
+                    {formatNumber(record.cashReceived + record.bankTransferReceived)}
+                  </strong>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <Card className='surface-card'>
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={history.error ? 'Chưa tải được lịch sử chốt ngày' : 'Chưa có ngày chốt doanh thu'}
+            />
+          </Card>
+        )}
+      </div>
       <Space className='sales-pagination'>
         <Button disabled={cursors.length === 1 || history.loading} onClick={() => setCursors(current => current.slice(0, -1))}>
           Trang trước
