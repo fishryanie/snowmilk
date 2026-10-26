@@ -1,0 +1,9 @@
+.codegraph/
+.git/
+.next/
+node_modules/
+.vercel/
+.env*
+!.env.example
+backups/
+.mongodb/

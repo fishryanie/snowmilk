@@ -235,6 +235,81 @@ và xác nhận tiền. Chưa có QR vẫn nhận COD, còn đơn chuyển kho�
   lại sản phẩm liên quan. Xem `docs/excel-analysis.md` và
   `docs/data-verification.md`.
 
+## Zalo Bot webhook
+
+Endpoint production: `POST https://cms.caitiemsua.com/api/zalo/webhook`.
+Webhook thật gửi trực tiếp `{ event_name, message }`; không bọc trong `result`
+như dữ liệu polling. Bộ nhận hỗ trợ cả hai dạng và chuẩn hóa `photo_url`.
+Cấu hình `ZALO_BOT_TOKEN` và `ZALO_WEBHOOK_SECRET` (khóa riêng 8–256 ký tự)
+trên server, và `ZALO_WEBHOOK_URL` bằng URL trên. Không dùng tiền tố
+`NEXT_PUBLIC_` cho token/secret. Khi dùng Vercel, đặt biến ở Production rồi deploy.
+
+Endpoint xác thực header `X-Bot-Api-Secret-Token` và lưu tin khách gửi vào
+collection `zalo_bot_messages` trong database hiện có. Bản ghi có mã bot, mã
+hội thoại, người gửi, nội dung/media và thời gian; retry cùng tin nhắn không
+tạo bản ghi trùng. Không trả 2xx cho tin nhắn nếu chưa lưu được vào MongoDB.
+Mở `/zalo` để xem lịch sử theo từng khách, tải tin cũ hơn và trả lời thủ công.
+Hộp thư cần session quản trị thật, kể cả khi auth legacy đang tắt. Viewer chỉ
+xem; staff/owner có thể gửi tin và tiếp quản; chỉ owner được sửa cấu hình bot.
+API luôn kiểm tra đúng tổ chức và origin cho các thao tác ghi.
+
+Mở `/zalo/settings` để bật/tắt bot, sửa lời chào, menu số, từ khóa, câu trả lời
+và thử nội dung ngay trên màn hình. Mặc định bot dùng menu số + từ khóa với
+ba mục: menu/đặt món, giao hàng/thanh toán và gặp nhân viên. Không dùng AI hay
+DeepSeek cho các quy tắc này. Thay đổi chỉ áp dụng cho tin mới, không nhắn lại
+khách cũ. Bot chỉ tự trả lời hội thoại PRIVATE, bỏ qua tin của bot và tin cũ
+hơn 15 phút. Khách chọn gặp nhân viên hoặc nhân viên gửi thủ công thì bot
+tạm dừng cho khách đó đến khi được bật lại.
+
+Mỗi quy tắc có thể đính kèm một ảnh JPG/PNG/WebP tối đa 2 MB. Trong quy tắc
+"Xem menu & đặt món", chọn **Thêm ảnh trả lời**, tải ảnh menu, sửa lời nhắn
+kèm ảnh rồi **Lưu cấu hình**. Khi khách nhập số hoặc từ khóa phù hợp, bot
+dùng `sendPhoto` để gửi ảnh trực tiếp cùng caption; có thể để caption trống.
+Ảnh được kiểm tra định dạng/pixel, xoay đúng hướng, loại metadata và lưu thành
+JPEG công khai dưới `/api/zalo/media/<hash>` để Zalo tải được. Upload cần quyền
+owner; nội dung chat và API cấu hình vẫn yêu cầu đăng nhập. Thay ảnh tạo URL
+mới, giữ ảnh cũ trong lịch sử, và không tự gửi tin cho các khách đã chat trước đó.
+
+Ảnh menu ban đầu được lưu nguyên bản tại `src/assets/zalo/menu-v1.png`,
+được phục vụ công khai ở `/images/zalo/menu-v1.png` qua route tĩnh.
+Quy tắc mặc định "Xem menu & đặt món" dùng ảnh này. Khi thay ảnh trong mã
+nguồn, dùng tên phiên bản mới để các cuộc trò chuyện cũ vẫn xem đúng ảnh.
+
+Tin gửi đi được lưu trước khi gọi Zalo, có trạng thái đang gửi/đã gửi/thất
+bại/chưa rõ kết quả. Webhook trùng và thao tác gửi lại cùng mã không tạo tin
+trùng. Khi mất phản hồi từ Zalo, hệ thống giữ trạng thái chưa rõ kết quả và
+không tự gửi lại. Không có API tải toàn bộ lịch sử cũ chưa lưu hoặc bảo đảm
+thu thập tin được gửi trực tiếp từ một hệ thống khác.
+
+Trên Vercel, đặt `BETTER_AUTH_URL=https://cms.caitiemsua.com` để đăng nhập
+và các thao tác quản trị dùng đúng origin của CMS. Không thay auth secret
+production mỗi lần deploy.
+
+Kiểm tra cấu hình và đăng ký sau khi endpoint đã deploy (script không in secret):
+
+```sh
+bun --env-file=.env.local scripts/zalo-webhook.ts info
+bun --env-file=.env.local scripts/zalo-webhook.ts set
+bun --env-file=.env.local scripts/zalo-webhook.ts test
+bun test lib/zalo/webhook.test.ts
+```
+
+`set` kiểm tra endpoint và secret trước khi đổi URL trên Zalo, sau đó yêu cầu
+kết quả xác minh thành công. Request kiểm tra không ghi tin nhắn giả vào DB.
+
+Các kiểm tra tự động dùng Zalo giả lập. Integration test tự chạy MongoDB
+tạm trên localhost và dọn thư mục sau khi kết thúc; không dùng database app:
+
+```sh
+bun run test:zalo
+bun run test:zalo-store
+bun run test:zalo-ui
+bun scripts/preview-zalo-ui.ts
+```
+
+Bản xem thử ở `http://127.0.0.1:3013/zalo` chỉ dùng dữ liệu giả lập trong bộ
+nhớ, không kết nối MongoDB và không gửi tin Zalo thật.
+
 ## DeepSeek: nhập hàng từ ảnh bill
 
 Mobile gọi `POST /api/purchases/scan` với `{ imageBase64 }` (JPEG, tối đa 4 triệu ký tự base64). Server đọc danh mục thật, gọi DeepSeek `deepseek-flash` với ảnh và JSON output, kiểm tra kết quả và trả bản nháp. Các trường không đọc được giữ `null`; ngày không hợp lệ không tự đổi thành hôm nay. Ảnh chỉ dùng cho yêu cầu đọc, không lưu ảnh trong MongoDB. API có giới hạn 6 lần/phút và 30 lần/giờ toàn máy chủ để giới hạn chi phí cả khi AUTH_ENFORCEMENT legacy chưa bật. Khi bật auth, proxy áp quyền `purchases:write` cho cả hai endpoint.

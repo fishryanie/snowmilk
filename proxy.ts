@@ -10,7 +10,8 @@ const PUBLIC_PREFIXES = [
 ] as const;
 
 function isPublicPath(pathname: string) {
-  return PUBLIC_PREFIXES.some(
+  // Only uploaded menu images are public; conversations and uploads remain authenticated.
+  return pathname === "/api/zalo/webhook" || /^\/api\/zalo\/media\/[a-f0-9]{64}$/.test(pathname) || PUBLIC_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 }

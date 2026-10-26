@@ -4,6 +4,9 @@
   "private": true,
   "packageManager": "bun@1.1.34",
   "scripts": {
+    "test:zalo": "bun test lib/zalo/",
+    "test:zalo-store": "bun build scripts/test-zalo-store.ts --target=node --external=mongodb --external=zod --external=server-only --external=sharp --outfile=node_modules/.cache/snowmilk-zalo-store.mjs && node --conditions=react-server node_modules/.cache/snowmilk-zalo-store.mjs",
+    "test:zalo-ui": "bun build scripts/test-zalo-ui.tsx --target=node --external=react --external=react-dom --external=antd --external=@ant-design/icons --external=swr --external=happy-dom --outfile=node_modules/.cache/snowmilk-zalo-ui.mjs && node --import=./scripts/test-browser-environment.mjs node_modules/.cache/snowmilk-zalo-ui.mjs",
     "dev": "next dev --port 3001",
     "build": "next build",
     "start": "next start",

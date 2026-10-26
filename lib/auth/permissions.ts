@@ -56,6 +56,10 @@ export function permissionForRequest(
   method: string,
 ): Permission {
   const normalizedMethod = method.toUpperCase();
+  if (pathname.startsWith("/api/zalo-admin/")) {
+    if (isReadMethod(normalizedMethod)) return "sales:read";
+    return pathname.endsWith("/settings") || pathname.endsWith("/images") ? "settings:manage" : "sales:write";
+  }
   if (pathname.startsWith("/api/storefront-admin/")) {
     const read = isReadMethod(normalizedMethod);
     if (pathname.includes("/orders") || pathname.includes("/receipt")) return read ? "sales:read" : "sales:write";
