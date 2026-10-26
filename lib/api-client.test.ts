@@ -130,5 +130,12 @@ test("prefetch keys use Vietnam dates at the UTC date boundary", () => {
   expect(routeDataUrls("/sales", true, now)).toEqual([
     "/api/sales?limit=50",
   ]);
+  expect(routeDataUrls("/purchases", false, now)).toEqual([
+    "/api/purchases?limit=500&from=2026-10-01&to=2026-10-01",
+    "/api/ingredients?limit=500",
+  ]);
+  expect(routeDataUrls("/purchases", true, now)).toEqual([
+    "/api/v2/catalog/purchase-items", "/api/v2/purchase-receipts",
+  ]);
   expect(routeDataUrls("/storefront/orders")).toContain("/api/storefront-admin/orders?");
 });

@@ -25,6 +25,7 @@
     "profile:app": "bun scripts/app-read-profile.ts",
     "test:without-inventory": "bun build scripts/test-without-inventory.ts --target=node --external=mongoose --external=mongodb --external=zod --external=server-only --outfile=node_modules/.cache/snowmilk-without-inventory.mjs && node --conditions=react-server node_modules/.cache/snowmilk-without-inventory.mjs",
     "test:api-navigation": "bun build scripts/test-api-navigation.tsx --target=node --external=react --external=react-dom/client --external=react/jsx-runtime --external=swr --external=happy-dom --outfile=node_modules/.cache/snowmilk-api-navigation.mjs && node node_modules/.cache/snowmilk-api-navigation.mjs",
+    "test:purchases": "bun build scripts/test-purchases-workspace.tsx --target=node --external=react --external=react-dom --external=antd --external=@ant-design/icons --external=swr --external=happy-dom --outfile=node_modules/.cache/snowmilk-purchases.mjs && node --import=./scripts/test-browser-environment.mjs node_modules/.cache/snowmilk-purchases.mjs",
     "test:storefront-orders": "bun build scripts/test-storefront-orders.tsx --target=node --external=react --external=react-dom --external=antd --external=@ant-design/icons --external=swr --external=happy-dom --outfile=node_modules/.cache/snowmilk-storefront-orders.mjs && node --import=./scripts/test-browser-environment.mjs node_modules/.cache/snowmilk-storefront-orders.mjs"
   },
   "dependencies": {

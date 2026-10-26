@@ -13,7 +13,7 @@ export function routeDataUrls(path: string, v2 = false, now = new Date()): strin
     case "/ingredients": return ["/api/ingredients?limit=500"];
     case "/purchases": return v2
       ? ["/api/v2/catalog/purchase-items", "/api/v2/purchase-receipts"]
-      : ["/api/purchases?limit=500", "/api/ingredients?limit=500", "/api/reports/topping-ranking?refresh=0"];
+      : [`/api/purchases?limit=500&from=${date}&to=${date}`, "/api/ingredients?limit=500"];
     case "/costing": return ["/api/products?limit=500", "/api/batches?limit=500"];
     case "/batches": return ["/api/batches?limit=500", "/api/ingredients?limit=500", "/api/settings"];
     case "/expenses": return ["/api/expenses"];

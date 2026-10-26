@@ -15,6 +15,7 @@ import {
   ReloadOutlined,
   RightOutlined,
   SearchOutlined,
+  TrophyOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
 import {
@@ -34,19 +35,20 @@ import {
   Popconfirm,
   Radio,
   Select,
+  Skeleton,
   Space,
   Statistic,
   Switch,
   Table,
+  Tabs,
   Tag,
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { type Dayjs } from 'dayjs';
+import dynamic from 'next/dynamic';
 import { useMemo, useState, type Key } from 'react';
 import { PageHeader } from '@/components/common/page-header';
-import { RouteSkeleton } from '@/components/common/route-skeleton';
-import { ToppingRankingCard } from '@/components/purchases/topping-ranking-card';
 import { useApiData } from '@/hooks/use-api-data';
 import { formatDate, formatNumber, formatVnd, formatVndInput, parseVndInput } from '@/lib/formatters';
 import {
@@ -56,6 +58,7 @@ import {
   type PurchaseFundingSource,
 } from '@/lib/purchase-funding';
 import { workbookIngredients, workbookPurchases } from '@/lib/workbook-snapshot';
+import { vietnamDateKey } from '@/lib/vietnam-date';
 import {
   calculateMilkPurchaseCost,
   DEFAULT_STERILIZATION_UNIT_PRICE,
@@ -66,6 +69,15 @@ import {
 
 const { RangePicker } = DatePicker;
 const { Text } = Typography;
+const ToppingRankingCard = dynamic(
+  () => import('@/components/purchases/topping-ranking-card').then(module => module.ToppingRankingCard),
+  { loading: () => <Card className='surface-card'><Skeleton active paragraph={{ rows: 6 }} /></Card> },
+);
+
+function todayRange(): [string, string] {
+  const today = vietnamDateKey(new Date());
+  return [today, today];
+}
 
 type Ingredient = {
   id?: string;
@@ -167,7 +179,8 @@ export default function PurchasesPage() {
   const { message } = App.useApp();
   const [form] = Form.useForm<PurchaseForm>();
   const [query, setQuery] = useState('');
-  const [dateRange, setDateRange] = useState<[string, string] | null>(null);
+  const [dateRange, setDateRange] = useState<[string, string] | null>(todayRange);
+  const [activeTab, setActiveTab] = useState('purchases');
   const [categoryFilter, setCategoryFilter] = useState<string>();
   const [fundingSourceFilter, setFundingSourceFilter] = useState<PurchaseFundingSource>();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -186,7 +199,10 @@ export default function PurchasesPage() {
     loading: purchasesLoading,
     usingFallback: purchasesFallback,
     setData: setPurchases,
-  } = useApiData<Purchase[]>('/api/purchases?limit=500', workbookPurchases);
+  } = useApiData<Purchase[]>(
+    `/api/purchases?limit=500${dateRange ? `&from=${dateRange[0]}&to=${dateRange[1]}` : ''}`,
+    workbookPurchases,
+  );
   const {
     data: ingredients,
     loading: ingredientsLoading,
@@ -249,14 +265,14 @@ export default function PurchasesPage() {
   const normalizedQuery = query.trim().toLocaleLowerCase('vi');
   const categoryOptions = useMemo(
     () =>
-      Array.from(new Set(purchases.map(purchase => purchase.category).filter((category): category is string => Boolean(category))))
+      Array.from(new Set(['Nguyên liệu', 'Topping', 'Bao bì', 'Khác', ...purchases.map(purchase => purchase.category).filter((category): category is string => Boolean(category))]))
         .toSorted((a, b) => a.localeCompare(b, 'vi'))
         .map(category => ({ label: category, value: category })),
     [purchases],
   );
   const visiblePurchases = useMemo(() => {
     const filtered = purchases.filter(purchase => {
-      const purchaseDay = dayjs(purchase.purchaseDate).format('YYYY-MM-DD');
+      const purchaseDay = vietnamDateKey(new Date(purchase.purchaseDate));
       if (dateRange && (purchaseDay < dateRange[0] || purchaseDay > dateRange[1])) {
         return false;
       }
@@ -318,8 +334,23 @@ export default function PurchasesPage() {
     return count;
   }, [selectedPurchaseKeySet, visiblePurchaseKeys]);
   const allVisiblePurchasesSelected = visiblePurchaseKeys.length > 0 && selectedVisiblePurchaseCount === visiblePurchaseKeys.length;
-  const hasActiveFilters = Boolean(normalizedQuery || dateRange || categoryFilter || fundingSourceFilter);
-  const activeFilterCount = [Boolean(dateRange), Boolean(categoryFilter), Boolean(fundingSourceFilter)].filter(Boolean).length;
+  const today = vietnamDateKey(new Date());
+  const isToday = dateRange?.[0] === today && dateRange[1] === today;
+  const hasActiveFilters = Boolean(normalizedQuery || !isToday || categoryFilter || fundingSourceFilter);
+  const activeFilterCount = [!isToday, Boolean(categoryFilter), Boolean(fundingSourceFilter)].filter(Boolean).length;
+  const periodLabel = isToday
+    ? `Hôm nay · ${formatDate(today)}`
+    : dateRange
+      ? dateRange[0] === dateRange[1]
+        ? formatDate(dateRange[0])
+        : `${formatDate(dateRange[0])} – ${formatDate(dateRange[1])}`
+      : 'Tất cả ngày';
+
+  function changeDateRange(range: [string, string] | null) {
+    setDateRange(range);
+    setSelectedPurchaseKeys([]);
+    setMobilePage(1);
+  }
 
   const columns: ColumnsType<Purchase> = [
     {
@@ -462,7 +493,7 @@ export default function PurchasesPage() {
 
   function clearFilters() {
     setQuery('');
-    setDateRange(null);
+    changeDateRange(todayRange());
     setCategoryFilter(undefined);
     setFundingSourceFilter(undefined);
   }
@@ -695,13 +726,9 @@ export default function PurchasesPage() {
     }
   }
 
-  if (purchasesLoading || ingredientsLoading) {
-    return <RouteSkeleton />;
-  }
-
   return (
-    <div className='page-wrap'>
-      <PageHeader title='Nhập hàng' description='Ghi tổng tiền đã thanh toán và nguồn tiền sử dụng; đơn giá thực tế và giá vốn được tự tính.' />
+    <div className='page-wrap purchases-page'>
+      <PageHeader title='Nhập hàng' description='Theo dõi hàng vừa nhập, chi phí và nhu cầu topping.' />
       {(purchasesFallback || ingredientsFallback) && (
         <Alert
           type='info'
@@ -711,257 +738,294 @@ export default function PurchasesPage() {
           style={{ marginBottom: 16 }}
         />
       )}
-      <ToppingRankingCard refreshToken={rankingRefreshToken} />
-      <Card className='surface-card table-card'>
-        <div className='purchase-overview'>
-          <div className='purchase-filter-heading'>
-           
-            <Button className='purchase-desktop-filter-reset' type='text' icon={<ReloadOutlined />} disabled={!hasActiveFilters} onClick={clearFilters}>
-              Đặt lại
-            </Button>
-          </div>
-          <div className='purchase-summary-grid'>
-            <Card size='small' className='surface-card kpi-card purchase-summary-card purchase-summary-card-total'>
-              <Statistic
-                title={
-                  <span className='purchase-summary-title'>
-                    <WalletOutlined />
-                    Tổng tiền
-                  </span>
-                }
-                value={purchaseSummary.totalAmount}
-                formatter={value => formatVnd(Number(value))}
-              />
-            </Card>
-            <Card size='small' className='surface-card kpi-card purchase-summary-card purchase-summary-card-count'>
-              <Statistic
-                title={
-                  <span className='purchase-summary-title'>
-                    <CalendarOutlined />
-                    Số lần nhập
-                  </span>
-                }
-                value={purchaseSummary.purchaseCount}
-                suffix='lần'
-                formatter={value => formatNumber(Number(value))}
-              />
-            </Card>
-            <Card size='small' className='surface-card kpi-card purchase-summary-card purchase-summary-card-packages purchase-summary-secondary'>
-              <Statistic
-                title={
-                  <span className='purchase-summary-title'>
-                    <InboxOutlined />
-                    Tổng số gói
-                  </span>
-                }
-                value={purchaseSummary.totalPackages}
-                suffix='gói'
-                formatter={value => formatNumber(Number(value))}
-              />
-            </Card>
-            <Card size='small' className='surface-card kpi-card purchase-summary-card purchase-summary-card-average purchase-summary-secondary'>
-              <Statistic
-                title={
-                  <span className='purchase-summary-title'>
-                    <BarChartOutlined />
-                    Bình quân/lần
-                  </span>
-                }
-                value={purchaseSummary.averageAmount}
-                formatter={value => formatVnd(Number(value))}
-              />
-            </Card>
-          </div>
-          <div className='purchase-mobile-search-row'>
-            <div className='purchase-mobile-search'>
-              <Input
-                allowClear
-                prefix={<SearchOutlined />}
-                placeholder='Tìm tên hàng, mã, nhà cung cấp…'
-                value={query}
-                onChange={event => setQuery(event.target.value)}
-              />
-            </div>
-            <Button
-              className='purchase-mobile-filter-toggle'
-              type={activeFilterCount > 0 ? 'primary' : 'default'}
-              icon={<FilterOutlined />}
-              aria-expanded={mobileFiltersOpen}
-              aria-controls='purchase-mobile-filters'
-              onClick={() => setMobileFiltersOpen(current => !current)}>
-              Lọc{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-            </Button>
-          </div>
-          <div id='purchase-mobile-filters' className={`purchase-filter-grid ${mobileFiltersOpen ? 'is-mobile-open' : ''}`}>
-            <div className='purchase-desktop-search'>
-              <Input
-                allowClear
-                prefix={<SearchOutlined />}
-                placeholder='Tìm tên hàng, mã, nhà cung cấp…'
-                value={query}
-                onChange={event => setQuery(event.target.value)}
-              />
-            </div>
-            <RangePicker
-              allowClear
-              format='DD/MM/YYYY'
-              placeholder={['Từ ngày', 'Đến ngày']}
-              value={dateRange ? [dayjs(dateRange[0]), dayjs(dateRange[1])] : null}
-              onChange={dates => {
-                setDateRange(dates?.[0] && dates[1] ? [dates[0].format('YYYY-MM-DD'), dates[1].format('YYYY-MM-DD')] : null);
-              }}
-            />
-            <Select allowClear placeholder='Tất cả nhóm hàng' options={categoryOptions} value={categoryFilter} onChange={setCategoryFilter} />
-            <Select
-              allowClear
-              placeholder='Tất cả nguồn tiền'
-              options={PURCHASE_FUNDING_SOURCE_OPTIONS}
-              value={fundingSourceFilter}
-              onChange={setFundingSourceFilter}
-            />
-            <div className='purchase-mobile-filter-actions'>
-              <Button icon={<ReloadOutlined />} disabled={!hasActiveFilters} onClick={clearFilters}>
-                Đặt lại
-              </Button>
-              <Button icon={<DownloadOutlined />} href='/api/export/purchases' target='_blank'>
-                Xuất Excel
-              </Button>
-              <Button
-                icon={<FilePdfOutlined />}
-                disabled={visiblePurchases.length === 0}
-                loading={exportingPdf}
-                onClick={exportFilteredPdf}>
-                Xuất PDF
-              </Button>
-            </div>
-          </div>
-          
-        </div>
-        <div className='table-toolbar purchase-action-toolbar'>
-          <div className='purchase-list-heading'>
-            <div className='purchase-list-title'>
-              <Text strong>Danh sách nhập hàng</Text>
-              <Checkbox
-                className='purchase-mobile-select-all'
-                checked={allVisiblePurchasesSelected}
-                indeterminate={selectedVisiblePurchaseCount > 0 && !allVisiblePurchasesSelected}
-                disabled={visiblePurchaseKeys.length === 0}
-                onChange={event => toggleAllVisiblePurchases(event.target.checked)}>
-                Chọn tất cả
-              </Checkbox>
-            </div>
-            <div className='purchase-selection-summary' aria-live='polite'>
-              <Text type='secondary'>Đã chọn {formatNumber(selectedPurchaseSummary.count)} dòng</Text>
-              <Text strong>Tổng đã chọn: {formatVnd(selectedPurchaseSummary.totalAmount)}</Text>
-            </div>
-          </div>
-          <Space>
-            <Button icon={<DownloadOutlined />} href='/api/export/purchases' target='_blank'>
-              Xuất Excel
-            </Button>
-            <Button
-              icon={<FilePdfOutlined />}
-              disabled={visiblePurchases.length === 0}
-              loading={exportingPdf}
-              onClick={exportFilteredPdf}>
-              Xuất PDF
-            </Button>
-            <Button type='primary' icon={<PlusOutlined />} onClick={() => openEditor()}>
-              Thêm lần nhập
-            </Button>
-          </Space>
-        </div>
-        <div className='purchase-desktop-table'>
-          <Table
-            size='small'
-            rowKey={purchaseKey}
-            columns={columns}
-            dataSource={visiblePurchases}
-            rowSelection={{
-              selectedRowKeys: selectedPurchaseKeys,
-              onChange: setSelectedPurchaseKeys,
-              columnWidth: 44,
-              preserveSelectedRowKeys: true,
-              getCheckboxProps: record => ({
-                'aria-label': `Chọn lần nhập ${record.itemName}`,
-              }),
-            }}
-            pagination={{ defaultPageSize: 50, showSizeChanger: false }}
-            scroll={{ x: 'max-content' }}
-            rowClassName={record => (hasMissingFundingSource(record) ? 'record-warning-row' : '')}
-          />
-        </div>
-        <div className='purchase-mobile-list'>
-          {mobilePurchases.length > 0 ? (
-            <div className='ant-list-items'>
-              {mobilePurchases.map(record => (
-                <div className='ant-list-item purchase-mobile-item' key={purchaseKey(record)}>
-                  <article className={`purchase-mobile-card ${hasMissingFundingSource(record) ? 'record-warning-card' : ''}`}>
-                    <Checkbox
-                      className='purchase-card-checkbox'
-                      checked={selectedPurchaseKeySet.has(purchaseKey(record))}
-                      aria-label={`Chọn lần nhập ${record.itemName}`}
-                      onChange={event => togglePurchaseSelection(purchaseKey(record), event.target.checked)}
-                    />
-                    <button
-                      type='button'
-                      className='purchase-card-main'
-                      onClick={() => openEditor(record)}
-                      aria-label={`Xem và sửa lần nhập ${record.itemName}`}>
-                      <span className='purchase-card-heading'>
-                        <span>
-                          <Text strong className='purchase-card-name'>
-                            {record.itemName}
-                          </Text>
-                          <span className='purchase-card-identity'>
-                            <Tag>{record.itemCode}</Tag>
-                            <Text type='secondary'>{record.category}</Text>
+      <Tabs
+        className='purchase-tabs'
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        destroyOnHidden
+        items={[
+          {
+            key: 'purchases',
+            label: 'Danh sách nhập hàng',
+            icon: <InboxOutlined />,
+            children: (
+              <Card className='surface-card table-card'>
+                <div className='purchase-overview'>
+                  <div className='purchase-filter-heading'>
+                    <div>
+                      <Text strong>{periodLabel}</Text>
+                      <Text type='secondary'>Chi phí theo khoảng ngày đang chọn</Text>
+                    </div>
+                    <Button className='purchase-desktop-filter-reset' type='text' icon={<ReloadOutlined />} disabled={!hasActiveFilters} onClick={clearFilters}>
+                      Đặt lại
+                    </Button>
+                  </div>
+                  <div className='purchase-summary-grid'>
+                    <Card size='small' className='surface-card kpi-card purchase-summary-card purchase-summary-card-total'>
+                      <Statistic
+                        title={
+                          <span className='purchase-summary-title'>
+                            <WalletOutlined />
+                            Tổng tiền
                           </span>
-                        </span>
-                        <span className='purchase-card-aside'>
-                          <Text type='secondary'>{formatDate(record.purchaseDate)}</Text>
-                          <Text strong>{formatVnd(record.totalAmount)}</Text>
-                        </span>
-                      </span>
-                      <span className='purchase-card-summary'>
-                        <Text>{formatNumber(record.packageCount)} gói</Text>
-                        <Text>
-                          {formatNumber(record.convertedQuantity)} {record.costUnit}
-                        </Text>
-                        {Number(record.sterilizationOutsourcedLiters ?? 0) > 0 ? (
-                          <Tag color={record.sterilizationPaymentStatus === 'paid' ? 'green' : 'orange'}>
-                            Thuê {formatNumber(Number(record.sterilizationOutsourcedLiters))}L ·{' '}
-                            {record.sterilizationPaymentStatus === 'paid' ? 'Đã trả' : 'Chưa trả'}
-                          </Tag>
-                        ) : null}
-                        <Tag color={fundingSourceTagColor(record.fundingSource)}>{purchaseFundingSourceLabel(record.fundingSource)}</Tag>
-                        <RightOutlined aria-hidden />
-                      </span>
-                    </button>
-                  </article>
+                        }
+                        value={purchaseSummary.totalAmount}
+                        loading={purchasesLoading}
+                        formatter={value => formatVnd(Number(value))}
+                      />
+                    </Card>
+                    <Card size='small' className='surface-card kpi-card purchase-summary-card purchase-summary-card-count'>
+                      <Statistic
+                        title={
+                          <span className='purchase-summary-title'>
+                            <CalendarOutlined />
+                            Số lần nhập
+                          </span>
+                        }
+                        value={purchaseSummary.purchaseCount}
+                        loading={purchasesLoading}
+                        suffix='lần'
+                        formatter={value => formatNumber(Number(value))}
+                      />
+                    </Card>
+                    <Card size='small' className='surface-card kpi-card purchase-summary-card purchase-summary-card-packages purchase-summary-secondary'>
+                      <Statistic
+                        title={
+                          <span className='purchase-summary-title'>
+                            <InboxOutlined />
+                            Tổng số gói
+                          </span>
+                        }
+                        value={purchaseSummary.totalPackages}
+                        loading={purchasesLoading}
+                        suffix='gói'
+                        formatter={value => formatNumber(Number(value))}
+                      />
+                    </Card>
+                    <Card size='small' className='surface-card kpi-card purchase-summary-card purchase-summary-card-average purchase-summary-secondary'>
+                      <Statistic
+                        title={
+                          <span className='purchase-summary-title'>
+                            <BarChartOutlined />
+                            Bình quân/lần
+                          </span>
+                        }
+                        value={purchaseSummary.averageAmount}
+                        loading={purchasesLoading}
+                        formatter={value => formatVnd(Number(value))}
+                      />
+                    </Card>
+                  </div>
+                  <div className='purchase-date-shortcuts' aria-label='Chọn nhanh khoảng ngày'>
+                    <Button size='small' type={isToday ? 'primary' : 'default'} onClick={() => changeDateRange(todayRange())}>Hôm nay</Button>
+                    <Button size='small' onClick={() => changeDateRange([dayjs(today).subtract(6, 'day').format('YYYY-MM-DD'), today])}>7 ngày qua</Button>
+                    <Button size='small' onClick={() => changeDateRange([dayjs(today).startOf('month').format('YYYY-MM-DD'), today])}>Tháng này</Button>
+                    <Button size='small' type={dateRange === null ? 'primary' : 'default'} onClick={() => changeDateRange(null)}>Tất cả</Button>
+                  </div>
+                  <div className='purchase-mobile-search-row'>
+                    <div className='purchase-mobile-search'>
+                      <Input
+                        allowClear
+                        prefix={<SearchOutlined />}
+                        placeholder='Tìm tên hàng, mã, nhà cung cấp…'
+                        value={query}
+                        onChange={event => setQuery(event.target.value)}
+                      />
+                    </div>
+                    <Button
+                      className='purchase-mobile-filter-toggle'
+                      type={activeFilterCount > 0 ? 'primary' : 'default'}
+                      icon={<FilterOutlined />}
+                      aria-expanded={mobileFiltersOpen}
+                      aria-controls='purchase-mobile-filters'
+                      onClick={() => setMobileFiltersOpen(current => !current)}>
+                      Lọc{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+                    </Button>
+                  </div>
+                  <div id='purchase-mobile-filters' className={`purchase-filter-grid ${mobileFiltersOpen ? 'is-mobile-open' : ''}`}>
+                    <div className='purchase-desktop-search'>
+                      <Input
+                        allowClear
+                        prefix={<SearchOutlined />}
+                        placeholder='Tìm tên hàng, mã, nhà cung cấp…'
+                        value={query}
+                        onChange={event => setQuery(event.target.value)}
+                      />
+                    </div>
+                    <RangePicker
+                      allowClear={false}
+                      format='DD/MM/YYYY'
+                      aria-label='Khoảng ngày nhập hàng'
+                      placeholder={['Từ ngày', 'Đến ngày']}
+                      value={dateRange ? [dayjs(dateRange[0]), dayjs(dateRange[1])] : null}
+                      onChange={dates => {
+                        if (dates?.[0] && dates[1]) changeDateRange([dates[0].format('YYYY-MM-DD'), dates[1].format('YYYY-MM-DD')]);
+                      }}
+                    />
+                    <Select allowClear placeholder='Tất cả nhóm hàng' options={categoryOptions} value={categoryFilter} onChange={setCategoryFilter} />
+                    <Select
+                      allowClear
+                      placeholder='Tất cả nguồn tiền'
+                      options={PURCHASE_FUNDING_SOURCE_OPTIONS}
+                      value={fundingSourceFilter}
+                      onChange={setFundingSourceFilter}
+                    />
+                    <div className='purchase-mobile-filter-actions'>
+                      <Button icon={<ReloadOutlined />} disabled={!hasActiveFilters} onClick={clearFilters}>
+                        Đặt lại
+                      </Button>
+                      <Button icon={<DownloadOutlined />} href='/api/export/purchases' target='_blank'>
+                        Xuất Excel
+                      </Button>
+                      <Button
+                        icon={<FilePdfOutlined />}
+                        disabled={visiblePurchases.length === 0}
+                        loading={exportingPdf}
+                        onClick={exportFilteredPdf}>
+                        Xuất PDF
+                      </Button>
+                    </div>
+                  </div>
+
                 </div>
-              ))}
-            </div>
-          ) : (
-            <Empty description='Chưa có lần nhập hàng' />
-          )}
-          {visiblePurchases.length > mobilePageSize ? (
-            <Pagination
-              className='purchase-mobile-pagination'
-              current={safeMobilePage}
-              pageSize={mobilePageSize}
-              total={visiblePurchases.length}
-              showSizeChanger={false}
-              size='small'
-              align='center'
-              onChange={setMobilePage}
-            />
-          ) : null}
-        </div>
-      </Card>
+                <div className='table-toolbar purchase-action-toolbar'>
+                  <div className='purchase-list-heading'>
+                    <div className='purchase-list-title'>
+                      <Text strong>Danh sách nhập hàng</Text>
+                      <Checkbox
+                        className='purchase-mobile-select-all'
+                        checked={allVisiblePurchasesSelected}
+                        indeterminate={selectedVisiblePurchaseCount > 0 && !allVisiblePurchasesSelected}
+                        disabled={visiblePurchaseKeys.length === 0}
+                        onChange={event => toggleAllVisiblePurchases(event.target.checked)}>
+                        Chọn tất cả
+                      </Checkbox>
+                    </div>
+                    {selectedPurchaseSummary.count > 0 ? <div className='purchase-selection-summary' aria-live='polite'>
+                      <Text type='secondary'>Đã chọn {formatNumber(selectedPurchaseSummary.count)} dòng</Text>
+                      <Text strong>Tổng đã chọn: {formatVnd(selectedPurchaseSummary.totalAmount)}</Text>
+                    </div> : null}
+                  </div>
+                  <Space>
+                    <Button icon={<DownloadOutlined />} href='/api/export/purchases' target='_blank'>
+                      Xuất Excel
+                    </Button>
+                    <Button
+                      icon={<FilePdfOutlined />}
+                      disabled={visiblePurchases.length === 0}
+                      loading={exportingPdf}
+                      onClick={exportFilteredPdf}>
+                      Xuất PDF
+                    </Button>
+                    <Button type='primary' icon={<PlusOutlined />} onClick={() => openEditor()}>
+                      Thêm lần nhập
+                    </Button>
+                  </Space>
+                </div>
+                <div className='purchase-desktop-table'>
+                  <Table
+                    loading={purchasesLoading}
+                    size='small'
+                    rowKey={purchaseKey}
+                    columns={columns}
+                    dataSource={visiblePurchases}
+                    rowSelection={{
+                      selectedRowKeys: selectedPurchaseKeys,
+                      onChange: setSelectedPurchaseKeys,
+                      columnWidth: 44,
+                      preserveSelectedRowKeys: true,
+                      getCheckboxProps: record => ({
+                        'aria-label': `Chọn lần nhập ${record.itemName}`,
+                      }),
+                    }}
+                    pagination={{ defaultPageSize: 50, showSizeChanger: false }}
+                    scroll={{ x: 'max-content' }}
+                    rowClassName={record => (hasMissingFundingSource(record) ? 'record-warning-row' : '')}
+                    locale={{ emptyText: isToday ? 'Hôm nay chưa có lần nhập hàng nào' : 'Không có lần nhập hàng trong khoảng ngày đã chọn' }}
+                  />
+                </div>
+                <div className='purchase-mobile-list'>
+                  {purchasesLoading ? <Skeleton active paragraph={{ rows: 4 }} /> : mobilePurchases.length > 0 ? (
+                    <div className='ant-list-items'>
+                      {mobilePurchases.map(record => (
+                        <div className='ant-list-item purchase-mobile-item' key={purchaseKey(record)}>
+                          <article className={`purchase-mobile-card ${hasMissingFundingSource(record) ? 'record-warning-card' : ''}`}>
+                            <Checkbox
+                              className='purchase-card-checkbox'
+                              checked={selectedPurchaseKeySet.has(purchaseKey(record))}
+                              aria-label={`Chọn lần nhập ${record.itemName}`}
+                              onChange={event => togglePurchaseSelection(purchaseKey(record), event.target.checked)}
+                            />
+                            <button
+                              type='button'
+                              className='purchase-card-main'
+                              onClick={() => openEditor(record)}
+                              aria-label={`Xem và sửa lần nhập ${record.itemName}`}>
+                              <span className='purchase-card-heading'>
+                                <span>
+                                  <Text strong className='purchase-card-name'>
+                                    {record.itemName}
+                                  </Text>
+                                  <span className='purchase-card-identity'>
+                                    <Tag>{record.itemCode}</Tag>
+                                    <Text type='secondary'>{record.category}</Text>
+                                  </span>
+                                </span>
+                                <span className='purchase-card-aside'>
+                                  <Text type='secondary'>{formatDate(record.purchaseDate)}</Text>
+                                  <Text strong>{formatVnd(record.totalAmount)}</Text>
+                                </span>
+                              </span>
+                              <span className='purchase-card-summary'>
+                                <Text>{formatNumber(record.packageCount)} gói</Text>
+                                <Text>
+                                  {formatNumber(record.convertedQuantity)} {record.costUnit}
+                                </Text>
+                                {Number(record.sterilizationOutsourcedLiters ?? 0) > 0 ? (
+                                  <Tag color={record.sterilizationPaymentStatus === 'paid' ? 'green' : 'orange'}>
+                                    Thuê {formatNumber(Number(record.sterilizationOutsourcedLiters))}L ·{' '}
+                                    {record.sterilizationPaymentStatus === 'paid' ? 'Đã trả' : 'Chưa trả'}
+                                  </Tag>
+                                ) : null}
+                                <Tag color={fundingSourceTagColor(record.fundingSource)}>{purchaseFundingSourceLabel(record.fundingSource)}</Tag>
+                                <RightOutlined aria-hidden />
+                              </span>
+                            </button>
+                          </article>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={isToday ? 'Hôm nay chưa có lần nhập hàng nào' : 'Không có lần nhập hàng trong khoảng ngày đã chọn'} />
+                  )}
+                  {visiblePurchases.length > mobilePageSize ? (
+                    <Pagination
+                      className='purchase-mobile-pagination'
+                      current={safeMobilePage}
+                      pageSize={mobilePageSize}
+                      total={visiblePurchases.length}
+                      showSizeChanger={false}
+                      size='small'
+                      align='center'
+                      onChange={setMobilePage}
+                    />
+                  ) : null}
+                </div>
+              </Card>
+            ),
+          },
+          {
+            key: 'topping',
+            label: 'Topping',
+            icon: <TrophyOutlined />,
+            children: <ToppingRankingCard refreshToken={rankingRefreshToken} />,
+          },
+        ]}
+      />
 
       <Drawer
         open={drawerOpen}
+        loading={ingredientsLoading}
         className='purchase-drawer'
         title={editing ? 'Chỉnh sửa lần nhập' : 'Thêm lần nhập'}
         placement='right'
@@ -1280,13 +1344,13 @@ export default function PurchasesPage() {
           </Descriptions>
         </Card>
       </Drawer>
-      <div className='mobile-workflow-dock purchase-mobile-add-dock'>
+      {activeTab === 'purchases' ? <div className='mobile-workflow-dock purchase-mobile-add-dock'>
         <div>
           <Text type='secondary'>Thao tác nhanh</Text>
           <Text strong>Ghi hàng vừa mua</Text>
         </div>
         <Button className='purchase-mobile-fab' type='primary' icon={<PlusOutlined />} aria-label='Thêm nhập hàng' onClick={() => openEditor()} />
-      </div>
+      </div> : null}
     </div>
   );
 }
